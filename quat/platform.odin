@@ -79,7 +79,6 @@ Platform :: struct {
 	double_clicked:               bool,
 
 	// globals: 
-	camera:                       Camera,
 	globals_data:                 ShaderGlobals,
 	globals:                      UniformBuffer(ShaderGlobals),
 }
@@ -121,9 +120,9 @@ platform_create :: proc(
 	)
 }
 
-platform_prepare :: proc(platform: ^Platform) {
+platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 	screen_size := platform.screen_size_f32
-	camera_raw := camera_to_raw(platform.camera, screen_size)
+	camera_raw := camera_to_raw(camera, screen_size)
 	platform.globals_data = ShaderGlobals {
 		camera_proj_col_1 = camera_raw.proj[0],
 		camera_proj_col_2 = camera_raw.proj[1],

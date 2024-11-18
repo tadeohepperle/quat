@@ -164,7 +164,7 @@ Color_Cyan :: Color{0.0, 1.0, 1.0, 1.0}
 Color_Dark_Blue :: Color{0.0, 0.0, 0.545098, 1.0}
 Color_Dark_Cyan :: Color{0.0, 0.545098, 0.545098, 1.0}
 Color_Dark_Goldenrod :: Color{0.721569, 0.529412, 0.0431373, 1.0}
-Color_Dark_Gray :: Color{0.1, 0.1, 0.1, 1.0}
+Color_Dark_Gray :: Color{0.01, 0.01, 0.018, 1.0}
 Color_Dark_Green :: Color{0.0, 0.392157, 0.0, 1.0}
 Color_Dark_Khaki :: Color{0.741176, 0.717647, 0.419608, 1.0}
 Color_Dark_Magenta :: Color{0.545098, 0.0, 0.545098, 1.0}

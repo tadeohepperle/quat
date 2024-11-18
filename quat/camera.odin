@@ -53,6 +53,7 @@ camera_to_raw :: proc "contextless" (self: Camera, screen_size: Vec2) -> (raw: C
 camera_cursor_hit_pos :: proc(camera: Camera, cursor_pos: Vec2, screen_size: Vec2) -> Vec2 {
 	// relative pos to camera in world:
 	rel_pos := (cursor_pos - (screen_size / 2)) * camera.height / screen_size.y
+	rel_pos.y = -rel_pos.y
 	// rotate the relative position by the cameras roation:
 	cos_theta := math.cos(-camera.rotation)
 	sin_theta := math.sin(-camera.rotation)

@@ -50,7 +50,7 @@ EngineSettings :: struct {
 	debug_ui_gizmos:       bool,
 	debug_collider_gizmos: bool,
 }
-ENGINE_SETTINGS_DEFAULT :: EngineSettings {
+ENGINE_SETTINGS_DEFAULT := EngineSettings {
 	platform              = q.PLATFORM_SETTINGS_DEFAULT,
 	bloom_enabled         = true,
 	bloom_settings        = q.BLOOM_SETTINGS_DEFAULT,
@@ -146,7 +146,6 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 }
 
 _engine_recalculate_hit_info :: proc(engine: ^Engine) {
-	camera_raw := q.camera_to_raw(engine.scene.camera, engine.platform.screen_size_f32)
 	hit_pos := q.camera_cursor_hit_pos(
 		engine.scene.camera,
 		engine.platform.cursor_pos,
@@ -197,8 +196,7 @@ _engine_end_frame :: proc(engine: ^Engine) {
 }
 
 _engine_prepare :: proc(engine: ^Engine) {
-	engine.platform.camera = engine.scene.camera
-	q.platform_prepare(&engine.platform)
+	q.platform_prepare(&engine.platform, engine.scene.camera)
 	q.sprite_renderer_prepare(&engine.sprite_renderer, engine.scene.sprites[:])
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
@@ -506,9 +504,19 @@ add_triangle_collider :: proc(triangle: q.Triangle, metadata: q.ColliderMetadata
 }
 set_camera :: proc(camera: q.Camera) {
 	ENGINE.scene.camera = camera
+	_engine_recalculate_hit_info(&ENGINE) // todo! probably not appropriate??
 }
 set_clear_color :: proc(color: q.Color) {
 	ENGINE.settings.platform.clear_color = color
+}
+set_bloom_enabled :: proc(enabled: bool) {
+	ENGINE.settings.bloom_enabled = enabled
+}
+set_bloom_blend_factor :: proc(factor: f64) {
+	ENGINE.settings.bloom_settings.blend_factor = factor
+}
+set_tonemapping_mode :: proc(mode: q.TonemappingMode) {
+	ENGINE.settings.platform.tonemapping = mode
 }
 KeyVecPair :: struct {
 	key: q.Key,
@@ -517,16 +525,7 @@ KeyVecPair :: struct {
 
 // axis of arrow keys or wasd for moving e.g. camera
 get_wasd :: proc() -> Vec2 {
-	mapping := [?]KeyVecPair {
-		{.UP, {0, 1}},
-		{.LEFT, {-1, 0}},
-		{.DOWN, {0, -1}},
-		{.RIGHT, {1, 0}},
-		{.W, {0, 1}},
-		{.A, {-1, 0}},
-		{.S, {0, -1}},
-		{.D, {1, 0}},
-	}
+	mapping := [?]KeyVecPair{{.W, {0, 1}}, {.A, {-1, 0}}, {.S, {0, -1}}, {.D, {1, 0}}}
 	dir: Vec2
 	for m in mapping {
 		if .Pressed in ENGINE.platform.keys[m.key] {
@@ -550,4 +549,14 @@ get_arrows :: proc() -> Vec2 {
 		dir = linalg.normalize(dir)
 	}
 	return dir
+}
+// call before initializing engine!
+enable_max_fps :: proc() {
+	ENGINE_SETTINGS_DEFAULT.power_preference = .HighPerformance
+	ENGINE_SETTINGS_DEFAULT.present_mode = .Immediate
+}
+// call before initializing engine!
+enable_v_sync :: proc() {
+	ENGINE_SETTINGS_DEFAULT.power_preference = .LowPower
+	ENGINE_SETTINGS_DEFAULT.present_mode = .Fifo
 }
