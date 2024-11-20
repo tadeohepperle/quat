@@ -15,21 +15,23 @@ fn world_pos_to_ndc(world_pos: vec2<f32>) -> vec4<f32> {
 	return vec4<f32>(ndc.x, ndc.y, 0.0,1.0);
 }
 
+
 fn world_pos_to_ndc_with_z(world_pos: vec2<f32>, z: f32) -> vec4<f32> {
     let world_pos_3 = vec3<f32>(world_pos, 1.0);
 	let ndc = globals.camera_proj * world_pos_3;
 	return vec4<f32>(ndc.x, ndc.y, calc_depth(z), 1.0);
 }
 
+const BUFFER_ZONE_FACTOR : f32 = 0.5;
 // input z is the world z coordinate, the output depth in screen space 0 to 1, 0 is far, 1 is close
 fn calc_depth(z: f32) -> f32 {
-    return (globals.camera_pos.y-z)/globals.camera_height + 0.5;
+    return (globals.camera_pos.y-z) * BUFFER_ZONE_FACTOR/globals.camera_height + 0.5;
 }
 
 // the offset is in world z coordinates, the output depth in screen space 0 to 1
 fn calc_depth_offset(z_from_0_to_1: f32) -> f32 {
     // z_from_0_to_1 needs to be mapped to the scale -1,1
-    return  (z_from_0_to_1 * 2.0 - 1) / globals.camera_height;
+    return  (z_from_0_to_1 * 2.0 - 1) * BUFFER_ZONE_FACTOR / globals.camera_height;
 }
 
 const SCREEN_REFERENCE_SIZE: vec2<f32> = vec2<f32>(1920, 1080);

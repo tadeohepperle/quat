@@ -489,7 +489,11 @@ _init_wgpu :: proc(platform: ^Platform) {
 	device_res: DeviceRes
 
 
-	required_features := [?]wgpu.FeatureName{.PushConstants, .TimestampQuery}
+	required_features := [?]wgpu.FeatureName {
+		.PushConstants,
+		.TimestampQuery,
+		.TextureFormat16bitNorm,
+	}
 	required_limits_extras := wgpu.RequiredLimitsExtras {
 		chain = {sType = .RequiredLimitsExtras},
 		limits = wgpu.NativeLimits{maxPushConstantSize = 128, maxNonSamplerBindings = 1_000_000},

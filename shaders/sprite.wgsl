@@ -5,6 +5,12 @@ var t_diffuse: texture_2d<f32>;
 @group(1) @binding(1)
 var s_diffuse: sampler;
 
+@group(2) @binding(0)
+var t_depth: texture_2d<f32>;
+@group(2) @binding(1)
+var s_depth: sampler;
+
+
 struct SpriteInstance {
     @location(0) pos:      vec2<f32>,
     @location(1) size:     vec2<f32>,
@@ -38,8 +44,8 @@ fn fs_default(in: VertexOutput) -> @location(0) vec4<f32>  {
 
 @fragment
 fn fs_shine(in: VertexOutput) -> @location(0) vec4<f32>  {
-    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    let default_color = image_color * in.color;
+   let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+   let default_color = image_color * in.color;
    return  vec4<f32>(default_color.rgb + osc(7.0, 0.4, 1.4),  default_color.a * 0.2);
 }
 
@@ -50,13 +56,18 @@ struct FsDepthOut {
 @fragment
 fn fs_depth(in: VertexOutput) -> FsDepthOut {
     let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    let a: f32 = image_color.r;
-    if a > 0.01 { 
+    let image_depth = textureSample(t_depth, s_depth, in.uv).x;
+    // var out: FsDepthOut;
+    // out.color = vec4<f32>(vec3<f32>(image_depth), 1.0);
+    // out.depth = 0.5;
+    // return out;
+    if image_depth > 0.01 { 
         var out: FsDepthOut;
         out.color = image_color * in.color;
         let instance_depth = in.clip_position.z;
-        let texture_depth_offset = calc_depth_offset(image_color.x);
-        out.depth = instance_depth + texture_depth_offset ;
+        // let instance_depth = 0.0;
+        let texture_depth_offset = calc_depth_offset(image_depth);
+        out.depth = instance_depth + texture_depth_offset;
         return out;
     }
     else {

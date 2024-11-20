@@ -3,7 +3,6 @@ package quat
 import "core:slice"
 import wgpu "vendor:wgpu"
 
-
 Sprite :: struct {
 	pos:      Vec2,
 	size:     Vec2,
@@ -11,6 +10,14 @@ Sprite :: struct {
 	texture:  TextureTile,
 	rotation: f32,
 	z:        f32,
+}
+
+DepthSprite :: struct {
+	pos:     Vec2,
+	size:    Vec2,
+	color:   Color,
+	texture: TextureTileWithDepth,
+	z:       f32,
 }
 
 SpriteInstance :: struct {
@@ -33,6 +40,14 @@ SpriteBatch :: struct {
 	key:       u32,
 }
 
+DepthSpriteBatch :: struct {
+	color_texture: TextureHandle,
+	depth_texture: TextureHandle,
+	start_idx:     int,
+	end_idx:       int,
+	key:           u32,
+}
+
 @(private)
 _sort_and_batch_sprites :: proc(
 	sprites: []Sprite,
@@ -45,8 +60,7 @@ _sort_and_batch_sprites :: proc(
 		return
 	}
 
-
-	sprite_sort_fn := proc(a, b: Sprite) -> bool {
+	slice.sort_by(sprites, proc(a, b: Sprite) -> bool {
 		if a.z < b.z {
 			return false
 		} else if a.z == b.z {
@@ -54,8 +68,7 @@ _sort_and_batch_sprites :: proc(
 		} else {
 			return true
 		}
-	}
-	slice.sort_by(sprites, sprite_sort_fn)
+	})
 
 	append(
 		batches,
@@ -63,12 +76,12 @@ _sort_and_batch_sprites :: proc(
 			start_idx = 0,
 			end_idx = 0,
 			texture = sprites[0].texture.handle,
-			key = _sprite_batch_key(&sprites[0]),
+			key = _sprite_batch_key(sprites[0]),
 		},
 	)
 	for &sprite in sprites {
 		last_batch := &batches[len(batches) - 1]
-		sprite_key := _sprite_batch_key(&sprite)
+		sprite_key := _sprite_batch_key(sprite)
 		if last_batch.key != sprite_key {
 			last_batch.end_idx = len(instances)
 			append(
@@ -96,20 +109,106 @@ _sort_and_batch_sprites :: proc(
 	batches[len(batches) - 1].end_idx = len(instances)
 }
 
+
 @(private)
-_sprite_batch_key :: #force_inline proc(sprite: ^Sprite) -> u32 {
+_sort_and_batch_depth_sprites :: proc(
+	sprites: []DepthSprite,
+	batches: ^[dynamic]DepthSpriteBatch,
+	instances: ^[dynamic]SpriteInstance,
+) {
+	clear(batches)
+	clear(instances)
+	if len(sprites) == 0 {
+		return
+	}
+
+	slice.sort_by(sprites, proc(a, b: DepthSprite) -> bool {
+		if a.z < b.z {
+			return false
+		} else if a.z == b.z {
+			return a.pos.y > b.pos.y
+		} else {
+			return true
+		}
+	})
+
+	append(
+		batches,
+		DepthSpriteBatch {
+			start_idx = 0,
+			end_idx = 0,
+			color_texture = sprites[0].texture.color,
+			depth_texture = sprites[0].texture.depth,
+			key = _depth_sprite_batch_key(sprites[0]),
+		},
+	)
+	for &sprite in sprites {
+		last_batch := &batches[len(batches) - 1]
+		sprite_key := _depth_sprite_batch_key(sprite)
+		if last_batch.key != sprite_key {
+			last_batch.end_idx = len(instances)
+			append(
+				batches,
+				DepthSpriteBatch {
+					start_idx = len(instances),
+					end_idx = 0,
+					color_texture = sprite.texture.color,
+					depth_texture = sprite.texture.depth,
+					key = sprite_key,
+				},
+			)
+		}
+		append(
+			instances,
+			SpriteInstance {
+				pos = sprite.pos,
+				size = sprite.size,
+				color = sprite.color,
+				uv = sprite.texture.uv,
+				z = sprite.z,
+			},
+		)
+	}
+	batches[len(batches) - 1].end_idx = len(instances)
+}
+
+@(private)
+_sprite_batch_key :: #force_inline proc(sprite: Sprite) -> u32 {
 	return u32(sprite.texture.handle)
+}
+
+@(private)
+_depth_sprite_batch_key :: #force_inline proc(sprite: DepthSprite) -> u32 {
+	return u32(sprite.texture.color) * 192929323 + u32(sprite.texture.depth)
 }
 
 SpriteRenderer :: struct {
 	device:  wgpu.Device,
 	queue:   wgpu.Queue,
 	// renders depth sprites like walls and other parts of the environment.
-	depth:   SpriteSubRenderer,
+	depth:   DepthSpriteRenderer,
 	// renders normal sprites, with single depth value per sprite, respecting the env depth, not writing depth themselves
 	default: SpriteSubRenderer,
 	// renders sprites only where depth is so high that default sprites would be hidden.
 	shine:   SpriteSubRenderer,
+}
+
+DepthSpriteRenderer :: struct {
+	pipeline:        RenderPipeline,
+	batches:         [dynamic]DepthSpriteBatch,
+	instances:       [dynamic]SpriteInstance,
+	instance_buffer: DynamicBuffer(SpriteInstance),
+}
+
+_depth_sprite_renderer_create :: proc(
+	rend: ^DepthSpriteRenderer,
+	shader_registry: ^ShaderRegistry,
+	device: wgpu.Device,
+	globals_layout: wgpu.BindGroupLayout,
+) {
+	rend.instance_buffer.usage = {.Vertex}
+	rend.pipeline.config = sprite_depth_pipeline_config(device, globals_layout)
+	render_pipeline_create_panic(&rend.pipeline, shader_registry)
 }
 
 // for depth_sprites, normal sprites and shine_on_top_sprites
@@ -118,6 +217,16 @@ SpriteSubRenderer :: struct {
 	batches:         [dynamic]SpriteBatch,
 	instances:       [dynamic]SpriteInstance,
 	instance_buffer: DynamicBuffer(SpriteInstance),
+}
+
+_depth_sprite_renderer_prepare :: proc(
+	sub: ^DepthSpriteRenderer,
+	sprites: []DepthSprite,
+	device: wgpu.Device,
+	queue: wgpu.Queue,
+) {
+	_sort_and_batch_depth_sprites(sprites, &sub.batches, &sub.instances)
+	dynamic_buffer_write(&sub.instance_buffer, sub.instances[:], device, queue)
 }
 
 _sub_renderer_prepare :: proc(
@@ -132,15 +241,48 @@ _sub_renderer_prepare :: proc(
 
 sprite_renderer_prepare :: proc(
 	rend: ^SpriteRenderer,
-	depth_sprites: []Sprite,
+	depth_sprites: []DepthSprite,
 	default_sprites: []Sprite,
 	shine_sprites: []Sprite,
 ) {
-	_sub_renderer_prepare(&rend.depth, depth_sprites, rend.device, rend.queue)
+	_depth_sprite_renderer_prepare(&rend.depth, depth_sprites, rend.device, rend.queue)
 	_sub_renderer_prepare(&rend.default, default_sprites, rend.device, rend.queue)
 	_sub_renderer_prepare(&rend.shine, shine_sprites, rend.device, rend.queue)
 }
 
+_depth_sprite_renderer_render :: proc(
+	rend: ^DepthSpriteRenderer,
+	render_pass: wgpu.RenderPassEncoder,
+	globals_uniform_bind_group: wgpu.BindGroup,
+	assets: AssetManager,
+) {
+	if len(rend.batches) == 0 {
+		return
+	}
+	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetVertexBuffer(
+		render_pass,
+		0,
+		rend.instance_buffer.buffer,
+		0,
+		rend.instance_buffer.size,
+	)
+	for batch in rend.batches {
+		color_bind_group := assets_get_texture_bind_group(assets, batch.color_texture)
+		depth_bind_group := assets_get_texture_bind_group(assets, batch.depth_texture)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, color_bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, depth_bind_group)
+		wgpu.RenderPassEncoderDraw(
+			render_pass,
+			4,
+			u32(batch.end_idx - batch.start_idx),
+			0,
+			u32(batch.start_idx),
+		)
+	}
+
+}
 _sub_renderer_render :: proc(
 	sub: ^SpriteSubRenderer,
 	render_pass: wgpu.RenderPassEncoder,
@@ -179,7 +321,7 @@ sprite_renderer_render :: proc(
 	globals_uniform_bind_group: wgpu.BindGroup,
 	assets: AssetManager,
 ) {
-	_sub_renderer_render(&rend.depth, render_pass, globals_uniform_bind_group, assets)
+	_depth_sprite_renderer_render(&rend.depth, render_pass, globals_uniform_bind_group, assets)
 	_sub_renderer_render(&rend.default, render_pass, globals_uniform_bind_group, assets)
 	_sub_renderer_render(&rend.shine, render_pass, globals_uniform_bind_group, assets)
 
@@ -192,8 +334,16 @@ _sub_renderer_destroy :: proc(sub: ^SpriteSubRenderer) {
 	dynamic_buffer_destroy(&sub.instance_buffer)
 }
 
+
+_depth_sprite_renderer_destroy :: proc(rend: ^DepthSpriteRenderer) {
+	delete(rend.batches)
+	delete(rend.instances)
+	render_pipeline_destroy(&rend.pipeline)
+	dynamic_buffer_destroy(&rend.instance_buffer)
+}
+
 sprite_renderer_destroy :: proc(rend: ^SpriteRenderer) {
-	_sub_renderer_destroy(&rend.depth)
+	_depth_sprite_renderer_destroy(&rend.depth)
 	_sub_renderer_destroy(&rend.default)
 	_sub_renderer_destroy(&rend.shine)
 }
@@ -214,11 +364,7 @@ sprite_renderer_create :: proc(rend: ^SpriteRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
 
-	_sub_renderer_create(
-		&rend.depth,
-		&platform.shader_registry,
-		sprite_depth_pipeline_config(device, globals),
-	)
+	_depth_sprite_renderer_create(&rend.depth, &platform.shader_registry, device, globals)
 	_sub_renderer_create(
 		&rend.default,
 		&platform.shader_registry,
@@ -285,7 +431,11 @@ sprite_depth_pipeline_config :: proc(
 				{format = .Float32, offset = offset_of(SpriteInstance, z)},
 			},
 		},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(device)},
+		bind_group_layouts = {
+			globals_layout,
+			rgba_bind_group_layout_cached(device),
+			rgba_bind_group_layout_cached(device), // is actually for R16Uint depth, but should be okay
+		},
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

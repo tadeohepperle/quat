@@ -88,10 +88,20 @@ assets_get_font :: proc(assets: AssetManager, handle: FontHandle) -> Font {
 	return slotmap_get(assets.fonts, u32(handle))
 }
 
+assets_load_depth_texture :: proc(assets: ^AssetManager, path: string) -> TextureHandle {
+	texture, err := depth_texture_16bit_r_from_image_path(assets.device, assets.queue, path)
+	if err != nil {
+		print(path, "error:", err)
+		panic("Panic loading depth 16bit R texture")
+	}
+	texture_handle := TextureHandle(slotmap_insert(&assets.textures, texture))
+	return texture_handle
+}
+
 assets_load_texture :: proc(
 	assets: ^AssetManager,
 	path: string,
-	settings: TextureSettings = TEXTURE_SETTINGS_DEFAULT,
+	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> TextureHandle {
 	texture, err := texture_from_image_path(assets.device, assets.queue, path, settings)
 	if err != nil {
@@ -105,7 +115,7 @@ assets_load_texture :: proc(
 assets_load_texture_array :: proc(
 	assets: ^AssetManager,
 	paths: []string,
-	settings: TextureSettings = TEXTURE_SETTINGS_DEFAULT,
+	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> TextureArrayHandle {
 	texture, err := texture_array_from_image_paths(assets.device, assets.queue, paths, settings)
 	if err != nil {

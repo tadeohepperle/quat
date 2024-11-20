@@ -68,7 +68,7 @@ Engine :: struct {
 Scene :: struct {
 	camera:               q.Camera,
 	sprites:              [dynamic]q.Sprite,
-	depth_sprites:        [dynamic]q.Sprite,
+	depth_sprites:        [dynamic]q.DepthSprite,
 	// terrain_meshes:       [dynamic]^q.TerrainMesh,
 	terrain_textures:     q.TextureArrayHandle,
 	colliders:            [dynamic]q.Collider,
@@ -403,21 +403,26 @@ is_shift_pressed :: #force_inline proc() -> bool {
 is_ctrl_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_CONTROL]
 }
+// expected to be 8bit RGBA png
 load_texture :: proc(
 	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_DEFAULT,
+	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
 ) -> q.TextureHandle {
 	return q.assets_load_texture(&ENGINE.platform.asset_manager, path, settings)
 }
+// is expected to be 16bit R channel only png
+load_depth_texture :: proc(path: string) -> q.TextureHandle {
+	return q.assets_load_depth_texture(&ENGINE.platform.asset_manager, path)
+}
 load_texture_tile :: proc(
 	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_DEFAULT,
+	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
 ) -> q.TextureTile {
 	return q.TextureTile{load_texture(path, settings), q.UNIT_AABB}
 }
 load_texture_as_sprite :: proc(
 	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_DEFAULT,
+	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
 ) -> q.Sprite {
 	texture_handle := load_texture(path, settings)
 	texture_tile := q.TextureTile{texture_handle, q.UNIT_AABB}
@@ -431,11 +436,34 @@ load_texture_as_sprite :: proc(
 		rotation = 0,
 		z = 0,
 	}
+}
 
+load_depth_sprite :: proc(
+	depth_texture_path: string, // color_texture_path: string,
+	color_texture_path: Maybe(string) = nil,
+) -> q.DepthSprite {
+	depth_texture_handle := load_depth_texture(depth_texture_path)
+	tile := q.TextureTileWithDepth {
+		color = {}, // 0 handle is okay, just shows white texture.
+		depth = depth_texture_handle,
+		uv    = q.UNIT_AABB,
+	}
+	if color_texture_path, ok := color_texture_path.(string); ok {
+		tile.color = load_texture(color_texture_path)
+	}
+	texture_info := q.assets_get_texture_info(ENGINE.platform.asset_manager, depth_texture_handle)
+	sprite_size := Vec2{f32(texture_info.size.x), f32(texture_info.size.y)} / 100.0
+	return q.DepthSprite {
+		pos = {0, 0},
+		size = sprite_size,
+		color = {1, 1, 1, 1},
+		texture = tile,
+		z = 0,
+	}
 }
 load_texture_array :: proc(
 	paths: []string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_DEFAULT,
+	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
 ) -> q.TextureArrayHandle {
 	return q.assets_load_texture_array(&ENGINE.platform.asset_manager, paths, settings)
 }
@@ -445,7 +473,7 @@ load_font :: proc(path: string) -> q.FontHandle {
 draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 	append(&ENGINE.scene.sprites, sprite)
 }
-draw_depth_sprite :: #force_inline proc(sprite: q.Sprite) {
+draw_depth_sprite :: #force_inline proc(sprite: q.DepthSprite) {
 	append(&ENGINE.scene.depth_sprites, sprite)
 }
 // draw_terrain_mesh :: #force_inline proc(mesh: ^q.TerrainMesh) {
