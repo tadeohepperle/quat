@@ -21,19 +21,47 @@ struct VertexOutput{
 }
 
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
+fn vs_all(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
     let pos_and_uv = pos_and_uv(vertex_index, instance);
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc(pos_and_uv.pos);
+    out.clip_position = world_pos_to_ndc_with_z(pos_and_uv.pos, instance.z);
     out.color = instance.color;
     out.uv = pos_and_uv.uv;
     return out;
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
+fn fs_default(in: VertexOutput) -> @location(0) vec4<f32>  {
     let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
     return image_color * in.color;
+}
+
+@fragment
+fn fs_shine(in: VertexOutput) -> @location(0) vec4<f32>  {
+    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+    let default_color = image_color * in.color;
+   return  vec4<f32>(default_color.rgb + osc(7.0, 0.4, 1.4),  default_color.a * 0.2);
+}
+
+struct FsDepthOut {
+  @location(0) color: vec4<f32>,
+  @builtin(frag_depth) depth: f32,
+}
+@fragment
+fn fs_depth(in: VertexOutput) -> FsDepthOut {
+    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+    let a: f32 = image_color.r;
+    if a > 0.01 { 
+        var out: FsDepthOut;
+        out.color = image_color * in.color;
+        let instance_depth = in.clip_position.z;
+        let texture_depth_offset = calc_depth_offset(image_color.x);
+        out.depth = instance_depth + texture_depth_offset ;
+        return out;
+    }
+    else {
+        discard;
+    }
 }
 
 struct PosAndUv{
@@ -68,48 +96,6 @@ fn unit_uv_from_idx(idx: u32) -> vec2<f32> {
     );
 }
 
-@vertex
-fn vs_depth(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
-    let pos_and_uv = pos_and_uv(vertex_index, instance);
-    var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc_with_z(pos_and_uv.pos, instance.z);
-    out.color = instance.color;
-    out.uv = pos_and_uv.uv;
-    return out;
-}
-
-const RED : vec4<f32> = vec4<f32>(1.0,0.0,0.0,1.0);
-const BLACK : vec4<f32> = vec4<f32>(1.0,1.0,1.0,1.0);
-
-struct FsDepthOut {
-  @location(0) color: vec4<f32>,
-  @builtin(frag_depth) depth: f32,
-}
-@fragment
-fn fs_depth(in: VertexOutput) -> FsDepthOut {
-    // let a: f32 = in.color.w;
-    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    let a: f32 = image_color.x;
-    if a > 0.01{ 
-        var out: FsDepthOut;
-        out.color = image_color * in.color;
-        let instance_depth = in.clip_position.z;
-        let texture_depth_offset = calc_depth_offset(image_color.x);
-        // let texture_depth_offset = 0.0;
-        out.depth = instance_depth + texture_depth_offset ;
-        return out;
-        // return FsDepthOut{
-        //     color: image_color,
-        // };
-    }
-    else{
-        discard;
-    }
-    // return  select(RED, image_color, a > 0.03);
-
-}
-
-
 fn more_contrast(color: vec4<f32>, contrast: f32) -> vec4<f32> {
     let midpoint: f32 = 0.5;
     let adjusted_rgb = vec3<f32>(midpoint) + (color.rgb - vec3<f32>(midpoint)) * contrast;
@@ -117,3 +103,5 @@ fn more_contrast(color: vec4<f32>, contrast: f32) -> vec4<f32> {
     let smoothed_rgb = adjusted_rgb * adjusted_rgb * (3.0 - 2.0 * adjusted_rgb);
     return vec4<f32>(smoothed_rgb, color.a);
 }
+
+

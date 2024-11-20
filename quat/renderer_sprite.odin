@@ -102,32 +102,75 @@ _sprite_batch_key :: #force_inline proc(sprite: ^Sprite) -> u32 {
 }
 
 SpriteRenderer :: struct {
-	device:                wgpu.Device,
-	queue:                 wgpu.Queue,
-	pipeline:              RenderPipeline,
-	batches:               [dynamic]SpriteBatch,
-	instances:             [dynamic]SpriteInstance,
-	instance_buffer:       DynamicBuffer(SpriteInstance),
-	depth_pipeline:        RenderPipeline,
-	depth_batches:         [dynamic]SpriteBatch,
-	depth_instances:       [dynamic]SpriteInstance,
-	depth_instance_buffer: DynamicBuffer(SpriteInstance),
+	device:  wgpu.Device,
+	queue:   wgpu.Queue,
+	// renders depth sprites like walls and other parts of the environment.
+	depth:   SpriteSubRenderer,
+	// renders normal sprites, with single depth value per sprite, respecting the env depth, not writing depth themselves
+	default: SpriteSubRenderer,
+	// renders sprites only where depth is so high that default sprites would be hidden.
+	shine:   SpriteSubRenderer,
+}
+
+// for depth_sprites, normal sprites and shine_on_top_sprites
+SpriteSubRenderer :: struct {
+	pipeline:        RenderPipeline,
+	batches:         [dynamic]SpriteBatch,
+	instances:       [dynamic]SpriteInstance,
+	instance_buffer: DynamicBuffer(SpriteInstance),
+}
+
+_sub_renderer_prepare :: proc(
+	sub: ^SpriteSubRenderer,
+	sprites: []Sprite,
+	device: wgpu.Device,
+	queue: wgpu.Queue,
+) {
+	_sort_and_batch_sprites(sprites, &sub.batches, &sub.instances)
+	dynamic_buffer_write(&sub.instance_buffer, sub.instances[:], device, queue)
 }
 
 sprite_renderer_prepare :: proc(
 	rend: ^SpriteRenderer,
-	sprites: []Sprite,
 	depth_sprites: []Sprite,
+	default_sprites: []Sprite,
+	shine_sprites: []Sprite,
 ) {
-	_sort_and_batch_sprites(sprites, &rend.batches, &rend.instances)
-	_sort_and_batch_sprites(depth_sprites, &rend.depth_batches, &rend.depth_instances)
-	dynamic_buffer_write(&rend.instance_buffer, rend.instances[:], rend.device, rend.queue)
-	dynamic_buffer_write(
-		&rend.depth_instance_buffer,
-		rend.depth_instances[:],
-		rend.device,
-		rend.queue,
+	_sub_renderer_prepare(&rend.depth, depth_sprites, rend.device, rend.queue)
+	_sub_renderer_prepare(&rend.default, default_sprites, rend.device, rend.queue)
+	_sub_renderer_prepare(&rend.shine, shine_sprites, rend.device, rend.queue)
+}
+
+_sub_renderer_render :: proc(
+	sub: ^SpriteSubRenderer,
+	render_pass: wgpu.RenderPassEncoder,
+	globals_uniform_bind_group: wgpu.BindGroup,
+	assets: AssetManager,
+) {
+	if len(sub.batches) == 0 {
+		return
+	}
+	wgpu.RenderPassEncoderSetPipeline(render_pass, sub.pipeline.pipeline)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetVertexBuffer(
+		render_pass,
+		0,
+		sub.instance_buffer.buffer,
+		0,
+		sub.instance_buffer.size,
 	)
+	for batch in sub.batches {
+		texture_bind_group := assets_get_texture_bind_group(assets, batch.texture)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
+		wgpu.RenderPassEncoderDraw(
+			render_pass,
+			4,
+			u32(batch.end_idx - batch.start_idx),
+			0,
+			u32(batch.start_idx),
+		)
+	}
+
 }
 
 sprite_renderer_render :: proc(
@@ -136,90 +179,68 @@ sprite_renderer_render :: proc(
 	globals_uniform_bind_group: wgpu.BindGroup,
 	assets: AssetManager,
 ) {
-	if len(rend.depth_batches) > 0 {
-		wgpu.RenderPassEncoderSetPipeline(render_pass, rend.depth_pipeline.pipeline)
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
-		wgpu.RenderPassEncoderSetVertexBuffer(
-			render_pass,
-			0,
-			rend.depth_instance_buffer.buffer,
-			0,
-			rend.depth_instance_buffer.size,
-		)
-		for batch in rend.depth_batches {
-			texture_bind_group := assets_get_texture_bind_group(assets, batch.texture)
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
-			wgpu.RenderPassEncoderDraw(
-				render_pass,
-				4,
-				u32(batch.end_idx - batch.start_idx),
-				0,
-				u32(batch.start_idx),
-			)
-		}
-	}
+	_sub_renderer_render(&rend.depth, render_pass, globals_uniform_bind_group, assets)
+	_sub_renderer_render(&rend.default, render_pass, globals_uniform_bind_group, assets)
+	_sub_renderer_render(&rend.shine, render_pass, globals_uniform_bind_group, assets)
 
-	if len(rend.batches) > 0 {
-		wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
-		wgpu.RenderPassEncoderSetVertexBuffer(
-			render_pass,
-			0,
-			rend.instance_buffer.buffer,
-			0,
-			rend.instance_buffer.size,
-		)
-		for batch in rend.batches {
-			texture_bind_group := assets_get_texture_bind_group(assets, batch.texture)
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
-			wgpu.RenderPassEncoderDraw(
-				render_pass,
-				4,
-				u32(batch.end_idx - batch.start_idx),
-				0,
-				u32(batch.start_idx),
-			)
-		}
-	}
+}
 
+_sub_renderer_destroy :: proc(sub: ^SpriteSubRenderer) {
+	delete(sub.batches)
+	delete(sub.instances)
+	render_pipeline_destroy(&sub.pipeline)
+	dynamic_buffer_destroy(&sub.instance_buffer)
 }
 
 sprite_renderer_destroy :: proc(rend: ^SpriteRenderer) {
-	delete(rend.batches)
-	delete(rend.instances)
-	render_pipeline_destroy(&rend.pipeline)
-	render_pipeline_destroy(&rend.depth_pipeline)
-	dynamic_buffer_destroy(&rend.instance_buffer)
-	dynamic_buffer_destroy(&rend.depth_instance_buffer)
+	_sub_renderer_destroy(&rend.depth)
+	_sub_renderer_destroy(&rend.default)
+	_sub_renderer_destroy(&rend.shine)
+}
+
+_sub_renderer_create :: proc(
+	sub: ^SpriteSubRenderer,
+	shader_registry: ^ShaderRegistry,
+	config: RenderPipelineConfig,
+) {
+	sub.instance_buffer.usage = {.Vertex}
+	sub.pipeline.config = config
+	render_pipeline_create_panic(&sub.pipeline, shader_registry)
 }
 
 sprite_renderer_create :: proc(rend: ^SpriteRenderer, platform: ^Platform) {
+	device := platform.device
+	globals := platform.globals.bind_group_layout
 	rend.device = platform.device
 	rend.queue = platform.queue
-	rend.instance_buffer.usage = {.Vertex}
-	rend.depth_instance_buffer.usage = {.Vertex}
-	rend.pipeline.config = sprite_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
+
+	_sub_renderer_create(
+		&rend.depth,
+		&platform.shader_registry,
+		sprite_depth_pipeline_config(device, globals),
 	)
-	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
-	rend.depth_pipeline.config = depth_sprite_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
+	_sub_renderer_create(
+		&rend.default,
+		&platform.shader_registry,
+		sprite_default_pipeline_config(device, globals),
 	)
-	render_pipeline_create_panic(&rend.depth_pipeline, &platform.shader_registry)
+	_sub_renderer_create(
+		&rend.shine,
+		&platform.shader_registry,
+		sprite_shine_pipeline_config(device, globals),
+	)
 }
 
-sprite_pipeline_config :: proc(
+sprite_default_pipeline_config :: proc(
 	device: wgpu.Device,
 	globals_layout: wgpu.BindGroupLayout,
 ) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
-		debug_name = "sprite_standard",
+		debug_name = "sprite_default",
 		vs_shader = "sprite",
-		vs_entry_point = "vs_main",
+		vs_entry_point = "vs_all",
 		fs_shader = "sprite",
-		fs_entry_point = "fs_main",
+		fs_entry_point = "fs_default",
 		topology = .TriangleStrip,
 		vertex = {},
 		instance = {
@@ -237,19 +258,18 @@ sprite_pipeline_config :: proc(
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
-		depth = DEPTH_IGNORE,
+		depth = DepthConfig{depth_write_enabled = false, depth_compare = .GreaterEqual},
 	}
 }
 
-
-depth_sprite_pipeline_config :: proc(
+sprite_depth_pipeline_config :: proc(
 	device: wgpu.Device,
 	globals_layout: wgpu.BindGroupLayout,
 ) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
-		debug_name = "depth_sprite",
+		debug_name = "sprite_depth",
 		vs_shader = "sprite",
-		vs_entry_point = "vs_depth",
+		vs_entry_point = "vs_all",
 		fs_shader = "sprite",
 		fs_entry_point = "fs_depth",
 		topology = .TriangleStrip,
@@ -270,5 +290,36 @@ depth_sprite_pipeline_config :: proc(
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DepthConfig{depth_compare = .GreaterEqual, depth_write_enabled = true},
+	}
+}
+
+sprite_shine_pipeline_config :: proc(
+	device: wgpu.Device,
+	globals_layout: wgpu.BindGroupLayout,
+) -> RenderPipelineConfig {
+	return RenderPipelineConfig {
+		debug_name = "sprite_shine",
+		vs_shader = "sprite",
+		vs_entry_point = "vs_all",
+		fs_shader = "sprite",
+		fs_entry_point = "fs_shine",
+		topology = .TriangleStrip,
+		vertex = {},
+		instance = {
+			ty_id = SpriteInstance,
+			attributes = {
+				{format = .Float32x2, offset = offset_of(SpriteInstance, pos)},
+				{format = .Float32x2, offset = offset_of(SpriteInstance, size)},
+				{format = .Float32x4, offset = offset_of(SpriteInstance, color)},
+				{format = .Float32x4, offset = offset_of(SpriteInstance, uv)},
+				{format = .Float32, offset = offset_of(SpriteInstance, rotation)},
+				{format = .Float32, offset = offset_of(SpriteInstance, z)},
+			},
+		},
+		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(device)},
+		push_constant_ranges = {},
+		blend = ALPHA_BLENDING,
+		format = HDR_FORMAT,
+		depth = DepthConfig{depth_write_enabled = false, depth_compare = .Less},
 	}
 }

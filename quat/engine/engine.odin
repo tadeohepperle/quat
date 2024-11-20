@@ -200,8 +200,9 @@ _engine_prepare :: proc(engine: ^Engine) {
 	q.platform_prepare(&engine.platform, engine.scene.camera)
 	q.sprite_renderer_prepare(
 		&engine.sprite_renderer,
-		engine.scene.sprites[:],
 		engine.scene.depth_sprites[:],
+		engine.scene.sprites[:],
+		engine.scene.sprites[:], // todo!
 	)
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)

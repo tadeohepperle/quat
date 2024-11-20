@@ -22,8 +22,9 @@ main :: proc() {
 	sprite := q.Sprite {
 		texture = can_texture,
 		pos     = {1, 1},
-		size    = q.Vec2{1, 2} * 0.1,
+		size    = q.Vec2{1, 2},
 		color   = {1, 1, 1, 1},
+		z       = -0.4,
 	}
 	draggables := draggable_sprites_create()
 
@@ -41,7 +42,7 @@ main :: proc() {
 		engine.draw_gizmos_coords()
 
 
-		sprite.rotation = engine.get_osc(3, 0.5)
+		// sprite.rotation = engine.get_osc(3, 0.5)
 		sprite.pos = engine.get_hit_pos()
 		engine.draw_sprite(sprite)
 

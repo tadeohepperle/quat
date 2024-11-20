@@ -38,3 +38,13 @@ fn ui_layout_pos_to_ndc(ui_layout_pos: vec2<f32>) -> vec4<f32>{
 	let ndc = ui_layout_pos / screen_size_r * 2.0  -1.0;
     return  vec4(ndc.x, -ndc.y, 0.0, 1.0);
 }
+
+const RED : vec4<f32> = vec4<f32>(1.0,0.0,0.0,1.0);
+const GREEN : vec4<f32> = vec4<f32>(0.0,1.0,0.0,1.0);
+const BLACK : vec4<f32> = vec4<f32>(0.0,0.0,0.0,1.0);
+
+
+fn osc(speed: f32, low: f32, high: f32) -> f32 {
+    let half_diff = (high-low)/2.0;
+    return sin(globals.time_secs * speed) * half_diff + low + half_diff;
+}
