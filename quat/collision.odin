@@ -4,8 +4,29 @@ import "core:math"
 import "core:math/linalg"
 
 
-ColliderMetadata :: [24]u8
+ColliderMetadata :: [3]u64
 NO_COLLIDER: ColliderMetadata = {}
+
+to_collider_metadata :: proc(
+	metadata: $T,
+) -> (
+	bytes: ColliderMetadata,
+) where size_of(T) <=
+	size_of(ColliderMetadata) {
+	(cast(^T)(&bytes))^ = metadata
+	return bytes
+}
+from_collider_metadata :: proc(
+	bytes: ColliderMetadata,
+	$T: typeid,
+) -> (
+	metadata: T,
+) where size_of(T) <=
+	size_of(ColliderMetadata) {
+	bytes := bytes
+	metadata = (cast(^T)&bytes)^
+	return metadata
+}
 
 Collider :: struct {
 	shape:    ColliderShape,
@@ -20,7 +41,7 @@ ColliderShape :: union {
 	RotatedRect,
 }
 
-collider_roughly_in_aabb :: proc "contextless" (collider: ^ColliderShape, aabb: Aabb) -> bool {
+collider_roughly_in_aabb :: proc "contextless" (collider: ColliderShape, aabb: Aabb) -> bool {
 	switch c in collider {
 	case Circle:
 		return aabb_contains(aabb, c.pos)
@@ -73,20 +94,33 @@ RotatedRect :: struct {
 	radius_sq: f32,
 }
 
+
 rotated_rect :: #force_inline proc(center: Vec2, size: Vec2, angle: f32) -> RotatedRect {
 	half_x := size.x / 2
 	half_y := size.y / 2
 	cos_a := math.cos(angle)
 	sin_a := math.sin(angle)
 	a_off := Vec2{cos_a * half_x - sin_a * half_y, sin_a * half_x + cos_a * half_y}
-	b_off := Vec2{-a_off.y, a_off.x}
-	c_off := Vec2{-a_off.x, -a_off.y}
-	d_off := Vec2{a_off.y, -a_off.x}
+	b_off := Vec2{-cos_a * half_x - sin_a * half_y, cos_a * half_y - sin_a * half_x}
+	c_off := -a_off
+	d_off := -b_off
 	return RotatedRect {
 		a = center + a_off,
 		b = center + b_off,
 		c = center + c_off,
 		d = center + d_off,
+		center = center,
+		radius_sq = half_x * half_x + half_y * half_y,
+	}
+}
+rect :: #force_inline proc(center: Vec2, size: Vec2) -> RotatedRect {
+	half_x := size.x / 2
+	half_y := size.y / 2
+	return RotatedRect {
+		a = center + {half_x, half_y},
+		b = center + {-half_x, half_y},
+		c = center + {-half_x, -half_y},
+		d = center + {half_x, -half_y},
 		center = center,
 		radius_sq = half_x * half_x + half_y * half_y,
 	}

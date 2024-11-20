@@ -34,6 +34,10 @@ Texture :: struct {
 	bind_group: wgpu.BindGroup,
 }
 
+DepthTexture :: struct {
+	using _: Texture,
+}
+
 TextureInfo :: struct {
 	size:     UVec2,
 	settings: TextureSettings,
@@ -76,6 +80,11 @@ texture_from_image :: proc(
 	size := UVec2{u32(img.width), u32(img.height)}
 	texture = texture_create(device, size, settings)
 
+	if size.x % 64 != 0 {
+		panic(
+			"Currently only images with at least 64px per row (256 bytes per row) are supported, bc. of https://docs.rs/wgpu/latest/wgpu/struct.ImageDataLayout.html",
+		)
+	}
 	assert(settings.format == IMAGE_FORMAT)
 	block_size: u32 = 4
 	bytes_per_row :=
@@ -128,6 +137,96 @@ _texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> Tex
 	)
 	return texture
 }
+
+DEPTH_TEXTURE_FORMAT :: wgpu.TextureFormat.Depth32Float
+depth_texture_create :: proc(device: wgpu.Device, size: UVec2) -> DepthTexture {
+	texture: Texture
+	settings := TextureSettings {
+		label        = "depth_texture",
+		format       = DEPTH_TEXTURE_FORMAT,
+		address_mode = .ClampToEdge,
+		mag_filter   = .Linear,
+		min_filter   = .Nearest,
+		usage        = {.TextureBinding, .RenderAttachment},
+	}
+
+	texture.info = TextureInfo{size, settings, 1}
+	descriptor := wgpu.TextureDescriptor {
+		usage = settings.usage,
+		dimension = ._2D,
+		size = wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
+		format = settings.format,
+		mipLevelCount = 1,
+		sampleCount = 1,
+		viewFormatCount = 1,
+		viewFormats = &texture.info.settings.format,
+	}
+	texture.texture = wgpu.DeviceCreateTexture(device, &descriptor)
+
+	texture_view_descriptor := wgpu.TextureViewDescriptor {
+		format          = settings.format,
+		dimension       = ._2D,
+		baseMipLevel    = 0,
+		mipLevelCount   = 1,
+		baseArrayLayer  = 0,
+		arrayLayerCount = 1,
+		aspect          = .All,
+	}
+	texture.view = wgpu.TextureCreateView(texture.texture, &texture_view_descriptor)
+
+	sampler_descriptor := wgpu.SamplerDescriptor {
+		addressModeU  = settings.address_mode,
+		addressModeV  = settings.address_mode,
+		addressModeW  = settings.address_mode,
+		magFilter     = settings.mag_filter,
+		minFilter     = settings.min_filter,
+		mipmapFilter  = .Nearest,
+		maxAnisotropy = 1,
+	}
+	texture.sampler = wgpu.DeviceCreateSampler(device, &sampler_descriptor)
+
+	bind_group_descriptor_entries := [?]wgpu.BindGroupEntry {
+		wgpu.BindGroupEntry{binding = 0, textureView = texture.view},
+		wgpu.BindGroupEntry{binding = 1, sampler = texture.sampler},
+	}
+	bind_group_descriptor := wgpu.BindGroupDescriptor {
+		layout     = depth_texture_bind_group_layout_cached(device),
+		entryCount = uint(len(bind_group_descriptor_entries)),
+		entries    = &bind_group_descriptor_entries[0],
+	}
+	texture.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
+	return DepthTexture{texture}
+}
+depth_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+	@(static) LAYOUT: wgpu.BindGroupLayout
+	if LAYOUT == nil {
+		entries := [?]wgpu.BindGroupLayoutEntry {
+			wgpu.BindGroupLayoutEntry {
+				binding = 0,
+				visibility = {.Fragment},
+				texture = wgpu.TextureBindingLayout {
+					sampleType = .Depth,
+					viewDimension = ._2D,
+					multisampled = false,
+				},
+			},
+			wgpu.BindGroupLayoutEntry {
+				binding = 1,
+				visibility = {.Fragment},
+				sampler = wgpu.SamplerBindingLayout{type = .Filtering}, // maybe comparison here??
+			},
+		}
+		LAYOUT = wgpu.DeviceCreateBindGroupLayout(
+			device,
+			&wgpu.BindGroupLayoutDescriptor {
+				entryCount = uint(len(entries)),
+				entries = &entries[0],
+			},
+		)
+	}
+	return LAYOUT
+}
+
 
 texture_create :: proc(
 	device: wgpu.Device,
@@ -194,6 +293,7 @@ texture_destroy :: proc(texture: ^Texture) {
 	wgpu.TextureViewRelease(texture.view)
 	wgpu.TextureRelease(texture.texture)
 }
+
 
 rgba_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout

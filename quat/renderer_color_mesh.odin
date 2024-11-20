@@ -21,10 +21,7 @@ color_mesh_renderer_create :: proc(rend: ^ColorMeshRenderer, platform: ^Platform
 	rend.queue = platform.queue
 	rend.vertex_buffer.usage = {.Vertex}
 	rend.index_buffer.usage = {.Index}
-	rend.pipeline.config = color_mesh_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-	)
+	rend.pipeline.config = color_mesh_pipeline_config(platform.globals.bind_group_layout)
 	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
 }
 
@@ -72,10 +69,7 @@ color_mesh_renderer_render :: proc(
 	wgpu.RenderPassEncoderDrawIndexed(render_pass, u32(rend.index_buffer.length), 1, 0, 0, 0)
 }
 
-color_mesh_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+color_mesh_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "color_mesh",
 		vs_shader = "color_mesh",
@@ -95,6 +89,7 @@ color_mesh_pipeline_config :: proc(
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
+		depth = DEPTH_IGNORE,
 	}
 }
 

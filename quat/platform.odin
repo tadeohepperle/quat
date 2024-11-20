@@ -57,6 +57,7 @@ Platform :: struct {
 	queue:                        wgpu.Queue,
 	shader_registry:              ShaderRegistry,
 	hdr_screen_texture:           Texture,
+	depth_screen_texture:         DepthTexture,
 	tonemapping_pipeline:         RenderPipeline,
 	asset_manager:                AssetManager,
 
@@ -91,10 +92,10 @@ ShaderGlobals :: struct {
 	camera_proj_col_3: Vec3,
 	_pad_3:            f32,
 	camera_pos:        Vec2,
+	camera_height:     f32,
+	time_secs:         f32,
 	screen_size:       Vec2,
 	cursor_pos:        Vec2,
-	time_secs:         f32,
-	_last_pad:         f32,
 }
 platform_create :: proc(
 	platform: ^Platform,
@@ -108,6 +109,7 @@ platform_create :: proc(
 		platform.screen_size,
 		HDR_SCREEN_TEXTURE_SETTINGS,
 	)
+	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
 	platform.shader_registry = shader_registry_create(platform.device, settings.shaders_dir_path)
 	uniform_buffer_create(&platform.globals, platform.device)
 	platform.tonemapping_pipeline.config = tonemapping_pipeline_config(platform.device)
@@ -122,15 +124,16 @@ platform_create :: proc(
 
 platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 	screen_size := platform.screen_size_f32
-	camera_raw := camera_to_raw(camera, screen_size)
+	camera_proj := camera_projection_matrix(camera, screen_size)
 	platform.globals_data = ShaderGlobals {
-		camera_proj_col_1 = camera_raw.proj[0],
-		camera_proj_col_2 = camera_raw.proj[1],
-		camera_proj_col_3 = camera_raw.proj[2],
-		camera_pos        = camera_raw.pos,
+		camera_proj_col_1 = camera_proj[0],
+		camera_proj_col_2 = camera_proj[1],
+		camera_proj_col_3 = camera_proj[2],
+		camera_pos        = camera.focus_pos,
+		camera_height     = camera.height,
+		time_secs         = platform.total_secs,
 		screen_size       = screen_size,
 		cursor_pos        = platform.cursor_pos,
-		time_secs         = platform.total_secs,
 	}
 	uniform_buffer_write(platform.queue, &platform.globals, &platform.globals_data)
 }
@@ -140,6 +143,8 @@ platform_destroy :: proc(platform: ^Platform) {
 	render_pipeline_destroy(&platform.tonemapping_pipeline)
 	asset_manager_destroy(&platform.asset_manager)
 	shader_registry_destroy(&platform.shader_registry)
+	texture_destroy(&platform.hdr_screen_texture)
+	texture_destroy(&platform.depth_screen_texture)
 	wgpu.QueueRelease(platform.queue)
 	wgpu.DeviceDestroy(platform.device)
 	wgpu.InstanceRelease(platform.instance)
@@ -221,8 +226,13 @@ platform_start_hdr_pass :: proc(
 				storeOp = .Store,
 				clearValue = color_to_wgpu(platform.settings.clear_color),
 			},
-			depthStencilAttachment = nil,
 			occlusionQuerySet = nil,
+			depthStencilAttachment = &wgpu.RenderPassDepthStencilAttachment {
+				view = platform.depth_screen_texture.view,
+				depthLoadOp = .Clear,
+				depthStoreOp = .Store,
+				depthClearValue = 0.0,
+			},
 			timestampWrites = nil,
 		},
 	)
@@ -300,11 +310,13 @@ platform_resize :: proc(platform: ^Platform) {
 	platform.surface_config.height = platform.screen_size.y
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
 	texture_destroy(&platform.hdr_screen_texture)
+	texture_destroy(&platform.depth_screen_texture)
 	platform.hdr_screen_texture = texture_create(
 		platform.device,
 		platform.screen_size,
 		HDR_SCREEN_TEXTURE_SETTINGS,
 	)
+	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
 }
 
 _platform_receive_glfw_char_event :: proc(platform: ^Platform, char: rune) {

@@ -1,11 +1,12 @@
 package quat
 
+// import "base:intrinsics"
 import "core:fmt"
+import "core:hash"
 import "core:math"
 import "core:math/rand"
 import "core:os"
 import wgpu "vendor:wgpu"
-
 Color :: [4]f32
 
 color_from_u8 :: proc(r: u8, g: u8, b: u8) -> Color {
@@ -298,4 +299,13 @@ color_to_wgpu :: proc(color: Color) -> wgpu.Color {
 
 random_color :: proc() -> Color {
 	return color_from_hsv(Hsv{rand.float64() * 360.0, 1.0, 1.0})
+}
+
+pseudo_random_color :: proc(data: $T) -> Color {
+	data := data
+	h := hash.fnv64((cast([^]byte)&data)[:size_of(T)])
+	state := rand.create(h)
+	gen := rand.default_random_generator(&state)
+	r := rand.float64(gen)
+	return color_from_hsv(Hsv{r * 360.0, 1.0, 1.0})
 }

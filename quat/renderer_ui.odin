@@ -1868,6 +1868,7 @@ ui_rect_pipeline_config :: proc(
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
+		depth = DEPTH_IGNORE,
 	}
 }
 
@@ -1897,6 +1898,7 @@ ui_glyph_pipeline_config :: proc(
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
+		depth = DEPTH_IGNORE,
 	}
 }
 

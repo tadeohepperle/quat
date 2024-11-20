@@ -28,10 +28,7 @@ gizmos_renderer_create :: proc(rend: ^GizmosRenderer, platform: ^Platform) {
 	for mode in GizmosMode {
 		rend.vertex_buffers[mode].usage = {.Vertex}
 	}
-	rend.pipeline.config = gizmos_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-	)
+	rend.pipeline.config = gizmos_pipeline_config(platform.globals.bind_group_layout)
 	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
 }
 gizmos_renderer_destroy :: proc(rend: ^GizmosRenderer) {
@@ -183,10 +180,7 @@ gizmos_renderer_add_rect :: proc(
 	gizmos_renderer_add_line(rend, d, a, color, mode)
 }
 
-gizmos_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+gizmos_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "gizmos",
 		vs_shader = "gizmos",
@@ -208,5 +202,6 @@ gizmos_pipeline_config :: proc(
 		},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
+		depth = DEPTH_IGNORE,
 	}
 }

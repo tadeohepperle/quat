@@ -25,7 +25,7 @@ camera_lerp :: proc(a: Camera, b: Camera, s: f32) -> Camera {
 	res.height = lerp(a.height, b.height, s)
 	return res
 }
-camera_to_raw :: proc "contextless" (self: Camera, screen_size: Vec2) -> (raw: CameraRaw) {
+camera_projection_matrix :: proc "contextless" (self: Camera, screen_size: Vec2) -> Mat3 {
 	aspect_ratio := screen_size.x / screen_size.y
 	scale_x := 2.0 / (self.height * aspect_ratio)
 	scale_y := 2.0 / self.height
@@ -45,9 +45,7 @@ camera_to_raw :: proc "contextless" (self: Camera, screen_size: Vec2) -> (raw: C
 	}
 	// odinfmt: enable
 
-	raw.proj = rotation_scale * translation
-	raw.pos = self.focus_pos
-	return raw
+	return rotation_scale * translation
 
 }
 camera_cursor_hit_pos :: proc(camera: Camera, cursor_pos: Vec2, screen_size: Vec2) -> Vec2 {

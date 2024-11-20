@@ -68,6 +68,7 @@ Engine :: struct {
 Scene :: struct {
 	camera:               q.Camera,
 	sprites:              [dynamic]q.Sprite,
+	depth_sprites:        [dynamic]q.Sprite,
 	// terrain_meshes:       [dynamic]^q.TerrainMesh,
 	terrain_textures:     q.TextureArrayHandle,
 	colliders:            [dynamic]q.Collider,
@@ -91,11 +92,11 @@ _scene_destroy :: proc(scene: ^Scene) {
 
 _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.sprites)
+	clear(&scene.depth_sprites)
 	// clear(&scene.terrain_meshes)
-	// scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
-	// clear(&scene.colliders)
+	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
+	clear(&scene.colliders)
 }
-
 
 ENGINE: Engine
 
@@ -197,7 +198,11 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 _engine_prepare :: proc(engine: ^Engine) {
 	q.platform_prepare(&engine.platform, engine.scene.camera)
-	q.sprite_renderer_prepare(&engine.sprite_renderer, engine.scene.sprites[:])
+	q.sprite_renderer_prepare(
+		&engine.sprite_renderer,
+		engine.scene.sprites[:],
+		engine.scene.depth_sprites[:],
+	)
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
 	q.ui_renderer_end_frame_and_prepare_buffers(
@@ -355,6 +360,15 @@ get_total_secs :: proc() -> f32 {
 get_osc :: proc(speed: f32 = 1, amplitude: f32 = 1, bias: f32 = 0, phase: f32 = 0) -> f32 {
 	return math.sin_f32(ENGINE.platform.total_secs * speed + phase) * amplitude + bias
 }
+get_screen_size_f32 :: proc() -> Vec2 {
+	return ENGINE.platform.screen_size_f32
+}
+get_cursor_pos :: proc() -> Vec2 {
+	return ENGINE.platform.cursor_pos
+}
+get_cursor_delta :: proc() -> Vec2 {
+	return ENGINE.platform.cursor_delta
+}
 is_double_clicked :: proc() -> bool {
 	return ENGINE.platform.double_clicked
 }
@@ -400,6 +414,24 @@ load_texture_tile :: proc(
 ) -> q.TextureTile {
 	return q.TextureTile{load_texture(path, settings), q.UNIT_AABB}
 }
+load_texture_as_sprite :: proc(
+	path: string,
+	settings: q.TextureSettings = q.TEXTURE_SETTINGS_DEFAULT,
+) -> q.Sprite {
+	texture_handle := load_texture(path, settings)
+	texture_tile := q.TextureTile{texture_handle, q.UNIT_AABB}
+	texture_info := q.assets_get_texture_info(ENGINE.platform.asset_manager, texture_handle)
+	sprite_size := Vec2{f32(texture_info.size.x), f32(texture_info.size.y)} / 100.0
+	return q.Sprite {
+		pos = {0, 0},
+		size = sprite_size,
+		color = {1, 1, 1, 1},
+		texture = texture_tile,
+		rotation = 0,
+		z = 0,
+	}
+
+}
 load_texture_array :: proc(
 	paths: []string,
 	settings: q.TextureSettings = q.TEXTURE_SETTINGS_DEFAULT,
@@ -412,11 +444,17 @@ load_font :: proc(path: string) -> q.FontHandle {
 draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 	append(&ENGINE.scene.sprites, sprite)
 }
+draw_depth_sprite :: #force_inline proc(sprite: q.Sprite) {
+	append(&ENGINE.scene.depth_sprites, sprite)
+}
 // draw_terrain_mesh :: #force_inline proc(mesh: ^q.TerrainMesh) {
 // 	append(&ENGINE.scene.terrain_meshes, mesh)
 // }
 draw_gizmos_rect :: proc(center: Vec2, size: Vec2, color := GIZMOS_COLOR) {
 	q.gizmos_renderer_add_rect(&ENGINE.gizmos_renderer, center, size, color, .WORLD)
+}
+draw_gizmos_aabb :: proc(aabb: q.Aabb, color := GIZMOS_COLOR) {
+	q.gizmos_renderer_add_aabb(&ENGINE.gizmos_renderer, aabb, color, .WORLD)
 }
 draw_gizmos_line :: proc(from: Vec2, to: Vec2, color := GIZMOS_COLOR) {
 	q.gizmos_renderer_add_line(&ENGINE.gizmos_renderer, from, to, color)
@@ -425,23 +463,6 @@ draw_gizmos_coords :: proc() {
 	q.gizmos_renderer_add_coordinates(&ENGINE.gizmos_renderer)
 }
 draw_gizmos_circle :: proc(
-	center: Vec2,
-	radius: f32,
-	color: Color = q.Color_Red,
-	segments: int = 12,
-	draw_inner_lines: bool = false,
-) {
-	q.gizmos_renderer_add_circle(
-		&ENGINE.gizmos_renderer,
-		center,
-		radius,
-		color,
-		segments,
-		draw_inner_lines,
-		.WORLD,
-	)
-}
-draw_gizmos_circle_xz :: proc(
 	center: Vec2,
 	radius: f32,
 	color: Color = q.Color_Red,
@@ -490,21 +511,24 @@ draw_color_mesh_indexed_single_color :: proc(
 ) {
 	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, indices, color)
 }
-add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata) {
+add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
 	append(
 		&ENGINE.scene.colliders,
-		q.Collider{shape = q.Circle{center, radius}, metadata = metadata},
+		q.Collider{shape = q.Circle{center, radius}, metadata = metadata, z = z},
 	)
 }
-add_rect_collider :: proc(quad: q.RotatedRect, metadata: q.ColliderMetadata) {
-	append(&ENGINE.scene.colliders, q.Collider{shape = quad, metadata = metadata})
+add_rect_collider :: proc(quad: q.RotatedRect, metadata: q.ColliderMetadata, z: int) {
+	append(&ENGINE.scene.colliders, q.Collider{shape = quad, metadata = metadata, z = z})
 }
-add_triangle_collider :: proc(triangle: q.Triangle, metadata: q.ColliderMetadata) {
-	append(&ENGINE.scene.colliders, q.Collider{shape = triangle, metadata = metadata})
+add_triangle_collider :: proc(triangle: q.Triangle, metadata: q.ColliderMetadata, z: int) {
+	append(&ENGINE.scene.colliders, q.Collider{shape = triangle, metadata = metadata, z = z})
 }
 set_camera :: proc(camera: q.Camera) {
 	ENGINE.scene.camera = camera
 	_engine_recalculate_hit_info(&ENGINE) // todo! probably not appropriate??
+}
+get_camera :: proc() -> q.Camera {
+	return ENGINE.scene.camera
 }
 set_clear_color :: proc(color: q.Color) {
 	ENGINE.settings.platform.clear_color = color
@@ -523,6 +547,16 @@ KeyVecPair :: struct {
 	dir: Vec2,
 }
 
+// rf keys, r = +1, f =-1
+get_rf :: proc() -> f32 {
+	res: f32
+	if .Pressed in ENGINE.platform.keys[.R] {
+		res += 1
+	} else if .Pressed in ENGINE.platform.keys[.F] {
+		res -= 1
+	}
+	return res
+}
 // axis of arrow keys or wasd for moving e.g. camera
 get_wasd :: proc() -> Vec2 {
 	mapping := [?]KeyVecPair{{.W, {0, 1}}, {.A, {-1, 0}}, {.S, {0, -1}}, {.D, {1, 0}}}
@@ -533,9 +567,9 @@ get_wasd :: proc() -> Vec2 {
 		}
 	}
 	if dir != {0, 0} {
-		dir = linalg.normalize(dir)
+		return linalg.normalize(dir)
 	}
-	return dir
+	return {0, 0}
 }
 get_arrows :: proc() -> Vec2 {
 	mapping := [?]KeyVecPair{{.UP, {0, 1}}, {.LEFT, {-1, 0}}, {.DOWN, {0, -1}}, {.RIGHT, {1, 0}}}
@@ -559,4 +593,10 @@ enable_max_fps :: proc() {
 enable_v_sync :: proc() {
 	ENGINE_SETTINGS_DEFAULT.power_preference = .LowPower
 	ENGINE_SETTINGS_DEFAULT.present_mode = .Fifo
+}
+access_last_frame_colliders :: proc() -> []q.Collider {
+	return ENGINE.scene.last_frame_colliders[:]
+}
+get_aspect_ratio :: proc() -> f32 {
+	return ENGINE.platform.screen_size_f32.x / ENGINE.platform.screen_size_f32.y
 }

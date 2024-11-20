@@ -10,7 +10,8 @@ struct SpriteInstance {
     @location(1) size:     vec2<f32>,
     @location(2) color:    vec4<f32>,
     @location(3) uv:       vec4<f32>, // aabb
-    @location(4) rotation: f32,
+    @location(4) rotation: f32, 
+    @location(5) z:        f32,
 }
 
 struct VertexOutput{
@@ -32,7 +33,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    return image_color * in.color * 1.0;
+    return image_color * in.color;
 }
 
 struct PosAndUv{
@@ -65,4 +66,54 @@ fn unit_uv_from_idx(idx: u32) -> vec2<f32> {
         f32(((idx << 1) & 2) >> 1),
         f32((idx & 2) >> 1)
     );
+}
+
+@vertex
+fn vs_depth(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
+    let pos_and_uv = pos_and_uv(vertex_index, instance);
+    var out: VertexOutput;
+    out.clip_position = world_pos_to_ndc_with_z(pos_and_uv.pos, instance.z);
+    out.color = instance.color;
+    out.uv = pos_and_uv.uv;
+    return out;
+}
+
+const RED : vec4<f32> = vec4<f32>(1.0,0.0,0.0,1.0);
+const BLACK : vec4<f32> = vec4<f32>(1.0,1.0,1.0,1.0);
+
+struct FsDepthOut {
+  @location(0) color: vec4<f32>,
+  @builtin(frag_depth) depth: f32,
+}
+@fragment
+fn fs_depth(in: VertexOutput) -> FsDepthOut {
+    // let a: f32 = in.color.w;
+    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+    let a: f32 = image_color.x;
+    if a > 0.01{ 
+        var out: FsDepthOut;
+        out.color = image_color * in.color;
+        let instance_depth = in.clip_position.z;
+        let texture_depth_offset = calc_depth_offset(image_color.x);
+        // let texture_depth_offset = 0.0;
+        out.depth = instance_depth + texture_depth_offset ;
+        return out;
+        // return FsDepthOut{
+        //     color: image_color,
+        // };
+    }
+    else{
+        discard;
+    }
+    // return  select(RED, image_color, a > 0.03);
+
+}
+
+
+fn more_contrast(color: vec4<f32>, contrast: f32) -> vec4<f32> {
+    let midpoint: f32 = 0.5;
+    let adjusted_rgb = vec3<f32>(midpoint) + (color.rgb - vec3<f32>(midpoint)) * contrast;
+
+    let smoothed_rgb = adjusted_rgb * adjusted_rgb * (3.0 - 2.0 * adjusted_rgb);
+    return vec4<f32>(smoothed_rgb, color.a);
 }

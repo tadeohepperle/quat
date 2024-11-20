@@ -141,6 +141,16 @@ RenderPipelineConfig :: struct {
 	push_constant_ranges: [dynamic]wgpu.PushConstantRange,
 	blend:                Maybe(wgpu.BlendState), // if nil, no blending.
 	format:               wgpu.TextureFormat,
+	depth:                Maybe(DepthConfig),
+}
+DepthConfig :: struct {
+	depth_write_enabled: bool,
+	depth_compare:       wgpu.CompareFunction,
+}
+// DEPTH_IGNORE: Maybe(DepthConfig) = nil
+DEPTH_IGNORE: Maybe(DepthConfig) = DepthConfig {
+	depth_write_enabled = false,
+	depth_compare       = wgpu.CompareFunction.Always,
 }
 
 ALPHA_BLENDING :: wgpu.BlendState {
@@ -265,6 +275,24 @@ render_pipeline_create :: proc(pipeline: ^RenderPipeline, reg: ^ShaderRegistry) 
 		blend = nil
 	}
 
+	STENCIL_IGNORE :: wgpu.StencilFaceState {
+		compare     = wgpu.CompareFunction.Always,
+		failOp      = wgpu.StencilOperation.Keep,
+		depthFailOp = wgpu.StencilOperation.Keep,
+		passOp      = wgpu.StencilOperation.Keep,
+	}
+	depth_stencil: ^wgpu.DepthStencilState = nil
+	if depth_config, ok := config.depth.(DepthConfig); ok {
+		depth_stencil =
+		&wgpu.DepthStencilState {
+			format = DEPTH_TEXTURE_FORMAT,
+			depthWriteEnabled = b32(depth_config.depth_write_enabled),
+			depthCompare = depth_config.depth_compare,
+			stencilFront = STENCIL_IGNORE,
+			stencilBack = STENCIL_IGNORE,
+		}
+	}
+
 	pipeline_descriptor := wgpu.RenderPipelineDescriptor {
 		label = strings.clone_to_cstring(config.debug_name),
 		layout = pipeline.layout,
@@ -284,6 +312,7 @@ render_pipeline_create :: proc(pipeline: ^RenderPipeline, reg: ^ShaderRegistry) 
 				blend     = blend, // todo! alpha blending
 			},
 		},
+		depthStencil = depth_stencil,
 		primitive = wgpu.PrimitiveState{topology = config.topology, cullMode = .None},
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 	}

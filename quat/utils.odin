@@ -6,6 +6,7 @@ import "core:os"
 import "core:strings"
 import wgpu "vendor:wgpu"
 
+import "core:math/rand"
 Error :: union {
 	string,
 }
