@@ -174,11 +174,93 @@ slider :: proc {
 	slider_int,
 }
 
-// todo! int values are not correctly displayed (shown as floats as well)
+
 slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) {
-	value_f32 := f32(value^)
-	slider_f32(&value_f32, f32(min), f32(max))
-	value^ = int(math.round(value_f32))
+	slider_width: f32 = 192
+	knob_width: f32 = 24
+
+	cache: ^UiCache = UI_MEMORY.cache
+	id := id if id != 0 else u64(uintptr(value))
+	val: int = value^
+
+
+	f := (f32(val) - f32(min)) / (f32(max) - f32(min))
+	res := ui_interaction(id)
+
+	scroll := cache.platform.scroll
+	if res.just_pressed {
+		cached := cache.cached[id]
+		f = (cache.cursor_pos.x - knob_width / 2 - cached.pos.x) / (cached.size.x - knob_width)
+		val = int(math.round(f32(min) + f * f32(max - min)))
+		cache.active_value.slider_value_start_drag_int = val
+	} else if res.pressed || (scroll != 0 && res.hovered) {
+
+		if res.pressed {
+			cursor_x := cache.cursor_pos.x
+			cursor_x_start_active := cache.cursor_pos_start_press.x
+			f_shift := (cursor_x - cursor_x_start_active) / (slider_width - knob_width)
+			start_f := f32(cache.active_value.slider_value_start_drag_int - min) / f32(max - min)
+			f = start_f + f_shift
+		} else {
+			f -= scroll * 0.05
+		}
+
+		if f < 0 {
+			f = 0
+		}
+		if f > 1 {
+			f = 1
+		}
+		val = int(math.round_f32(f32(min) + f * f32(max - min)))
+		value^ = val
+	}
+
+
+	start_div(
+		Div {
+			width = slider_width,
+			height = THEME.control_standard_height,
+			flags = {.WidthPx, .HeightPx, .AxisX, .CrossAlignCenter, .MainAlignCenter},
+		},
+	)
+	div(
+		Div {
+			width = 1,
+			height = 32,
+			color = THEME.text_secondary,
+			border_radius = THEME.border_radius_sm,
+			flags = {.WidthFraction, .HeightPx, .Absolute},
+			absolute_unit_pos = {0.5, 0.5},
+		},
+		id = id,
+	)
+	knob_border_color: Color = THEME.surface if !res.hovered else THEME.surface_border
+	f_rounded := math.round(f * f32(max - min)) / f32(max - min)
+	div(
+		Div {
+			width = knob_width,
+			height = THEME.control_standard_height,
+			color = THEME.surface_deep,
+			border_width = THEME.border_width,
+			border_color = knob_border_color,
+			flags = {.WidthPx, .HeightPx, .Absolute, .LerpStyle, .PointerPassThrough},
+			border_radius = THEME.border_radius_sm,
+			absolute_unit_pos = {f_rounded, 0.5},
+			lerp_speed = 20.0,
+		},
+		id = derived_id(id),
+	)
+	text_str := tmp_str(val)
+	text(
+		Text {
+			str = text_str,
+			color = THEME.text,
+			font_size = THEME.font_size,
+			shadow = THEME.text_shadow,
+		},
+	)
+
+	end_div()
 }
 
 // todo! maybe the slider_f32 should be the wrapper instead.
@@ -446,8 +528,17 @@ _check_box_inner :: #force_inline proc(checked: bool, label: string, id: UiId) -
 	return res
 }
 
-enum_radio :: proc(value: ^$T, title: string = "") where intrinsics.type_is_enum(T) {
-	start_div(Div{})
+enum_radio :: proc(
+	value: ^$T,
+	title: string = "",
+	horizontal := false,
+) where intrinsics.type_is_enum(T) {
+	container := Div{}
+	if horizontal {
+		container.flags = DivFlags{.AxisX}
+		container.gap = 16
+	}
+	start_div(container)
 	if title != "" {
 		text(
 			Text {
@@ -470,6 +561,46 @@ enum_radio :: proc(value: ^$T, title: string = "") where intrinsics.type_is_enum
 	}
 	end_div()
 
+}
+
+ValueDisplayPos :: enum {
+	TopLeft,
+	BottomLeft,
+	TopRight,
+	BottomRight,
+	Top,
+	Left,
+	Bottom,
+	Right,
+	Center,
+}
+// just shows a value in some part of the screen
+value_display :: proc(values: ..any, pos: ValueDisplayPos = .Bottom) {
+	UNIT_POS_TABLE: [ValueDisplayPos]Vec2 = {
+		.TopLeft     = Vec2{0, 0},
+		.BottomLeft  = Vec2{0, 1},
+		.TopRight    = Vec2{1, 0},
+		.BottomRight = Vec2{1, 1},
+		.Top         = Vec2{0.5, 0},
+		.Left        = Vec2{0, 0.5},
+		.Bottom      = Vec2{0.5, 1},
+		.Right       = Vec2{1, 0.5},
+		.Center      = Vec2{0.5, 0.5},
+	}
+	str := tmp_str(values)
+	// start_div()
+	start_div(Div{flags = {.Absolute, .WidthFraction, .HeightFraction}, width = 1, height = 1})
+	start_div(
+		Div {
+			flags = {.Absolute, .PointerPassThrough},
+			absolute_unit_pos = UNIT_POS_TABLE[pos],
+			color = {0, 0, 0, 0.6},
+			padding = {8, 8, 8, 8},
+		},
+	)
+	text_from_struct(Text{str = str, font_size = 32.0, color = {1, 1, 1, 1}, shadow = 0.4})
+	end_div()
+	end_div()
 }
 
 

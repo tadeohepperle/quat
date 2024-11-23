@@ -7,7 +7,7 @@ Vec2 :: q.Vec2
 
 main :: proc() {
 
-	q.print("Hello")
+
 	// engine.enable_max_fps()
 	engine.init()
 	defer engine.deinit()
@@ -26,6 +26,17 @@ main :: proc() {
 		color   = {1, 1, 1, 1},
 		z       = -0.4,
 	}
+	terrain_textures := engine.load_texture_array(
+		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_3.png"},
+	)
+	engine.set_tritex_textures(terrain_textures)
+	terrain_mesh := engine.create_tritex_mesh(
+		{
+			q.TritexVertex{pos = {0, 0}, indices = {0, 1, 2}, weights = {1, 0, 0}},
+			q.TritexVertex{pos = {5, 7}, indices = {0, 1, 2}, weights = {0, 1, 0}},
+			q.TritexVertex{pos = {10, 0}, indices = {0, 1, 2}, weights = {0, 0, 1}},
+		},
+	)
 	draggables := draggable_sprites_create()
 
 	for engine.next_frame() {
@@ -40,6 +51,7 @@ main :: proc() {
 		camera.height *= (1.0 - engine.get_arrows().y * engine.get_delta_secs() * 3.0)
 		engine.set_camera(camera)
 		engine.draw_gizmos_coords()
+		engine.draw_tritex_mesh(&terrain_mesh)
 
 
 		// sprite.rotation = engine.get_osc(3, 0.5)

@@ -93,8 +93,9 @@ ui_interaction :: proc(id: UiId, cache: ^UiCache = UI_MEMORY.cache) -> Interacti
 }
 
 ActiveValue :: struct #raw_union {
-	slider_value_start_drag: f32,
-	window_pos_start_drag:   Vec2,
+	slider_value_start_drag:     f32,
+	slider_value_start_drag_int: int,
+	window_pos_start_drag:       Vec2,
 }
 
 UiCache :: struct {

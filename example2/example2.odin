@@ -18,26 +18,6 @@ main :: proc() {
 	engine.init()
 	defer {engine.deinit()}
 
-	// fmt.println("sizeL", size_of(q.TerrainVertex))
-	// terrain_textures_paths := [?]string {
-	// 	"./assets/t_0.png",
-	// 	"./assets/t_1.png",
-	// 	"./assets/t_2.png",
-	// 	"./assets/t_3.png",
-	// }
-	// q.SCENE.terrain_textures = q.load_texture_array(terrain_textures_paths[:])
-	// terrain_mesh := q.terrain_mesh_create(
-	// 	{
-	// 		q.TerrainVertex{pos = {0, 0}, indices = {0, 1, 2}, weights = {1, 0, 0}},
-	// 		q.TerrainVertex{pos = {5, 7}, indices = {0, 1, 2}, weights = {0, 1, 0}},
-	// 		q.TerrainVertex{pos = {10, 0}, indices = {0, 1, 2}, weights = {0, 0, 1}},
-	// 	},
-	// 	q.ENGINE.device,
-	// 	q.ENGINE.queue,
-	// )
-	// fmt.println(terrain_mesh)
-
-
 	corn := engine.load_texture_tile("./assets/corn.png")
 	sprite := engine.load_texture_tile("./assets/can.png")
 

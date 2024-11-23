@@ -20,7 +20,7 @@ Renderers :: struct {
 	gizmos_renderer:     q.GizmosRenderer,
 	ui_renderer:         q.UiRenderer,
 	color_mesh_renderer: q.ColorMeshRenderer,
-	// terrain_renderer:    q.TerrainRenderer,
+	tritex_renderer:     q.TritexRenderer,
 }
 
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
@@ -32,7 +32,7 @@ _renderers_create :: proc(ren: ^Renderers, platform: ^q.Platform) {
 	q.gizmos_renderer_create(&ren.gizmos_renderer, platform)
 	q.ui_renderer_create(&ren.ui_renderer, platform, DEFAULT_FONT_COLOR, DEFAULT_FONT_SIZE)
 	q.color_mesh_renderer_create(&ren.color_mesh_renderer, platform)
-	// q.terrain_renderer_create(&ren.terrain_renderer, platform)
+	q.tritex_renderer_create(&ren.tritex_renderer, platform)
 }
 _renderers_destroy :: proc(ren: ^Renderers) {
 	q.bloom_renderer_destroy(&ren.bloom_renderer)
@@ -40,7 +40,7 @@ _renderers_destroy :: proc(ren: ^Renderers) {
 	q.gizmos_renderer_destroy(&ren.gizmos_renderer)
 	q.ui_renderer_destroy(&ren.ui_renderer)
 	q.color_mesh_renderer_destroy(&ren.color_mesh_renderer)
-	// q.terrain_renderer_destroy(&ren.terrain_renderer)
+	q.tritex_renderer_destroy(&ren.tritex_renderer)
 }
 
 EngineSettings :: struct {
@@ -69,8 +69,8 @@ Scene :: struct {
 	camera:               q.Camera,
 	sprites:              [dynamic]q.Sprite,
 	depth_sprites:        [dynamic]q.DepthSprite,
-	// terrain_meshes:       [dynamic]^q.TerrainMesh,
-	terrain_textures:     q.TextureArrayHandle,
+	tritex_meshes:        [dynamic]^q.TritexMesh,
+	tritex_textures:      q.TextureArrayHandle,
 	colliders:            [dynamic]q.Collider,
 	last_frame_colliders: [dynamic]q.Collider,
 }
@@ -93,7 +93,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.sprites)
 	clear(&scene.depth_sprites)
-	// clear(&scene.terrain_meshes)
+	clear(&scene.tritex_meshes)
 	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
 	clear(&scene.colliders)
 }
@@ -224,16 +224,16 @@ _engine_render :: proc(engine: ^Engine) {
 	hdr_pass := q.platform_start_hdr_pass(engine.platform, command_encoder)
 	global_bind_group := engine.platform.globals.bind_group
 	asset_manager := engine.platform.asset_manager
-	// q.terrain_renderer_render(
-	// 	&engine.terrain_renderer,
-	// 	hdr_pass,
-	// 	global_bind_group,
-	// 	engine.scene.terrain_meshes[:],
-	// 	engine.scene.terrain_textures,
-	// 	asset_manager,
-	// )
-	q.sprite_renderer_render(&engine.sprite_renderer, hdr_pass, global_bind_group, asset_manager)
+	q.tritex_renderer_render(
+		&engine.tritex_renderer,
+		hdr_pass,
+		global_bind_group,
+		engine.scene.tritex_meshes[:],
+		engine.scene.tritex_textures,
+		asset_manager,
+	)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
+	q.sprite_renderer_render(&engine.sprite_renderer, hdr_pass, global_bind_group, asset_manager)
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .WORLD)
 	q.ui_renderer_render(
 		&engine.ui_renderer,
@@ -476,9 +476,9 @@ draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 draw_depth_sprite :: #force_inline proc(sprite: q.DepthSprite) {
 	append(&ENGINE.scene.depth_sprites, sprite)
 }
-// draw_terrain_mesh :: #force_inline proc(mesh: ^q.TerrainMesh) {
-// 	append(&ENGINE.scene.terrain_meshes, mesh)
-// }
+draw_tritex_mesh :: proc(mesh: ^q.TritexMesh) {
+	append(&ENGINE.scene.tritex_meshes, mesh)
+}
 draw_gizmos_rect :: proc(center: Vec2, size: Vec2, color := GIZMOS_COLOR) {
 	q.gizmos_renderer_add_rect(&ENGINE.gizmos_renderer, center, size, color, .WORLD)
 }
@@ -556,6 +556,9 @@ set_camera :: proc(camera: q.Camera) {
 	ENGINE.scene.camera = camera
 	_engine_recalculate_hit_info(&ENGINE) // todo! probably not appropriate??
 }
+set_tritex_textures :: proc(textures: q.TextureArrayHandle) {
+	ENGINE.scene.tritex_textures = textures
+}
 get_camera :: proc() -> q.Camera {
 	return ENGINE.scene.camera
 }
@@ -570,6 +573,9 @@ set_bloom_blend_factor :: proc(factor: f64) {
 }
 set_tonemapping_mode :: proc(mode: q.TonemappingMode) {
 	ENGINE.settings.platform.tonemapping = mode
+}
+create_tritex_mesh :: proc(vertices: [dynamic]q.TritexVertex) -> q.TritexMesh {
+	return q.tritex_mesh_create(vertices, ENGINE.platform.device, ENGINE.platform.queue)
 }
 KeyVecPair :: struct {
 	key: q.Key,

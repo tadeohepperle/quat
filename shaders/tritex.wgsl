@@ -2,23 +2,21 @@
 #import noise.wgsl
 
 @group(1) @binding(0)
-var t_terrain: texture_2d_array<f32>;
+var t_diffuse: texture_2d_array<f32>;
 @group(1) @binding(1)
-var s_terrain: sampler;
+var s_diffuse: sampler;
 
 struct Vertex {
     @location(0) pos:        vec2<f32>,
     @location(1) indices: vec3<u32>,
     @location(2) weights: vec3<f32>,
-    @location(3) direction: vec3<f32>,
 }
 
 struct VertexOutput{
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) pos:        vec2<f32>,
+    @location(0) pos:     vec2<f32>,
     @location(1) indices: vec3<u32>,
     @location(2) weights: vec3<f32>,
-    @location(3) direction: vec3<f32>,
 }
 
 @vertex
@@ -31,7 +29,6 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     out.pos = pos;
     out.indices = vertex.indices;
     out.weights = vertex.weights;
-    out.direction = vertex.direction;
     return out;
 }
 
@@ -39,16 +36,11 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 
 const SQRT_3_HALF: f32 = 0.86602540378;
-const DIR_M = mat3x2<f32>(0.0,-1.0, SQRT_3_HALF, 0.5, -SQRT_3_HALF, 0.5);
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     let n = perlinNoise2(in.pos *0.7);
 
-
-    
-    let dir_2d: vec2<f32> = DIR_M * (in.direction);
-   
     var weights = in.weights;               
 
 
@@ -71,12 +63,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
 
 
     let sample_uv = in.pos * 0.2; // (in.pos  + (dir_2d * n * 0.2)) * 0.4;
-    let color_0 = textureSample(t_terrain, s_terrain, sample_uv, in.indices[0]).rgb;
-    let color_1 = textureSample(t_terrain, s_terrain, sample_uv, in.indices[1]).rgb;
-    let color_2 = textureSample(t_terrain, s_terrain, sample_uv, in.indices[2]).rgb;
+    let color_0 = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[0]).rgb;
+    let color_1 = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[1]).rgb;
+    let color_2 = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[2]).rgb;
     var color: vec3<f32> = (color_0 * weights[0] + color_1 * weights[1] + color_2 * weights[2]);
     
-    // color = textureSample(t_terrain, s_terrain, sample_uv, in.indices[max_i]).rgb;
+    // color = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[max_i]).rgb;
     
     // color = (in.direction + 1.0) /2.0;
     // let l = smoothstep(0.3,0.4,length(dir_2d));
