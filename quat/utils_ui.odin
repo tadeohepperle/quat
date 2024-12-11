@@ -104,7 +104,6 @@ toggle :: proc(value: ^bool, title: string) {
 		value^ = active
 	}
 
-
 	start_div(
 		Div {
 			height = THEME.control_standard_height,
@@ -589,7 +588,7 @@ value_display :: proc(values: ..any, pos: ValueDisplayPos = .Bottom) {
 	}
 	str := tmp_str(values)
 	// start_div()
-	start_div(Div{flags = {.Absolute, .WidthFraction, .HeightFraction}, width = 1, height = 1})
+	start_div(COVER_DIV)
 	start_div(
 		Div {
 			flags = {.Absolute, .PointerPassThrough},
@@ -1242,5 +1241,63 @@ text_edit :: proc(
 		}
 		return
 	}
-
 }
+
+
+// TextTheme :: struct {
+// 	font:      FontHandle,
+// 	color:     Color,
+// 	font_size: f32,
+// 	shadow:    f32,
+// }
+
+// MarkDownTextType :: enum u8 {
+// 	Default,
+// 	Bold,
+// 	Code,
+// }
+
+// MarkDownTheme :: struct {
+// 	text:      TextTheme,
+// 	text_code: TextTheme,
+// 	text_bold: TextTheme,
+// }
+
+// MARK_DOWN_THEME: MarkDownTheme = {
+// 	text = {font = 0, color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
+// 	text_code = {
+// 		font = 0,
+// 		color = THEME.text,
+// 		font_size = THEME.font_size,
+// 		shadow = THEME.text_shadow,
+// 	},
+// 	text_bold = {
+// 		font = 0,
+// 		color = THEME.text,
+// 		font_size = THEME.font_size,
+// 		shadow = THEME.text_shadow,
+// 	},
+// }
+
+// markdown_text :: proc(text: string, theme: MarkDownTheme = MARK_DOWN_THEME) {
+// 	start_idx := 0
+// 	prev := MarkDownTextType.Default
+// 	current := MarkDownTextType.Default
+
+
+// 	for c, idx in text {
+// 		end_section := false
+// 		switch c {
+// 		case '`':
+// 			if prev
+// 			prev = current
+
+// 			next_text_type_signal = MarkDownTextType.Code
+// 		case '*':
+// 			next_text_type_signal = MarkDownTextType.Code
+// 		case:
+// 			next_text_type_signal = nil
+// 		}
+// 	}
+
+// }

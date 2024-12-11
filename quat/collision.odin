@@ -4,7 +4,7 @@ import "core:math"
 import "core:math/linalg"
 
 
-ColliderMetadata :: [3]u64
+ColliderMetadata :: [24]u8
 NO_COLLIDER: ColliderMetadata = {}
 
 to_collider_metadata :: proc(

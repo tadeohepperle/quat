@@ -147,7 +147,7 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 }
 
 _engine_recalculate_hit_info :: proc(engine: ^Engine) {
-	hit_pos := q.camera_cursor_hit_pos(
+	hit_pos := q.screen_to_world_pos(
 		engine.scene.camera,
 		engine.platform.cursor_pos,
 		engine.platform.screen_size_f32,

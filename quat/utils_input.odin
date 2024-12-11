@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:strings"
 import "core:time"
 
-DOUBLE_CLICK_MAX_INTERVAL_MS :: 220
+DOUBLE_CLICK_MAX_INTERVAL_MS :: 280
 PressFlags :: bit_set[PressFlag;u8]
 
 PressFlag :: enum u8 {

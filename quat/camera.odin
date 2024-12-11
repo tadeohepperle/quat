@@ -48,9 +48,10 @@ camera_projection_matrix :: proc "contextless" (self: Camera, screen_size: Vec2)
 	return rotation_scale * translation
 
 }
-camera_cursor_hit_pos :: proc(camera: Camera, cursor_pos: Vec2, screen_size: Vec2) -> Vec2 {
+
+screen_to_world_pos :: proc(camera: Camera, screen_pos: Vec2, screen_size: Vec2) -> Vec2 {
 	// relative pos to camera in world:
-	rel_pos := (cursor_pos - (screen_size / 2)) * camera.height / screen_size.y
+	rel_pos := (screen_pos - (screen_size / 2)) * camera.height / screen_size.y
 	rel_pos.y = -rel_pos.y
 	// rotate the relative position by the cameras roation:
 	cos_theta := math.cos(-camera.rotation)
@@ -58,6 +59,19 @@ camera_cursor_hit_pos :: proc(camera: Camera, cursor_pos: Vec2, screen_size: Vec
 	rot_mat := Mat2{cos_theta, -sin_theta, sin_theta, cos_theta}
 	// add focus pos of camera
 	return (rot_mat * rel_pos) + camera.focus_pos
+}
+world_to_screen_pos :: proc(camera: Camera, world_pos: Vec2, screen_size: Vec2) -> Vec2 {
+	rel_pos := world_pos - camera.focus_pos
+	// inverse rotation matrix
+	cos_theta := math.cos(-camera.rotation)
+	sin_theta := math.sin(-camera.rotation)
+	inv_rot_mat := Mat2{cos_theta, sin_theta, -sin_theta, cos_theta}
+	rel_pos = inv_rot_mat * rel_pos
+	rel_pos.y = -rel_pos.y
+	// scale the relative position to screen space
+	screen_pos := rel_pos * screen_size.y / camera.height
+	// adjust for screen center
+	return screen_pos + (screen_size / 2)
 }
 
 

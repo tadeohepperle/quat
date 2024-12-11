@@ -46,42 +46,42 @@ HDR_SCREEN_TEXTURE_SETTINGS := TextureSettings {
 }
 
 Platform :: struct {
-	settings:                     PlatformSettings,
-	window:                       glfw.WindowHandle,
+	settings:                    PlatformSettings,
+	window:                      glfw.WindowHandle,
 	// wgpu related fields:
-	surface_config:               wgpu.SurfaceConfiguration,
-	surface:                      wgpu.Surface,
-	instance:                     wgpu.Instance,
-	adapter:                      wgpu.Adapter,
-	device:                       wgpu.Device,
-	queue:                        wgpu.Queue,
-	shader_registry:              ShaderRegistry,
-	hdr_screen_texture:           Texture,
-	depth_screen_texture:         DepthTexture,
-	tonemapping_pipeline:         RenderPipeline,
-	asset_manager:                AssetManager,
+	surface_config:              wgpu.SurfaceConfiguration,
+	surface:                     wgpu.Surface,
+	instance:                    wgpu.Instance,
+	adapter:                     wgpu.Adapter,
+	device:                      wgpu.Device,
+	queue:                       wgpu.Queue,
+	shader_registry:             ShaderRegistry,
+	hdr_screen_texture:          Texture,
+	depth_screen_texture:        DepthTexture,
+	tonemapping_pipeline:        RenderPipeline,
+	asset_manager:               AssetManager,
 
 	// input related fields:
-	total_secs:                   f32,
-	delta_secs:                   f32,
-	screen_size:                  UVec2,
-	screen_size_f32:              Vec2,
-	screen_resized:               bool,
-	should_close:                 bool,
-	old_cursor_pos:               Vec2,
-	cursor_pos:                   Vec2,
-	cursor_delta:                 Vec2,
-	keys:                         #sparse[Key]PressFlags,
-	mouse_buttons:                [MouseButton]PressFlags,
-	chars:                        [16]rune, // 16 should be enough
-	chars_len:                    int,
-	scroll:                       f32,
-	last_left_just_released_time: time.Time,
-	double_clicked:               bool,
+	total_secs:                  f32,
+	delta_secs:                  f32,
+	screen_size:                 UVec2,
+	screen_size_f32:             Vec2,
+	screen_resized:              bool,
+	should_close:                bool,
+	old_cursor_pos:              Vec2,
+	cursor_pos:                  Vec2,
+	cursor_delta:                Vec2,
+	keys:                        #sparse[Key]PressFlags,
+	mouse_buttons:               [MouseButton]PressFlags,
+	chars:                       [16]rune, // 16 should be enough
+	chars_len:                   int,
+	scroll:                      f32,
+	last_left_just_pressed_time: time.Time,
+	double_clicked:              bool,
 
 	// globals: 
-	globals_data:                 ShaderGlobals,
-	globals:                      UniformBuffer(ShaderGlobals),
+	globals_data:                ShaderGlobals,
+	globals:                     UniformBuffer(ShaderGlobals),
 }
 
 ShaderGlobals :: struct {
@@ -355,18 +355,18 @@ _platform_receive_glfw_mouse_btn_event :: proc "contextless" (
 		switch action {
 		case glfw.PRESS:
 			platform.mouse_buttons[button] = {.JustPressed, .Pressed}
+			if button == .Left {
+				now := time.now()
+				if time.diff(platform.last_left_just_pressed_time, now) <
+				   DOUBLE_CLICK_MAX_INTERVAL_MS * time.Millisecond {
+					platform.double_clicked = true
+				}
+				platform.last_left_just_pressed_time = now
+			}
 		case glfw.REPEAT:
 			platform.mouse_buttons[button] = {.JustRepeated, .Pressed}
 		case glfw.RELEASE:
 			platform.mouse_buttons[button] = {.JustReleased}
-			if button == .Left {
-				now := time.now()
-				if time.diff(platform.last_left_just_released_time, now) <
-				   DOUBLE_CLICK_MAX_INTERVAL_MS * time.Millisecond {
-					platform.double_clicked = true
-				}
-				platform.last_left_just_released_time = now
-			}
 		}
 	}
 }

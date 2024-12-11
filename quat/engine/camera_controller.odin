@@ -11,6 +11,7 @@ DEFAULT_CAMERA_CONTROLLER_SETTINGS := CameraSettings {
 	lerp_speed         = 40.0,
 	zoom_sensitivity   = 0.24,
 	scroll_sensitivity = 0.2,
+	wasd_move_speed    = 20,
 }
 
 CameraSettings :: struct {
@@ -20,6 +21,7 @@ CameraSettings :: struct {
 	lerp_speed:         f32,
 	zoom_sensitivity:   f32,
 	scroll_sensitivity: f32,
+	wasd_move_speed:    f32,
 }
 
 CameraController :: struct {
@@ -50,8 +52,8 @@ camera_controller_update :: proc(cam: ^CameraController) {
 		cursor_pos_before := cursor_pos - cursor_delta
 
 
-		point_before := q.camera_cursor_hit_pos(cam.current, cursor_pos_before, screen_size)
-		point_after := q.camera_cursor_hit_pos(cam.current, cursor_pos, screen_size)
+		point_before := q.screen_to_world_pos(cam.current, cursor_pos_before, screen_size)
+		point_after := q.screen_to_world_pos(cam.current, cursor_pos, screen_size)
 		diff := point_before - point_after
 		cam.target.focus_pos += diff
 	}
@@ -65,8 +67,8 @@ camera_controller_update :: proc(cam: ^CameraController) {
 		cam.target.height = size_after
 
 		// calculate plane point shift
-		point_before := q.camera_cursor_hit_pos(cam.current, cursor_pos, screen_size)
-		point_after := q.camera_cursor_hit_pos(cam.target, cursor_pos, screen_size)
+		point_before := q.screen_to_world_pos(cam.current, cursor_pos, screen_size)
+		point_after := q.screen_to_world_pos(cam.target, cursor_pos, screen_size)
 		diff := point_before - point_after
 		cam.target.focus_pos += diff
 	}
@@ -75,8 +77,8 @@ camera_controller_update :: proc(cam: ^CameraController) {
 	dt := get_delta_secs()
 
 	move := get_wasd()
-	if move != {0, 0} {
-		cam.target.focus_pos += move * 20 * dt
+	if cam.settings.wasd_move_speed != 0 && move != {0, 0} {
+		cam.target.focus_pos += move * cam.settings.wasd_move_speed * dt
 	}
 
 	s := dt * cam.settings.lerp_speed

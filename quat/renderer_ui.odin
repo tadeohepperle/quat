@@ -18,6 +18,11 @@ ui_id :: proc(str: string) -> UiId {
 	return hash.crc64_xz(transmute([]byte)str)
 }
 
+ui_id_from_ptr :: proc(ptr: rawptr) -> UiId {
+	return transmute(UiId)ptr
+}
+
+
 derived_id :: proc(id: UiId) -> UiId {
 	bytes := transmute([8]u8)id
 	return hash.crc64_xz(bytes[:])
@@ -302,6 +307,12 @@ Div :: struct {
 	lerp_speed:        f32, //   (lerp speed)
 }
 
+COVER_DIV :: Div {
+	flags  = {.Absolute, .WidthFraction, .HeightFraction},
+	width  = 1,
+	height = 1,
+}
+
 Padding :: struct {
 	left:   f32,
 	right:  f32,
@@ -366,6 +377,7 @@ DivFlag :: enum u32 {
 	LerpTransform,
 	ClipContent,
 	PointerPassThrough, // divs with this are not considered when determinin which div is hovered. useful for divs that need ids to do animation but are on top of other divs that we want to interact with.
+	ZeroSizeButInfiniteSizeForChildren,
 }
 
 ui_start_frame :: proc(cache: ^UiCache) {
@@ -729,6 +741,14 @@ set_size_for_div :: proc(
 	div_size: Vec2,
 	skipped: int,
 ) {
+	if .ZeroSizeButInfiniteSizeForChildren in div.flags {
+		INFINITE_SIZE :: Vec2{max(f32), max(f32)}
+		skipped = set_child_sizes_for_div(i, div, INFINITE_SIZE, z_of_div, assets)
+		div_size = Vec2{0, 0}
+		return
+	}
+
+
 	width_fixed := false
 	if DivFlag.WidthPx in div.flags {
 		width_fixed = true
