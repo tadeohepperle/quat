@@ -54,14 +54,13 @@ main :: proc() {
 				E.toggle(&bloom_enabled, "Bloom"),
 				E.text("Bloom blend factor:"),
 				E.slider(&bloom_blend_factor),
+				E.text_edit(&text_to_edit, align = .Center, font_size = E.THEME.font_size),
 			},
 		)
 
 		E.set_tonemapping_mode(tonemapping)
 		E.set_bloom_enabled(bloom_enabled)
 		E.set_bloom_blend_factor(bloom_blend_factor)
-		// q.text_edit(&text_to_edit, align = .Center, font_size = q.THEME.font_size)
-		// q.draw_terrain_mesh(&terrain_mesh)
 
 		for y in -5 ..= 5 {
 			E.draw_gizmos_line(Vec2{-5, f32(y)}, Vec2{5, f32(y)}, color2)
@@ -79,7 +78,6 @@ main :: proc() {
 				color = q.Color_White,
 			},
 		)
-		// q.gizmos_rect(player_pos, Vec2{0.2, 0.8})
 
 		for pos, i in forest {
 			E.draw_sprite(

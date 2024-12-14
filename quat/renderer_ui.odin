@@ -29,7 +29,6 @@ ui_renderer_render :: proc(
 	assets: AssetManager,
 ) {
 	screen_size_f32 := Vec2{f32(screen_size.x), f32(screen_size.y)}
-	NO_CLIPPING_RECT :: Aabb{{0, 0}, {0, 0}}
 	if len(rend.batches.batches) == 0 {
 		return
 	}
@@ -45,10 +44,11 @@ ui_renderer_render :: proc(
 				pipeline = &rend.glyph_pipeline
 			}
 
-			if batch.clipped_to != NO_CLIPPING_RECT {
+
+			if clipped_to, ok := batch.clipped_to.(Aabb); ok {
 				// convert clipping rect from layout to screen space and then set it:
-				min_f32 := layout_to_screen_space(batch.clipped_to.min, screen_size_f32)
-				max_f32 := layout_to_screen_space(batch.clipped_to.max, screen_size_f32)
+				min_f32 := layout_to_screen_space(clipped_to.min, screen_size_f32)
+				max_f32 := layout_to_screen_space(clipped_to.max, screen_size_f32)
 				min_x := u32(min_f32.x)
 				min_y := u32(min_f32.y)
 				width_x := u32(max_f32.x) - min_x

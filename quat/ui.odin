@@ -162,7 +162,7 @@ UiBatch :: struct {
 	end_idx:    int,
 	kind:       BatchKind,
 	handle:     TextureOrFontHandle,
-	clipped_to: Aabb,
+	clipped_to: Maybe(Aabb),
 }
 TextureOrFontHandle :: distinct (u32)
 BatchKind :: enum {
@@ -1187,14 +1187,14 @@ PreBatch :: struct {
 	kind:    BatchKind,
 	handle:  TextureOrFontHandle,
 }
-
 // writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
 build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches: ^UiBatches) {
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {
-		ui:      Ui,
-		z_layer: u32,
+		ui:         Ui,
+		z_layer:    u32,
+		clipped_to: Maybe(Aabb),
 	}
 	CurrentBatch :: struct {
 		start_idx: int, // index into glyph instances or (vertex) indices array
@@ -1208,7 +1208,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		z_regions:          [dynamic]ZRegion, // kept sorted by region.z_info.layer
 		batches:            ^UiBatches,
 		current:            CurrentBatch,
-		current_clipped_to: Aabb, // todo! clipping not implemented yet!
+		current_clipped_to: Maybe(Aabb), // todo! clipping not implemented yet!
 	}
 	_insert_z_region :: proc(z_regions: ^[dynamic]ZRegion, region: ZRegion) {
 		// search from the back to the front, adding when larger or equal to the highest layer up to now:
@@ -1231,7 +1231,8 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 			if div, ok := ui.(^DivElement); ok {
 				z_layer = div.z_layer
 			}
-			_insert_z_region(&z_regions, ZRegion{ui, z_layer})
+
+			_insert_z_region(&z_regions, ZRegion{ui, z_layer, nil})
 		}
 		return Batcher{batches = out_batches, z_regions = z_regions}
 	}
@@ -1244,6 +1245,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 	for ; idx < len(b.z_regions); idx += 1 {
 		reg: ZRegion = b.z_regions[idx]
 		b.current_z_layer = reg.z_layer
+		b.current_clipped_to = reg.clipped_to // note: Aabb{{0,0}, {0,0}} means no clipping
 		_add(&b, reg.ui)
 	}
 	_flush(&b)
@@ -1256,6 +1258,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		clear(&batches.batches)
 	}
 
+
 	// Note: currently no sorting or z-index, just add children recursively in order.
 	_add :: proc(b: ^Batcher, ui: Ui) {
 		base := _element_base_ptr(ui)
@@ -1266,15 +1269,51 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		case ^DivElement:
 			_flush_if_mismatch(b, .Rect, TextureOrFontHandle(e.texture.handle))
 			_add_div_rect(e, &write.vertices, &write.indices)
+
+
+			prev_clip: Maybe(Aabb) = ---
+			all_children_are_clipped := 0
+			clips_content: bool = .ClipContent in e.flags
+			if clips_content {
+				prev_clip = b.current_clipped_to // save to restore later, when done with children
+				div_aabb := Aabb{base.pos, base.pos + base.size}
+				if current_clip, ok := b.current_clipped_to.(Aabb); !ok {
+					// no clipping currently applied, set the clipping to the area covered by this div
+					b.current_clipped_to = div_aabb
+				} else {
+					intersection_clip, has_overlap := aabb_intersection(div_aabb, current_clip)
+					if !has_overlap {
+						// There is a 0-sized clipping rect, meaning all children would be completely clipped, 
+						// so return and skip this part of the UI tree completely
+						return
+					} else if intersection_clip == current_clip {
+						// the div and all of its content are already clipped to a smaller area than the div would clip,
+						// so it is like the div would not clip anything at all.
+						clips_content = false
+					} else {
+						b.current_clipped_to = intersection_clip
+					}
+				}
+			}
+
+			// add primitives for all children, pushing children with a higher z layer back in the queue of handled ZRegions.
 			for ch, i in e.children {
 				if div, ok := ch.(^DivElement); ok && div.z_layer != 0 {
 					// handle this child later (on top of the other ui elements with lower z)
 					child_z_layer := div.z_layer + b.current_z_layer
-					_insert_z_region(&b.z_regions, ZRegion{ch, child_z_layer})
+					_insert_z_region(
+						&b.z_regions,
+						ZRegion{ch, child_z_layer, b.current_clipped_to},
+					)
 				} else {
 					// add the batches for this child and all of its children recursively
 					_add(b, ch)
 				}
+			}
+
+			// restore the clipping rect that was present before:
+			if clips_content {
+				b.current_clipped_to = prev_clip
 			}
 		case ^TextElement:
 			_flush_if_mismatch(b, .Glyph, TextureOrFontHandle(e.font))

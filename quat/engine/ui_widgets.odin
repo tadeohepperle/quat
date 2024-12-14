@@ -6,7 +6,9 @@ import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import "core:strings"
+import edit "core:text/edit"
 import wgpu "vendor:wgpu"
+
 
 color_from_hex :: q.color_from_hex
 UiId :: q.UiId
@@ -925,4 +927,379 @@ colored_triangle :: proc() -> Ui {
 	}
 	Empty :: struct {}
 	return q.ui_custom(Empty{}, set_size, add_primitives)
+}
+
+
+text_edit :: proc(
+	value: ^strings.Builder,
+	id: UiId = 0,
+	width_px: f32 = 240,
+	max_characters: int = 10000,
+	font_size: f32 = THEME.font_size,
+	align: q.TextAlign = .Left,
+	placeholder: string = "Type something...",
+	line_break: q.LineBreak = .OnCharacter,
+) -> Ui {
+	@(thread_local)
+	g_id: UiId = 0
+	@(thread_local)
+	g_state_initialized: bool
+	@(thread_local)
+	g_state: edit.State = {}
+	assert(value != nil, "text edit should not get a nil ptr as ^strings.Builder")
+	font_size := font_size if font_size != 0 else THEME.font_size_sm
+
+	id := id if id != 0 else u64(uintptr(value))
+	text_id := q.ui_id_next(id)
+	res := q.ui_interaction(id)
+
+
+	cache := &q.UI_CTX_PTR.cache
+	platform := cache.platform
+	if res.focused {
+		if id != g_id {
+			g_id = id
+			if !g_state_initialized {
+				g_state_initialized = true
+				edit.init(&g_state, context.allocator, context.allocator)
+			}
+			edit.begin(&g_state, id, value)
+		}
+		for c in platform.chars[:platform.chars_len] {
+			if strings.rune_count(strings.to_string(value^)) < max_characters {
+				edit.input_rune(&g_state, c)
+			}
+		}
+
+		is_ctrl_pressed := q.platform_is_pressed(platform, .LEFT_CONTROL)
+		is_shift_pressed := q.platform_is_pressed(platform, .LEFT_SHIFT)
+
+		if q.platform_just_pressed_or_repeated(platform, .BACKSPACE) {
+			edit.delete_to(&g_state, .Left)
+		}
+		if q.platform_just_pressed_or_repeated(platform, .DELETE) {
+			edit.delete_to(&g_state, .Right)
+		}
+		if q.platform_just_pressed_or_repeated(platform, .ENTER) {
+			edit.perform_command(&g_state, .New_Line)
+		}
+		if q.platform_is_pressed(platform, .LEFT_CONTROL) {
+			if q.platform_just_pressed(platform, .A) {
+				edit.perform_command(&g_state, .Select_All)
+			}
+			// if input_just_pressed(input, .Z) { // nor working at the moment, I don't understand the undo API of text edit.
+			// 	edit.perform_command(&g_state, .Undo)
+			// }
+			// if input_just_pressed(input, .Y) {
+			// 	edit.perform_command(&g_state, .Redo)
+			// }
+			if q.platform_just_pressed(platform, .C) {
+				q.platform_set_clipboard(platform, edit.current_selected_text(&g_state))
+			}
+			if q.platform_just_pressed(platform, .X) {
+				q.platform_set_clipboard(platform, edit.current_selected_text(&g_state))
+				edit.selection_delete(&g_state)
+			}
+			if q.platform_just_pressed(platform, .V) {
+				edit.input_text(&g_state, q.platform_get_clipboard(platform))
+			}
+		}
+		if q.platform_just_pressed_or_repeated(platform, .LEFT) {
+			if is_shift_pressed {
+				if is_ctrl_pressed {
+					edit.select_to(&g_state, .Word_Left)
+				} else {
+					edit.select_to(&g_state, .Left)
+				}
+			} else {
+				if is_ctrl_pressed {
+					edit.move_to(&g_state, .Word_Left)
+				} else {
+					edit.move_to(&g_state, .Left)
+				}
+			}
+		}
+
+		if q.platform_just_pressed_or_repeated(platform, .RIGHT) {
+			if is_shift_pressed {
+				if is_ctrl_pressed {
+					edit.select_to(&g_state, .Word_Right)
+				} else {
+					edit.select_to(&g_state, .Right)
+				}
+			} else {
+				if is_ctrl_pressed {
+					edit.move_to(&g_state, .Word_Right)
+				} else {
+					edit.move_to(&g_state, .Right)
+				}
+			}
+		}
+	} else {
+		if g_id == id {
+			g_id = 0
+		}
+	}
+
+	str := strings.to_string(value^)
+
+
+	border_color: Color = THEME.surface_border if res.focused else THEME.surface
+	bg_color: Color = THEME.surface_deep
+
+	caret_opacity: f32 = 1.0 if math.sin(platform.total_secs * 8.0) > 0.0 else 0.0
+	markers_data: MarkersData = {
+		text_id         = text_id,
+		just_pressed    = res.just_pressed,
+		just_released   = res.just_released,
+		pressed         = res.pressed,
+		caret_width     = 4,
+		caret_color     = {THEME.text.r, THEME.text.g, THEME.text.b, caret_opacity},
+		selection_color = THEME.surface,
+		shift_pressed   = q.platform_is_pressed(platform, .LEFT_SHIFT),
+	}
+
+	ui := div(
+		Div {
+			width = width_px,
+			color = bg_color,
+			border_color = border_color,
+			border_width = THEME.border_width,
+			border_radius = THEME.border_radius,
+			padding = {8, 8, 4, 4},
+			flags = {.AxisX, .WidthPx},
+		},
+		id,
+	)
+	if res.focused {
+		child(ui, q.ui_custom(markers_data, set_markers_size, add_markers_elements))
+	}
+	if !res.focused && len(str) == 0 {
+		child_text(
+			ui,
+			Text {
+				str = placeholder,
+				font_size = font_size,
+				color = THEME.text_secondary,
+				shadow = THEME.text_shadow,
+				line_break = line_break,
+				pointer_pass_through = true,
+				align = align,
+			},
+			text_id,
+		)
+	} else {
+		child_text(
+			ui,
+			Text {
+				str = str,
+				font_size = font_size,
+				color = THEME.text,
+				shadow = THEME.text_shadow,
+				line_break = line_break,
+				pointer_pass_through = true,
+				align = align,
+			},
+			text_id,
+		)
+	}
+	return ui
+
+	// the job of this markers element is to read the TextEditCached from local 
+	// markers = caret and selection rectangles
+	MarkersData :: struct {
+		text_id:         UiId,
+		pressed:         bool,
+		just_pressed:    bool,
+		just_released:   bool,
+		shift_pressed:   bool,
+		caret_width:     f32,
+		caret_color:     Color,
+		selection_color: Color,
+	}
+	set_markers_size :: proc(data: ^MarkersData, max_size: Vec2) -> (used_size: Vec2) {
+		return Vec2{0, 0}
+	}
+
+	add_markers_elements :: proc(
+		data: ^MarkersData,
+		pos: Vec2,
+		size: Vec2,
+	) -> []q.CustomPrimitives {
+		vertices: [dynamic]q.UiVertex = make([dynamic]q.UiVertex, context.temp_allocator)
+		indices: [dynamic]u32 = make([dynamic]u32, context.temp_allocator)
+
+
+		text_ctx, ok := q.UI_CTX_PTR.text_ids_to_tmp_layouts[data.text_id] // nil if text is empty string!
+		assert(ok)
+		assert(text_ctx != nil)
+		byte_count := len(text_ctx.byte_advances)
+
+		// get the glyph we are currently on:
+		cursor_pos := q.UI_CTX_PTR.cache.cursor_pos
+		rel_cursor_pos := cursor_pos - pos
+		current_byte_idx := byte_count
+		byte_start_idx := 0
+		for line, i in text_ctx.lines {
+			line_min_y := line.baseline_y - line.metrics.ascent
+			line_max_y := line.baseline_y - line.metrics.descent
+			if line_min_y > rel_cursor_pos.y || line_max_y < rel_cursor_pos.y {
+				byte_start_idx = line.byte_end_idx
+				continue
+			}
+			last_advance: f32 = line.x_offset
+			outer: for j in byte_start_idx ..< line.byte_end_idx {
+				byte_advance := text_ctx.byte_advances[j] + line.x_offset
+				if byte_advance > rel_cursor_pos.x { 	// likely wrong
+					current_byte_idx = j
+					if byte_advance - rel_cursor_pos.x < rel_cursor_pos.x - last_advance {
+						// click is more towards end of a letter
+						// search forward to the next different advance (most likely just 1 byte, but could be more bc of UTF8)
+						for {
+							current_byte_idx += 1
+							if current_byte_idx < byte_count {
+								byte_advance_next := text_ctx.byte_advances[current_byte_idx]
+								if byte_advance_next == 0 {
+									continue
+								}
+							} else {
+								current_byte_idx = byte_count // end of bytes
+							}
+							break outer
+						}
+					}
+					break
+				}
+				last_advance = byte_advance
+			}
+			break
+		}
+		if data.just_pressed {
+			if data.shift_pressed {
+				g_state.selection[0] = current_byte_idx
+			} else {
+				g_state.selection = {current_byte_idx, current_byte_idx}
+			}
+		}
+		if data.pressed {
+			g_state.selection[0] = current_byte_idx
+		}
+
+		// if there is a selection draw the selection:
+		left_idx, right_idx := edit.sorted_selection(&g_state)
+		if left_idx != right_idx {
+			assert(left_idx < right_idx)
+			// for each line that is part of the selection draw a rect:
+			byte_start_idx: int = 0
+			is_first := true
+			for line in text_ctx.lines {
+				if line.byte_end_idx < left_idx {
+					continue
+				}
+				defer {is_first = false}
+				is_last :=
+					byte_idx_plus_one(text_ctx.byte_advances[:], line.byte_end_idx) >= right_idx // not correct!!
+				x_left: f32 = line.x_offset
+				if is_first {
+					x_left =
+						advance_at_byte_minus_one(text_ctx.byte_advances[:], left_idx) +
+						line.x_offset
+				}
+				x_right: f32 = ---
+				if is_last {
+					x_right =
+						advance_at_byte_minus_one(text_ctx.byte_advances[:], right_idx) +
+						line.x_offset
+				} else {
+					x_right =
+						advance_at_byte_minus_one(text_ctx.byte_advances[:], line.byte_end_idx) +
+						line.x_offset
+				}
+				rect_pos := Vec2{pos.x + x_left, pos.y + line.baseline_y - line.metrics.ascent}
+				rect_size := Vec2{x_right - x_left, line.metrics.ascent - line.metrics.descent}
+
+
+				q.add_rect(
+					&vertices,
+					&indices,
+					rect_pos,
+					rect_size,
+					data.selection_color,
+					{},
+					{},
+					{2, 2, 2, 2},
+					{},
+				)
+				if is_last {
+					break
+				}
+			}
+		}
+
+		// draw the cursor:
+		should_draw_caret := !(data.pressed && left_idx != right_idx) // dont draw while selecting area.
+		if should_draw_caret {
+			caret_byte_idx := g_state.selection[0]
+
+			care_line: ^q.LineRun
+			for &line in text_ctx.lines {
+				care_line = &line
+				if line.byte_end_idx >= caret_byte_idx {
+					break
+				}
+			}
+			caret_advance: f32 =
+				advance_at_byte_minus_one(text_ctx.byte_advances[:], caret_byte_idx) +
+				care_line.x_offset
+			pipe_pos := Vec2 {
+				pos.x + caret_advance - data.caret_width / 2,
+				pos.y + care_line.baseline_y - care_line.metrics.ascent,
+			}
+			pipe_size := Vec2 {
+				data.caret_width,
+				care_line.metrics.ascent - care_line.metrics.descent,
+			}
+			q.add_rect(
+				&vertices,
+				&indices,
+				pipe_pos,
+				pipe_size,
+				data.caret_color,
+				{},
+				{},
+				{2, 2, 2, 2},
+				{},
+			)
+		}
+
+		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
+		res[0] = q.CustomUiMesh{vertices[:], indices[:], 0}
+		return res
+	}
+
+	byte_idx_plus_one :: proc(byte_advances: []f32, idx: int) -> int {
+		// search forward skipping the 0.0s
+		i := idx + 1
+		byte_count := len(byte_advances)
+		for i < byte_count && byte_advances[i] == 0 {
+			i += 1
+		}
+		return i
+	}
+
+	advance_at_byte_minus_one :: proc(byte_advances: []f32, idx: int) -> (advance: f32) {
+		// search back (most likely 1 byte) from caret byte idx to advance of previous letter
+		i := idx
+		for {
+			if i == 0 {
+				return 0.0
+			}
+			i -= 1
+			advance = byte_advances[i]
+			if advance != 0.0 {
+				return advance
+			}
+		}
+		return
+	}
 }

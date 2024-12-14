@@ -30,6 +30,23 @@ aabb_standard_form :: proc "contextless" (aabb: Aabb) -> Aabb {
 aabb_contains :: proc "contextless" (aabb: Aabb, pt: Vec2) -> bool {
 	return pt.x >= aabb.min.x && pt.y >= aabb.min.y && pt.x <= aabb.max.x && pt.y <= aabb.max.y
 }
+aabb_fully_contains :: proc "contextless" (big: Aabb, small: Aabb) -> bool {
+	return(
+		big.min.x <= small.min.x &&
+		big.min.y <= small.min.y &&
+		big.max.x >= small.max.x &&
+		big.max.y >= small.max.y \
+	)
+}
+aabb_intersection :: proc "contextless" (a: Aabb, b: Aabb) -> (res: Aabb, intersects: bool) {
+	res = Aabb {
+		min = Vec2{max(a.min.x, b.min.x), max(a.min.y, b.min.y)},
+		max = Vec2{min(a.max.x, b.max.x), min(a.max.y, b.max.y)},
+	}
+	intersects = res.max.x > res.min.x && res.max.y > res.min.y
+	return res, intersects
+}
+
 aabb_intersects :: proc "contextless" (a: Aabb, b: Aabb) -> bool {
 	return(
 		min(a.max.x, b.max.x) >= max(a.min.x, b.min.x) &&

@@ -22,9 +22,6 @@ ui_id_from_ptr :: proc(ptr: rawptr) -> UiId {
 	return transmute(UiId)ptr
 }
 
-
-
-
 derived_id :: proc(id: UiId) -> UiId {
 	bytes := transmute([8]u8)id
 	return hash.crc64_xz(bytes[:])
