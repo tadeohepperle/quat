@@ -412,6 +412,9 @@ is_key_pressed :: #force_inline proc(key: q.Key) -> bool {
 is_key_just_pressed :: #force_inline proc(key: q.Key) -> bool {
 	return .JustPressed in ENGINE.platform.keys[key]
 }
+is_key_just_repeated :: #force_inline proc(key: q.Key) -> bool {
+	return .JustRepeated in ENGINE.platform.keys[key]
+}
 is_shift_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_SHIFT]
 }
