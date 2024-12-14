@@ -1,19 +1,19 @@
 package example
 
 import q "../quat"
-import engine "../quat/engine"
+import E "../quat/engine"
 
 Vec2 :: q.Vec2
 
 main :: proc() {
+	// E.enable_max_fps()
+	settings := E.DEFAULT_ENGINE_SETTINGS
+	settings.bloom_enabled = false
+	settings.debug_ui_gizmos = true
+	E.init(settings)
+	defer E.deinit()
 
-
-	// engine.enable_max_fps()
-	engine.init()
-	defer engine.deinit()
-	engine.set_bloom_enabled(false)
-
-	can_texture := engine.load_texture_tile("./assets/can.png")
+	can_texture := E.load_texture_tile("./assets/can.png")
 	camera := q.Camera {
 		focus_pos = {0, 0},
 		rotation  = 0,
@@ -26,11 +26,11 @@ main :: proc() {
 		color   = {1, 1, 1, 1},
 		z       = -0.4,
 	}
-	terrain_textures := engine.load_texture_array(
+	terrain_textures := E.load_texture_array(
 		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_3.png"},
 	)
-	engine.set_tritex_textures(terrain_textures)
-	terrain_mesh := engine.create_tritex_mesh(
+	E.set_tritex_textures(terrain_textures)
+	terrain_mesh := E.create_tritex_mesh(
 		{
 			q.TritexVertex{pos = {0, 0}, indices = {0, 1, 2}, weights = {1, 0, 0}},
 			q.TritexVertex{pos = {5, 7}, indices = {0, 1, 2}, weights = {0, 1, 0}},
@@ -39,30 +39,56 @@ main :: proc() {
 	)
 	draggables := draggable_sprites_create()
 
-	for engine.next_frame() {
-		q.start_window("Hello World")
-		q.text("Camera Height")
-		q.slider(&camera.height, 0.1, 50.0)
-		q.end_window()
+	bg_color := q.Color{0, 2, 10, 255}
 
-		motion := engine.get_wasd()
-		camera.focus_pos += motion * engine.get_delta_secs() * 5.0
-		camera.rotation += engine.get_arrows().x * engine.get_delta_secs()
-		camera.height *= (1.0 - engine.get_arrows().y * engine.get_delta_secs() * 3.0)
-		engine.set_camera(camera)
-		engine.draw_gizmos_coords()
-		engine.draw_tritex_mesh(&terrain_mesh)
+	for E.next_frame() {
 
 
-		// sprite.rotation = engine.get_osc(3, 0.5)
-		sprite.pos = engine.get_hit_pos()
-		engine.draw_sprite(sprite)
+		div := E.div(E.Div{padding = {20, 20, 20, 20}, color = {0, 0, 0.1, 1.0}})
+		E.child(div, E.color_picker(&bg_color))
+
+		E.add_ui(div)
+
+		// E.add_ui(
+		// 	E.with_children(
+		// 		E.div(q.COVER_DIV),
+		// 		{
+		// 			E.div(q.RED_BOX_DIV),
+		// 			E.button("Hello").ui,
+		// 			E.button("What").ui,
+		// 			E.button("Is").ui,
+		// 			E.button("This").ui,
+		// 			E.color_picker(&bg_color),
+		// 			E.colored_triangle(),
+		// 		},
+		// 	),
+		// )
+		// E.set_clear_color(bg_color)
+
+
+		// q.start_window("Hello World")
+		// q.text("Camera Height")
+		// q.slider(&camera.height, 0.1, 50.0)
+		// q.end_window()
+
+		motion := E.get_wasd()
+		camera.focus_pos += motion * E.get_delta_secs() * 5.0
+		camera.rotation += E.get_arrows().x * E.get_delta_secs()
+		camera.height *= (1.0 - E.get_arrows().y * E.get_delta_secs() * 3.0)
+		E.set_camera(camera)
+		E.draw_gizmos_coords()
+		E.draw_tritex_mesh(&terrain_mesh)
+
+
+		// sprite.rotation = E.get_osc(3, 0.5)
+		sprite.pos = E.get_hit_pos()
+		E.draw_sprite(sprite)
 
 		draggable_sprites_update(&draggables)
 
-		// if engine.is_key_just_pressed(.SPACE) {
+		// if E.is_key_just_pressed(.SPACE) {
 		// 	q.print("Space pressed")
-		// 	engine.set_clear_color(q.random_color())
+		// 	E.set_clear_color(q.random_color())
 		// }
 
 	}
@@ -77,9 +103,9 @@ DraggableSprites :: struct {
 draggable_sprites_create :: proc() -> (res: DraggableSprites) {
 	res.dragging_idx = -1
 	res.hovered_idx = -1
-	ball := engine.load_depth_sprite("./assets/ball_d_16.png", "./assets/t_2.png")
-	wall := engine.load_depth_sprite("./assets/wall_d_16.png")
-	tower := engine.load_depth_sprite("./assets/tower_d_16.png")
+	ball := E.load_depth_sprite("./assets/ball_d_16.png", "./assets/t_2.png")
+	wall := E.load_depth_sprite("./assets/wall_d_16.png")
+	tower := E.load_depth_sprite("./assets/tower_d_16.png")
 	wall.color = q.Color_Dark_Goldenrod
 	// tower.color = q.Color_Dark_Goldenrod
 	ball.color = q.Color_Aquamarine
@@ -97,26 +123,26 @@ draggable_sprites_update :: proc(using draggables: ^DraggableSprites) {
 	// move ball to front or back:
 
 	ball := &sprites[0]
-	ball.z += engine.get_rf() * engine.get_delta_secs() * 0.1
+	ball.z += E.get_rf() * E.get_delta_secs() * 0.1
 	ball.z = clamp(ball.z, -2, 2)
 	// q.print(ball.z)
 
 	// drawing:
 	for &s, i in sprites {
-		is_hovered := q.from_collider_metadata(engine.get_hit().hit_collider, ^q.DepthSprite) == &s
+		is_hovered := q.from_collider_metadata(E.get_hit().hit_collider, ^q.DepthSprite) == &s
 		if is_hovered {
 			hovered_idx = i
 		}
-		if is_hovered && dragging_idx == -1 && engine.is_left_pressed() {
+		if is_hovered && dragging_idx == -1 && E.is_left_pressed() {
 			// start drag:
 			dragging_idx = i
-			drag_offset = s.pos - engine.get_hit_pos()
+			drag_offset = s.pos - E.get_hit_pos()
 		}
 		is_dragged := i == dragging_idx
 		if is_dragged {
 			// when dragging:
-			s.pos = engine.get_hit_pos() + drag_offset
-			if engine.is_left_just_released() {
+			s.pos = E.get_hit_pos() + drag_offset
+			if E.is_left_just_released() {
 				// end drag:
 				dragging_idx = -1
 			}
@@ -124,12 +150,12 @@ draggable_sprites_update :: proc(using draggables: ^DraggableSprites) {
 		// s.z = 10 if is_hovered || is_dragged else 0
 		// s.color = {2, 2, 2, 1} if is_hovered else {1, 1, 1, 1}
 		collider_meta := q.to_collider_metadata(&s)
-		engine.add_rect_collider(q.rect(s.pos, s.size), collider_meta, int(s.z))
-		engine.draw_depth_sprite(s)
+		E.add_rect_collider(q.rect(s.pos, s.size), collider_meta, int(s.z))
+		E.draw_depth_sprite(s)
 		// if i != draggables.dragging_idx {
 
 		// } else {
-		// 	engine.draw_sprite(s)
+		// 	E.draw_sprite(s)
 		// }
 	}
 }

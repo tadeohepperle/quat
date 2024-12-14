@@ -50,7 +50,7 @@ EngineSettings :: struct {
 	debug_ui_gizmos:       bool,
 	debug_collider_gizmos: bool,
 }
-ENGINE_SETTINGS_DEFAULT := EngineSettings {
+DEFAULT_ENGINE_SETTINGS := EngineSettings {
 	platform              = q.PLATFORM_SETTINGS_DEFAULT,
 	bloom_enabled         = true,
 	bloom_settings        = q.BLOOM_SETTINGS_DEFAULT,
@@ -63,16 +63,18 @@ Engine :: struct {
 	platform:        q.Platform,
 	hit:             HitInfo,
 	scene:           Scene,
+	ui_ctx:          q.UiCtx,
 }
 
 Scene :: struct {
-	camera:               q.Camera,
-	sprites:              [dynamic]q.Sprite,
-	depth_sprites:        [dynamic]q.DepthSprite,
-	tritex_meshes:        [dynamic]^q.TritexMesh,
-	tritex_textures:      q.TextureArrayHandle,
-	colliders:            [dynamic]q.Collider,
-	last_frame_colliders: [dynamic]q.Collider,
+	camera:                q.Camera,
+	top_level_ui_elements: [dynamic]q.Ui,
+	sprites:               [dynamic]q.Sprite,
+	depth_sprites:         [dynamic]q.DepthSprite,
+	tritex_meshes:         [dynamic]^q.TritexMesh,
+	tritex_textures:       q.TextureArrayHandle,
+	colliders:             [dynamic]q.Collider,
+	last_frame_colliders:  [dynamic]q.Collider,
 }
 
 HitInfo :: struct {
@@ -88,6 +90,11 @@ _scene_create :: proc(scene: ^Scene) {
 
 _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.sprites)
+	delete(scene.depth_sprites)
+	delete(scene.tritex_meshes)
+	delete(scene.top_level_ui_elements)
+	delete(scene.last_frame_colliders)
+	delete(scene.colliders)
 }
 
 _scene_clear :: proc(scene: ^Scene) {
@@ -96,13 +103,17 @@ _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.tritex_meshes)
 	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
 	clear(&scene.colliders)
+	clear(&scene.top_level_ui_elements)
 }
 
 ENGINE: Engine
 
+// after creating the engine, let it be pinned, don't move it in memory!!
 _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	engine.settings = settings
 	q.platform_create(&engine.platform, settings.platform)
+	engine.ui_ctx = q.ui_ctx_create(&engine.platform)
+	q.UI_CTX_PTR = &engine.ui_ctx
 	_renderers_create(&engine.renderers, &engine.platform)
 	_scene_create(&engine.scene)
 }
@@ -111,10 +122,12 @@ _engine_destroy :: proc(engine: ^Engine) {
 	q.platform_destroy(&engine.platform)
 	_renderers_destroy(&engine.renderers)
 	_scene_destroy(&engine.scene)
+	q.UI_CTX_PTR = nil
+	q.ui_ctx_drop(&engine.ui_ctx)
 }
 
 
-init :: proc(settings: EngineSettings = ENGINE_SETTINGS_DEFAULT) {
+init :: proc(settings: EngineSettings = DEFAULT_ENGINE_SETTINGS) {
 	_engine_create(&ENGINE, settings)
 }
 
@@ -138,11 +151,7 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 		return false
 	}
 	_engine_recalculate_hit_info(engine)
-	q.ui_renderer_start_frame(
-		&engine.ui_renderer,
-		engine.platform.screen_size_f32,
-		&engine.platform,
-	)
+	q.ui_ctx_start_frame(&engine.platform)
 	return true
 }
 
@@ -165,7 +174,7 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 			}
 		}
 	}
-	is_on_ui := engine.ui_renderer.cache.state.hovered_id != 0
+	is_on_ui := engine.ui_ctx.cache.state.hovered_id != 0
 	engine.hit = HitInfo{hit_pos, hit_collider, hit_collider_idx, is_on_ui}
 }
 
@@ -204,13 +213,19 @@ _engine_prepare :: proc(engine: ^Engine) {
 		engine.scene.sprites[:],
 		engine.scene.sprites[:], // todo!
 	)
-	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
-	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
+	q.ui_end_frame(
+		engine.scene.top_level_ui_elements[:],
+		engine.ui_ctx.cache.layout_extent,
+		engine.platform.delta_secs,
+		&engine.ui_renderer.batches,
+	)
 	q.ui_renderer_end_frame_and_prepare_buffers(
 		&engine.ui_renderer,
 		engine.platform.delta_secs,
 		engine.platform.asset_manager,
 	)
+	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
+	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
 }
 
 _engine_render :: proc(engine: ^Engine) {
@@ -263,7 +278,7 @@ _engine_render :: proc(engine: ^Engine) {
 
 @(private)
 _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
-	cache := &engine.ui_renderer.cache
+	cache := &engine.ui_ctx.cache
 	state := &cache.state
 
 	@(static) last_state: q.InteractionState(q.UiId)
@@ -540,6 +555,9 @@ draw_color_mesh_indexed_single_color :: proc(
 ) {
 	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, indices, color)
 }
+add_ui :: proc(ui: q.Ui) {
+	append(&ENGINE.scene.top_level_ui_elements, ui)
+}
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
 	append(
 		&ENGINE.scene.colliders,
@@ -621,13 +639,13 @@ get_arrows :: proc() -> Vec2 {
 }
 // call before initializing engine!
 enable_max_fps :: proc() {
-	ENGINE_SETTINGS_DEFAULT.power_preference = .HighPerformance
-	ENGINE_SETTINGS_DEFAULT.present_mode = .Immediate
+	DEFAULT_ENGINE_SETTINGS.power_preference = .HighPerformance
+	DEFAULT_ENGINE_SETTINGS.present_mode = .Immediate
 }
 // call before initializing engine!
 enable_v_sync :: proc() {
-	ENGINE_SETTINGS_DEFAULT.power_preference = .LowPower
-	ENGINE_SETTINGS_DEFAULT.present_mode = .Fifo
+	DEFAULT_ENGINE_SETTINGS.power_preference = .LowPower
+	DEFAULT_ENGINE_SETTINGS.present_mode = .Fifo
 }
 access_last_frame_colliders :: proc() -> []q.Collider {
 	return ENGINE.scene.last_frame_colliders[:]

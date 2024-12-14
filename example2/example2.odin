@@ -1,7 +1,7 @@
 package example
 
 import q "../quat"
-import engine "../quat/engine"
+import E "../quat/engine"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
@@ -15,11 +15,12 @@ Color :: [4]f32
 recorded_dt: [dynamic]f32
 
 main :: proc() {
-	engine.init()
-	defer {engine.deinit()}
+	E.init()
+	defer {E.deinit()}
+	E.set_bloom_enabled(false)
 
-	corn := engine.load_texture_tile("./assets/corn.png")
-	sprite := engine.load_texture_tile("./assets/can.png")
+	corn := E.load_texture_tile("./assets/corn.png")
+	sprite := E.load_texture_tile("./assets/can.png")
 
 
 	player_pos := Vec2{0, 0}
@@ -39,37 +40,37 @@ main :: proc() {
 	bloom_enabled := true
 	bloom_blend_factor: f64 = 0.2
 
-	for engine.next_frame() {
-		append(&recorded_dt, engine.get_delta_secs() * 1000.0)
-		q.start_window("Example Window")
-		q.enum_radio(&text_align, "Text Align")
+	for E.next_frame() {
+		append(&recorded_dt, E.get_delta_secs() * 1000.0)
 
-		q.enum_radio(&tonemapping, "Tonemapping")
-		engine.set_tonemapping_mode(tonemapping)
-		q.color_picker(&background_color, "Background")
-		q.color_picker(&color2, "Color 2")
-		q.color_picker(&color3, "Color 3")
-		// enum_radio(&line_break, "Line Break Value")
-		q.toggle(&bloom_enabled, "Bloom")
-		engine.set_bloom_enabled(bloom_enabled)
-		// q.check_box(&q.ENGINE.settings.bloom_enabled, "Bloom enabled")
-		q.text("Bloom blend factor:")
-		q.slider(&bloom_blend_factor)
-		engine.set_bloom_blend_factor(bloom_blend_factor)
-		q.text_edit(&text_to_edit, align = .Center, font_size = q.THEME.font_size)
+		E.add_window(
+			"Example window",
+			{
+				E.enum_radio(&text_align, "Text Align"),
+				E.enum_radio(&tonemapping, "Tonemapping"),
+				E.color_picker(&background_color, "Background"),
+				E.color_picker(&color2, "Color 2"),
+				E.color_picker(&color3, "Color 3"),
+				E.toggle(&bloom_enabled, "Bloom"),
+				E.text("Bloom blend factor:"),
+				E.slider(&bloom_blend_factor),
+			},
+		)
 
-		q.end_window()
-
+		E.set_tonemapping_mode(tonemapping)
+		E.set_bloom_enabled(bloom_enabled)
+		E.set_bloom_blend_factor(bloom_blend_factor)
+		// q.text_edit(&text_to_edit, align = .Center, font_size = q.THEME.font_size)
 		// q.draw_terrain_mesh(&terrain_mesh)
 
 		for y in -5 ..= 5 {
-			engine.draw_gizmos_line(Vec2{-5, f32(y)}, Vec2{5, f32(y)}, color2)
+			E.draw_gizmos_line(Vec2{-5, f32(y)}, Vec2{5, f32(y)}, color2)
 		}
 		for x in -5 ..= 5 {
-			engine.draw_gizmos_line(Vec2{f32(x), -5}, Vec2{f32(x), 5}, color2)
+			E.draw_gizmos_line(Vec2{f32(x), -5}, Vec2{f32(x), 5}, color2)
 		}
 
-		engine.draw_sprite(
+		E.draw_sprite(
 			q.Sprite {
 				texture = sprite,
 				pos = {-3, 5},
@@ -81,24 +82,24 @@ main :: proc() {
 		// q.gizmos_rect(player_pos, Vec2{0.2, 0.8})
 
 		for pos, i in forest {
-			engine.draw_sprite(
+			E.draw_sprite(
 				q.Sprite {
 					texture = corn,
 					pos = pos,
 					size = {1, 2},
-					rotation = engine.get_osc(2),
+					rotation = E.get_osc(2),
 					color = {1, 1, 1, 1},
 				},
 			)
 		}
 
-		player_pos += engine.get_wasd() * 20 * engine.get_delta_secs()
+		player_pos += E.get_wasd() * 20 * E.get_delta_secs()
 
 		// poly := [?]q.Vec2{{-5, -5}, {-5, 0}, {0, 0}, {-5, -5}, {0, 0}, {0, -5}}
 		// q.draw_color_mesh(poly[:])
-		snake_update_body(&snake, engine.get_hit_pos())
+		snake_update_body(&snake, E.get_hit_pos())
 		snake_draw(&snake)
-		engine.set_clear_color(background_color)
+		E.set_clear_color(background_color)
 
 	}
 
@@ -128,7 +129,7 @@ snake_create :: proc(head_pos: Vec2) -> Snake {
 snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 	prev_pos: Vec2
 	snake.points[0] = head_pos
-	s := engine.get_delta_secs() * SNAKE_LERP_SPEED
+	s := E.get_delta_secs() * SNAKE_LERP_SPEED
 	s = clamp(s, 0, 1)
 	for i in 1 ..< SNAKE_PTS {
 		follow_pos := snake.points[i - 1]
@@ -218,7 +219,7 @@ snake_draw :: proc(snake: ^Snake) {
 	// 	append(&new_vertices, snake.vertices[i])
 	// }
 	// q.draw_color_mesh(new_vertices[:])
-	engine.draw_color_mesh_indexed(snake.vertices[:], snake.indices[:])
+	E.draw_color_mesh_indexed(snake.vertices[:], snake.indices[:])
 }
 
 

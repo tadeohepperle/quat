@@ -90,6 +90,8 @@ fn fs_rect(in: VsRectOut) -> @location(0) vec4<f32> {
 	let t_color = select(color, color * texture_color, enabled(in.flags, TEXTURED));
 		
 	return vec4(t_color.rgb, saturate(color.a * not_ext_factor));
+	// return in.color;
+    
 }
 
 fn enabled(flags: u32, mask: u32) -> bool {
