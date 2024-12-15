@@ -157,8 +157,8 @@ gizmos_renderer_add_aabb :: proc(
 }
 
 gizmos_renderer_add_coordinates :: proc(rend: ^GizmosRenderer) {
-	gizmos_renderer_add_line(rend, {0, 0}, {1, 0}, Color_Red, .WORLD)
-	gizmos_renderer_add_line(rend, {0, 0}, {0, 1}, Color_Green, .WORLD)
+	gizmos_renderer_add_line(rend, {0, 0}, {1, 0}, ColorRed, .WORLD)
+	gizmos_renderer_add_line(rend, {0, 0}, {0, 1}, ColorGreen, .WORLD)
 }
 
 

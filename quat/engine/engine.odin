@@ -24,13 +24,11 @@ Renderers :: struct {
 }
 
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
-DEFAULT_FONT_COLOR := q.Color_White
-DEFAULT_FONT_SIZE: f32 = 16
 _renderers_create :: proc(ren: ^Renderers, platform: ^q.Platform) {
 	q.bloom_renderer_create(&ren.bloom_renderer, platform)
 	q.sprite_renderer_create(&ren.sprite_renderer, platform)
 	q.gizmos_renderer_create(&ren.gizmos_renderer, platform)
-	q.ui_renderer_create(&ren.ui_renderer, platform, DEFAULT_FONT_COLOR, DEFAULT_FONT_SIZE)
+	q.ui_renderer_create(&ren.ui_renderer, platform)
 	q.color_mesh_renderer_create(&ren.color_mesh_renderer, platform)
 	q.tritex_renderer_create(&ren.tritex_renderer, platform)
 }
@@ -296,15 +294,15 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 
 
 	for k, v in cache.cached {
-		color := q.Color_Light_Blue
+		color := q.ColorSoftSkyBlue
 		if state.hovered_id == k {
-			color = q.Color_Yellow
+			color = q.ColorYellow
 		}
 		if state.focused_id == k {
-			color = q.Color_Violet
+			color = q.ColorSoftPink
 		}
 		if state.pressed_id == k {
-			color = q.Color_Red
+			color = q.ColorRed
 		}
 		q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)
 	}
@@ -350,7 +348,7 @@ _engine_debug_collider_gizmos :: proc(engine: ^Engine) {
 
 
 	for &collider, i in engine.scene.last_frame_colliders {
-		color := q.Color_Yellow if i == engine.hit.hit_collider_idx else q.Color_Light_Blue
+		color := q.ColorSoftYellow if i == engine.hit.hit_collider_idx else q.ColorLightBlue
 		add_collider_gizmos(&engine.renderers.gizmos_renderer, &collider.shape, color)
 	}
 }
@@ -512,7 +510,7 @@ draw_gizmos_coords :: proc() {
 draw_gizmos_circle :: proc(
 	center: Vec2,
 	radius: f32,
-	color: Color = q.Color_Red,
+	color: Color = q.ColorRed,
 	segments: int = 12,
 	draw_inner_lines: bool = false,
 ) {

@@ -156,12 +156,7 @@ ui_renderer_end_frame_and_prepare_buffers :: proc(
 	)
 }
 
-ui_renderer_create :: proc(
-	rend: ^UiRenderer,
-	platform: ^Platform,
-	default_font_color: Color,
-	default_font_size: f32,
-) {
+ui_renderer_create :: proc(rend: ^UiRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
 	rend.rect_pipeline.config = ui_rect_pipeline_config(

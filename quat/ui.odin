@@ -277,11 +277,11 @@ COVER_DIV :: Div {
 	width  = 1,
 	height = 1,
 }
-RED_BOX_DIV :: Div {
+RED_BOX_DIV := Div {
 	flags  = {.WidthPx, .HeightPx},
 	width  = 60,
 	height = 40,
-	color  = Color_Red,
+	color  = ColorSoftRed,
 }
 
 Padding :: struct {

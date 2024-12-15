@@ -24,7 +24,7 @@ PlatformSettings :: struct {
 PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
 	title              = "Dplatform",
 	initial_size       = {800, 600},
-	clear_color        = Color_Dark_Gray,
+	clear_color        = ColorBlack,
 	shaders_dir_path   = "./shaders",
 	default_font_path  = "./assets/marko_one_regular",
 	power_preference   = .LowPower,

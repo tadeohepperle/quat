@@ -104,7 +104,7 @@ color_mesh_add :: proc {
 color_mesh_add_vertices_single_color :: proc(
 	rend: ^ColorMeshRenderer,
 	positions: []Vec2,
-	color := Color_Red,
+	color: Color = ColorRed,
 ) {
 	v_count_before := u32(len(rend.vertices))
 
@@ -139,7 +139,7 @@ color_mesh_add_indexed_single_color :: proc(
 	rend: ^ColorMeshRenderer,
 	positions: []Vec2,
 	indices: []u32,
-	color := Color_Red,
+	color: Color = ColorRed,
 ) {
 	v_count_before := u32(len(rend.vertices))
 	for pos in positions {

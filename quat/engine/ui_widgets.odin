@@ -160,7 +160,7 @@ add_window :: proc(title: string, content: []Ui, window_width: f32 = 500) {
 	child_text(
 		window,
 		Text {
-			color = q.Color_Gray if res.hovered else q.Color_Black,
+			color = q.ColorLightGrey if res.hovered else q.ColorMiddleGrey,
 			font_size = 18.0,
 			str = title,
 			shadow = 0.5,
@@ -917,9 +917,9 @@ colored_triangle :: proc() -> Ui {
 	add_primitives :: proc(e: ^Empty, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
 		context.allocator = context.temp_allocator
 		verts: [dynamic]q.UiVertex = {
-			v({0, 0}, q.Color_Red),
-			v({100, 150}, q.Color_Dark_Cyan),
-			v({200, 0}, q.Color_Forest_Green),
+			v({0, 0}, q.ColorSoftBlue),
+			v({100, 150}, q.ColorSoftGreen),
+			v({200, 0}, q.ColorSoftPink),
 		}
 		inds: [dynamic]u32 = {0, 1, 2}
 		res: [dynamic]q.CustomPrimitives = {q.CustomUiMesh{verts[:], inds[:], 0}}

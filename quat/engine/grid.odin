@@ -6,7 +6,7 @@ draw_multi_level_grid :: proc() {
 	draw_grid(5, {1, 1, 1, 0.7})
 }
 
-draw_grid :: proc(grid_size: int = 1, color: q.Color = q.Color_White) {
+draw_grid :: proc(grid_size: int = 1, color: q.Color = q.ColorWhite) {
 	aspect := get_aspect_ratio()
 	camera := get_camera()
 	y_size := camera.height * 2
