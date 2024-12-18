@@ -177,7 +177,6 @@ color_gray :: proc(brightness: f32) -> Color {
 	return {b, b, b, 1.0}
 }
 
-
 color_to_wgpu :: proc(color: Color) -> wgpu.Color {
 	return wgpu.Color{f64(color.r), f64(color.g), f64(color.b), f64(color.a)}
 }
@@ -186,7 +185,7 @@ random_color :: proc() -> Color {
 	return color_from_hsv(Hsv{rand.float64() * 360.0, 1.0, 1.0})
 }
 
-pseudo_random_color :: proc(data: $T) -> Color {
+color_from_hash :: proc(data: $T) -> Color {
 	data := data
 	h := hash.fnv64((cast([^]byte)&data)[:size_of(T)])
 	state := rand.create(h)
