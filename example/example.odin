@@ -106,13 +106,13 @@ draggable_sprites_create :: proc() -> (res: DraggableSprites) {
 	ball := E.load_depth_sprite("./assets/ball_d_16.png", "./assets/t_2.png")
 	wall := E.load_depth_sprite("./assets/wall_d_16.png")
 	tower := E.load_depth_sprite("./assets/tower_d_16.png")
-	wall.color = q.Color_Dark_Goldenrod
+	wall.color = q.ColorDarkTeal
 	// tower.color = q.Color_Dark_Goldenrod
-	ball.color = q.Color_Aquamarine
+	ball.color = q.ColorSoftBlue
 	append(&res.sprites, ball)
 
 	ball.pos = {3, 2}
-	ball.color = q.Color_Blue_Violet
+	ball.color = q.ColorLightGrey
 	append(&res.sprites, ball)
 	append(&res.sprites, wall)
 	append(&res.sprites, tower)

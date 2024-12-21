@@ -3,7 +3,9 @@ package quat
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
+import "core:testing"
 import wgpu "vendor:wgpu"
 
 import "core:math/rand"
@@ -11,6 +13,11 @@ Error :: union {
 	string,
 }
 
+triangles_to_u32s :: proc(tris: []IdxTriangle) -> []u32 {
+	return slice.from_ptr(cast(^u32)raw_data(tris), len(tris) * 3)
+}
+
+IdxTriangle :: [3]u32
 Aabb :: struct {
 	min: Vec2,
 	max: Vec2,
@@ -63,6 +70,60 @@ Mat4 :: matrix[4, 4]f32
 UVec2 :: [2]u32
 UVec3 :: [3]u32
 IVec2 :: [2]i32
+
+
+@(test)
+transform_test :: proc(t: ^testing.T) {
+	// should work with any values for P and C
+	P := affine_create({0, 0}, {0, 2}, {0, 0}, {1, 2}) // parent
+	C := affine_create({0, 0}, {0, 1}, {1, 1}, {1, 2}) // child
+	for p in ([]Vec2{{0, 1}, {1, 0}, {-2, 3}}) {
+		testing.expect_value(
+			t,
+			affine_apply(affine_combine(P, C), p),
+			affine_apply(P, affine_apply(C, p)),
+		)
+	}
+}
+
+AFFINE2_UNIT :: Affine2 {
+	m      = {1, 0, 0, 1},
+	offset = {0, 0},
+}
+Affine2 :: struct {
+	m:      Mat2,
+	offset: Vec2,
+}
+// applied the affine transform to a point p, rotating and scaling it
+affine_apply :: proc(t: Affine2, p: Vec2) -> Vec2 {
+	return t.m * p + t.offset
+}
+// a 2d affine transform, applied to a point p by:    p' = mat * p + offset,
+// `apply(combine(P, C), p)   ===   apply(P, apply(C, p))`
+affine_combine :: proc(parent: Affine2, child: Affine2) -> Affine2 {
+	merged_mat := parent.m * child.m
+	merged_offset := parent.m * child.offset + parent.offset
+	return Affine2{merged_mat, merged_offset}
+}
+// creates a new affine transform from two offsetted vectors, mapping the `from` to the `to` when the 
+// resulting affine transform A is applied, so: 
+// - `to_root === affine_apply(A, from_root)`
+// - `to_head === affine_apply(A, from_head)`
+affine_create :: proc(from_root: Vec2, from_head: Vec2, to_root: Vec2, to_head: Vec2) -> Affine2 {
+	a := from_head - from_root
+	b := to_head - to_root
+	// the transformation matrix M that is needed to map from `a` to `b` needs to be found:
+	// goal: find M, such that Ma = b
+	// solution: M = A^-1 * B, where A and B are the ortho-bases for a and b
+	A := Mat2{a.x, -a.y, a.y, a.x}
+	B := Mat2{b.x, -b.y, b.y, b.x}
+	A_DET := A[0, 0] * A[1, 1] - A[1, 0] * A[0, 1]
+	A_INV := (f32(1.0) / A_DET) * Mat2{A[1, 1], -A[0, 1], -A[1, 0], A[0, 0]}
+	M := A_INV * B
+	diff := to_root - from_root
+	offset := (M * (-from_root)) + to_root
+	return Affine2{M, offset}
+}
 
 next_pow2_number :: proc(n: int) -> int {
 	next: int = 2
@@ -122,7 +183,7 @@ todo :: proc(loc := #caller_location) -> ! {
 }
 
 
-ElementOrNextFreeIdx :: struct($T: typeid) #raw_union where size_of(T) >= 4 {
+ElementOrNextFreeIdx :: struct($T: typeid) #raw_union {
 	element:       T,
 	next_free_idx: u32,
 }
@@ -161,8 +222,12 @@ slotmap_get :: #force_inline proc(self: SlotMap($T), handle: u32) -> T {
 	assert(handle < u32(len(self.slots)))
 	return self.slots[handle].element
 }
-// returns slice in tmp memory
-slotmap_to_slice :: proc(self: SlotMap($T)) -> []T {
+slotmap_access :: #force_inline proc(self: ^SlotMap($T), handle: u32) -> ^T {
+	assert(handle < u32(len(self.slots)))
+	return &self.slots[handle].element
+}
+// returns slice in tmp memory with only the taken slots in it, useful for calling a drop function on  all elements in the slotmap
+slotmap_to_tmp_slice :: proc(self: SlotMap($T)) -> []T {
 	empty_slot_indices := make(map[u32]Empty, allocator = context.temp_allocator)
 	elements := make([dynamic]T, 0, len(self.slots), allocator = context.temp_allocator)
 
@@ -180,3 +245,42 @@ slotmap_to_slice :: proc(self: SlotMap($T)) -> []T {
 	}
 	return elements[:]
 }
+
+
+// Range :: struct {
+// 	start: int,
+// 	end:   int,
+// }
+// SubBufferPool :: struct($T: typeid) {
+// 	free_list:     [dynamic]Range, // sorted by their start_idx, such that multiple can be joined later when freed.
+// 	occupied_list: [dynamic]Range,
+// 	data:          []T,
+// 	data_len:      int,
+// 	gpu_data:      DynamicBuffer(T),
+// }
+// sub_buffer_pool_alloc :: proc(pool: ^SubBufferPool($T), n_elements: int) -> (idx: int) {
+// 	assert(n_elements != 0)
+// 	if len(pool.free_list) != 0 {
+// 		// search free list first:
+
+// 	}
+// 	// otherwise just append to the end:
+// 	cap := len(pool.data)
+// 	// if backing data buffer too small, resize:
+// 	needed_len := pool.data_len + n_elements
+// 	if needed_len > cap {
+// 		next_cap := cap * 2
+// 		if next_cap < needed_len {
+// 			next_cap = next_pow2_number(needed_len)
+// 		}
+// 		next_cap = max(next_cap, 64)
+// 		new_data = make([]T, new_cap)
+// 		mem.copy_non_overlapping(
+// 			raw_data(new_data),
+// 			raw_data(pool.data),
+// 			pool.data_len * size_of(T),
+// 		)
+// 		delete(pool.data)
+// 		pool.data = new_data
+// 	}
+// }

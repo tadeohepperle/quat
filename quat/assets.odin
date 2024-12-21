@@ -12,7 +12,7 @@ TextureArrayHandle :: distinct u32
 FontHandle :: distinct u32
 
 DEFAULT_FONT :: FontHandle(0)
-DEFAULT_TEXTURE :: FontHandle(0)
+DEFAULT_TEXTURE :: TextureHandle(0)
 
 TextureSlot :: struct #raw_union {
 	texture:       Texture,
@@ -45,11 +45,11 @@ asset_manager_create :: proc(
 	assert(default_font_handle == 0) // is the first one
 }
 asset_manager_destroy :: proc(assets: ^AssetManager) {
-	textures := slotmap_to_slice(assets.textures)
+	textures := slotmap_to_tmp_slice(assets.textures)
 	for &texture in textures {
 		texture_destroy(&texture)
 	}
-	fonts := slotmap_to_slice(assets.fonts)
+	fonts := slotmap_to_tmp_slice(assets.fonts)
 	for &font in fonts {
 		font_destroy(&font)
 	}

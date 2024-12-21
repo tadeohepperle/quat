@@ -65,14 +65,15 @@ Engine :: struct {
 }
 
 Scene :: struct {
-	camera:                q.Camera,
-	top_level_ui_elements: [dynamic]q.Ui,
-	sprites:               [dynamic]q.Sprite,
-	depth_sprites:         [dynamic]q.DepthSprite,
-	tritex_meshes:         [dynamic]^q.TritexMesh,
-	tritex_textures:       q.TextureArrayHandle,
-	colliders:             [dynamic]q.Collider,
-	last_frame_colliders:  [dynamic]q.Collider,
+	camera:                  q.Camera,
+	top_level_ui_elements:   [dynamic]q.Ui,
+	sprites:                 [dynamic]q.Sprite,
+	depth_sprites:           [dynamic]q.DepthSprite,
+	tritex_meshes:           [dynamic]^q.TritexMesh,
+	tritex_textures:         q.TextureArrayHandle,
+	colliders:               [dynamic]q.Collider,
+	last_frame_colliders:    [dynamic]q.Collider,
+	skinned_render_commands: [dynamic]q.SkinnedRenderCommand,
 }
 
 HitInfo :: struct {
@@ -93,6 +94,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.top_level_ui_elements)
 	delete(scene.last_frame_colliders)
 	delete(scene.colliders)
+	delete(scene.skinned_render_commands)
 }
 
 _scene_clear :: proc(scene: ^Scene) {
@@ -102,6 +104,7 @@ _scene_clear :: proc(scene: ^Scene) {
 	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
 	clear(&scene.colliders)
 	clear(&scene.top_level_ui_elements)
+	clear(&scene.skinned_render_commands)
 }
 
 ENGINE: Engine
@@ -503,6 +506,9 @@ draw_gizmos_aabb :: proc(aabb: q.Aabb, color := GIZMOS_COLOR) {
 }
 draw_gizmos_line :: proc(from: Vec2, to: Vec2, color := GIZMOS_COLOR) {
 	q.gizmos_renderer_add_line(&ENGINE.gizmos_renderer, from, to, color)
+}
+draw_gizmos_triangle :: proc(a, b, c: Vec2, color := GIZMOS_COLOR) {
+	q.gizmos_renderer_add_triangle(&ENGINE.gizmos_renderer, a, b, c, color)
 }
 draw_gizmos_coords :: proc() {
 	q.gizmos_renderer_add_coordinates(&ENGINE.gizmos_renderer)

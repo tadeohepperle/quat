@@ -129,6 +129,20 @@ gizmos_renderer_add_circle :: #force_inline proc(
 	}
 }
 
+gizmos_renderer_add_triangle :: #force_inline proc(
+	rend: ^GizmosRenderer,
+	a, b, c: Vec2,
+	color := GIZMOS_COLOR,
+	mode: GizmosMode = {},
+) {
+	append(&rend.vertices[mode], GizmosVertex{a, color})
+	append(&rend.vertices[mode], GizmosVertex{b, color})
+	append(&rend.vertices[mode], GizmosVertex{b, color})
+	append(&rend.vertices[mode], GizmosVertex{c, color})
+	append(&rend.vertices[mode], GizmosVertex{c, color})
+	append(&rend.vertices[mode], GizmosVertex{a, color})
+}
+
 gizmos_renderer_add_line :: #force_inline proc(
 	rend: ^GizmosRenderer,
 	from: Vec2,
@@ -136,8 +150,8 @@ gizmos_renderer_add_line :: #force_inline proc(
 	color := GIZMOS_COLOR,
 	mode: GizmosMode = {},
 ) {
-	append(&rend.vertices[mode], GizmosVertex{pos = from, color = color})
-	append(&rend.vertices[mode], GizmosVertex{pos = to, color = color})
+	append(&rend.vertices[mode], GizmosVertex{from, color})
+	append(&rend.vertices[mode], GizmosVertex{to, color})
 }
 
 gizmos_renderer_add_aabb :: proc(
