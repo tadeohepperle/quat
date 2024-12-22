@@ -34,8 +34,6 @@ asset_manager_create :: proc(
 ) {
 	assets.device = device
 	assets.queue = queue
-	assets.textures = slotmap_create(Texture)
-	assets.fonts = slotmap_create(Font)
 
 	default_texture := _texture_create_1px_white(device, queue)
 	default_texture_handle := slotmap_insert(&assets.textures, default_texture)

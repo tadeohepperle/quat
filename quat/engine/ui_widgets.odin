@@ -618,9 +618,10 @@ display_value :: proc(values: ..any, pos: DisplayValuePos = .Bottom) {
 			absolute_unit_pos = UNIT_POS_TABLE[pos],
 			color = {0, 0, 0, 0.6},
 			padding = {8, 8, 8, 8},
+			border_radius = {8, 8, 8, 8},
 		},
 	)
-	child_text(upos_div, Text{str = str, font_size = 32.0, color = {1, 1, 1, 1}, shadow = 0.4})
+	child_text(upos_div, Text{str = str, font_size = 16.0, color = {1, 1, 1, 1}, shadow = 0.4})
 	add_ui(cover)
 }
 
@@ -1302,4 +1303,161 @@ text_edit :: proc(
 		}
 		return
 	}
+}
+
+
+triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
+	side_len: f32 = 240
+
+	//
+	// id := id if id != 0 else u64(uintptr(value))
+	// val: int = value^
+
+
+	// f := (f32(val) - f32(min)) / (f32(max) - f32(min))
+
+	text_to_show := fmt.tprintf("%.2f, %.2f, %.2f", weights.x, weights.y, weights.z)
+	id := id if id != 0 else u64(uintptr(weights))
+	res := q.ui_interaction(id)
+
+	A_REL_POS :: Vec2{0, 1}
+	B_REL_POS :: Vec2{1, 1}
+	C_REL_POS :: Vec2{0.5, 0}
+	cache: ^q.UiCache = &q.UI_CTX_PTR.cache
+	if res.pressed {
+		cached := cache.cached[id]
+		rel := (cache.cursor_pos - cached.pos) / cached.size
+		w := barycentric_coordinates_non_zero(A_REL_POS, B_REL_POS, C_REL_POS, rel)
+		weights^ = w
+		// text_to_show = fmt.tprintf("%f,%f", rel.x, rel.y)
+	}
+	knob_rel_pos := A_REL_POS * weights[0] + B_REL_POS * weights[1] + C_REL_POS * weights[2]
+	ui := div(Div{flags = {.MainAlignCenter, .CrossAlignCenter}, padding = {8, 8, 8, 8}, gap = 8})
+	tri_container := child_div(ui, Div{}, id)
+	child(
+		tri_container,
+		equilateral_triangle(side_len, THEME.surface_border if res.pressed else THEME.surface),
+	)
+	knob_zero_size_container := child_div(
+		tri_container,
+		Div {
+			flags = {
+				.ZeroSizeButInfiniteSizeForChildren,
+				.Absolute,
+				.MainAlignCenter,
+				.CrossAlignCenter,
+			},
+			absolute_unit_pos = knob_rel_pos,
+		},
+	)
+	child_div(
+		knob_zero_size_container,
+		Div {
+			flags = {.WidthPx, .HeightPx},
+			color = THEME.background,
+			width = 16,
+			height = 16,
+			border_radius = {8, 8, 8, 8},
+			border_width = {2, 2, 2, 2},
+			border_color = THEME.text if res.pressed else THEME.text_secondary,
+		},
+	)
+	child_text(
+		ui,
+		Text {
+			str = text_to_show,
+			color = q.ColorLightGrey,
+			font_size = THEME.font_size,
+			shadow = THEME.text_shadow,
+		},
+	)
+	return ui
+}
+
+barycentric_coordinates_non_zero :: proc(a, b, c, p: Vec2) -> Vec3 {
+	det := (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y)
+	u := ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / det
+	v := ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / det
+	w := 1 - u - v
+
+	if u >= 0 && v >= 0 && w >= 0 {
+		return Vec3{u, v, w}
+	}
+
+	closest := a
+	min_dist := max(f32)
+
+	edges := [3][2]Vec2{{a, b}, {b, c}, {c, a}}
+	for edge in edges {
+		proj := _project_to_segment(p, edge[0], edge[1])
+		dist := linalg.length2(p - proj)
+		if dist < min_dist {
+			min_dist = dist
+			closest = proj
+		}
+	}
+
+	u = ((b.y - c.y) * (closest.x - c.x) + (c.x - b.x) * (closest.y - c.y)) / det
+	v = ((c.y - a.y) * (closest.x - c.x) + (a.x - c.x) * (closest.y - c.y)) / det
+	w = 1 - u - v
+
+	return Vec3{u, v, w}
+
+	_project_to_segment :: proc(p, a, b: Vec2) -> Vec2 {
+		ab := Vec2{b.x - a.x, b.y - a.y}
+		ap := Vec2{p.x - a.x, p.y - a.y}
+		t := linalg.dot(ap, ab) / linalg.dot(ab, ab)
+		t = clamp(t, 0, 1)
+		return Vec2{a.x + t * ab.x, a.y + t * ab.y}
+	}
+}
+
+// just serves as a simple example of how you can integrate custom meshes into the ui
+equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
+	RoundedEquilateralTriangle :: struct {
+		side_length:  f32,
+		color:        Color,
+		border_color: Color,
+	}
+	widget_data := RoundedEquilateralTriangle {
+		side_length  = side_length,
+		color        = color,
+		border_color = q.ColorDarkTeal,
+	}
+	v :: proc(pos: Vec2, color: q.Color) -> q.UiVertex {
+		return q.UiVertex {
+			pos = pos,
+			color = color,
+			border_radius = {0, 0, 0, 0},
+			border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+		}
+	}
+	set_size :: proc(data: ^RoundedEquilateralTriangle, max_size: Vec2) -> Vec2 {
+		return Vec2{data.side_length, math.SQRT_THREE / 2 * data.side_length}
+	}
+	add_primitives :: proc(
+		data: ^RoundedEquilateralTriangle,
+		pos: Vec2,
+		size: Vec2,
+	) -> []q.CustomPrimitives {
+		// triangle:
+		//      
+		//      ^ c
+		//     / \
+		//    /   \
+		//   /     \
+		//  ---------
+		// a        b
+		//
+		//	
+		context.allocator = context.temp_allocator
+		a := pos + Vec2{0, size.y}
+		b := pos + size
+		c := pos + Vec2{size.x / 2, 0}
+		verts: [dynamic]q.UiVertex = {v(a, data.color), v(b, data.color), v(c, data.color)}
+		inds: [dynamic]u32 = {0, 1, 2}
+		res: [dynamic]q.CustomPrimitives = {q.CustomUiMesh{verts[:], inds[:], 0}}
+		return res[:]
+	}
+	return q.ui_custom(widget_data, set_size, add_primitives)
 }

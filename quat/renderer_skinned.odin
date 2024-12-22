@@ -7,11 +7,12 @@ import wgpu "vendor:wgpu"
 
 
 MAX_WEIGHTS :: 2
-
 SkinnedVertex :: struct {
-	pos: Vec2,
+	pos:     Vec2,
+	uv:      Vec2,
+	indices: [MAX_WEIGHTS]u32, // todo: would be sufficient as u16 or u8 probably, but there is no u8 or u16 in wgsl, so we would need bit masking and shifting there...
+	weights: [MAX_WEIGHTS]f32,
 }
-
 _SkinnedMeshGeometryHandle :: distinct u32
 _SkinnedMeshGeometry :: struct {
 	indices:         [dynamic]u32,
@@ -78,8 +79,9 @@ skinned_mesh_register :: proc(
 	triangles: []IdxTriangle,
 	vertices: []SkinnedVertex,
 	bone_count: int,
+	texture: TextureHandle,
 ) -> SkinnedMeshHandle {
-	geometry := _geometry_register(rend, triangles_to_u32s(triangles), vertices)
+	geometry := _geometry_register(rend, triangles_to_u32s(triangles), vertices, texture)
 	bones_buffer, bones_bind_group := _create_bones_buffer_and_bind_group(
 		rend.device,
 		rend.queue,
@@ -138,7 +140,7 @@ _geometry_register :: proc(
 	rend: ^SkinnedRenderer,
 	indices: []u32,
 	vertices: []SkinnedVertex,
-	texture: TextureHandle = DEFAULT_TEXTURE,
+	texture: TextureHandle,
 ) -> _SkinnedMeshGeometryHandle {
 	geom := _geometry_create(rend, indices, vertices, texture)
 	idx := slotmap_insert(&rend.geometries, geom)
@@ -228,8 +230,9 @@ skinned_renderer_destroy :: proc(rend: ^SkinnedRenderer) {
 	}
 }
 SkinnedRenderCommand :: struct {
-	pos:  Vec2,
-	mesh: SkinnedMeshHandle,
+	pos:   Vec2,
+	color: Color,
+	mesh:  SkinnedMeshHandle,
 }
 skinned_renderer_render :: proc(
 	rend: ^SkinnedRenderer,
@@ -252,10 +255,10 @@ skinned_renderer_render :: proc(
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_bind_group)
 		wgpu.RenderPassEncoderSetPushConstants(
 			render_pass,
-			{.Vertex},
+			{.Vertex, .Fragment},
 			0,
 			size_of(SkinnedRendererPushConstants),
-			&SkinnedRendererPushConstants{pos = command.pos},
+			&SkinnedRendererPushConstants{pos = command.pos, color = command.color},
 		)
 		wgpu.RenderPassEncoderSetIndexBuffer(
 			render_pass,
@@ -274,10 +277,13 @@ skinned_renderer_render :: proc(
 		wgpu.RenderPassEncoderDrawIndexed(render_pass, u32(len(geom.indices)), 1, 0, 0, 0)
 	}
 }
-
 // maybe move to instances in instanced rendering instead later...
 SkinnedRendererPushConstants :: struct {
-	pos: Vec2,
+	color: Color,
+	pos:   Vec2,
+	// todo: add rotation, scale, etc. maybe too... or add to instances directly...
+	// one instance buffer for the entire renderer that we write into might actually be easier than seperate draw calls all the time.
+	// requires that all bone transforms are also in one big storage buffer...
 }
 skinned_pipeline_config :: proc(
 	globals_layout: wgpu.BindGroupLayout,
@@ -289,10 +295,15 @@ skinned_pipeline_config :: proc(
 		vs_entry_point = "vs_main",
 		fs_shader = "skinned",
 		fs_entry_point = "fs_main",
-		topology = .LineList,
+		topology = .TriangleList,
 		vertex = {
-			ty_id = GizmosVertex,
-			attributes = {{format = .Float32x2, offset = offset_of(SkinnedVertex, pos)}},
+			ty_id = SkinnedVertex,
+			attributes = {
+				{format = .Float32x2, offset = offset_of(SkinnedVertex, pos)},
+				{format = .Float32x2, offset = offset_of(SkinnedVertex, uv)},
+				{format = .Uint32x2, offset = offset_of(SkinnedVertex, indices)},
+				{format = .Float32x2, offset = offset_of(SkinnedVertex, weights)},
+			},
 		},
 		instance = {},
 		bind_group_layouts = {
@@ -302,7 +313,7 @@ skinned_pipeline_config :: proc(
 		},
 		push_constant_ranges = {
 			wgpu.PushConstantRange {
-				stages = {.Vertex},
+				stages = {.Vertex, .Fragment},
 				start = 0,
 				end = size_of(SkinnedRendererPushConstants),
 			},
@@ -323,7 +334,7 @@ bones_storage_buffer_bind_group_layout_cached :: proc(
 				binding = 0,
 				visibility = {.Vertex},
 				buffer = wgpu.BufferBindingLayout {
-					type = .Storage,
+					type = .ReadOnlyStorage,
 					hasDynamicOffset = b32(false),
 					minBindingSize = 0,
 				},

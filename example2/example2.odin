@@ -32,8 +32,8 @@ main :: proc() {
 	strings.write_string(&text_to_edit, "I made this UI from scratch in Odin!")
 
 	background_color: Color = Color{0, 0.01, 0.02, 1.0}
-	color2: Color = q.Color_Beige
-	color3: Color = q.Color_Chartreuse
+	color2: Color = q.ColorSoftYellow
+	color3: Color = q.ColorSoftLightPeach
 	text_align: q.TextAlign
 
 	tonemapping: q.TonemappingMode
@@ -75,7 +75,7 @@ main :: proc() {
 				pos = {-3, 5},
 				size = {1, 2.2},
 				rotation = 0,
-				color = q.Color_White,
+				color = q.ColorWhite,
 			},
 		)
 

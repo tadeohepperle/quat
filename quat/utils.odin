@@ -2,6 +2,7 @@ package quat
 
 import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -75,8 +76,8 @@ IVec2 :: [2]i32
 @(test)
 transform_test :: proc(t: ^testing.T) {
 	// should work with any values for P and C
-	P := affine_create({0, 0}, {0, 2}, {0, 0}, {1, 2}) // parent
-	C := affine_create({0, 0}, {0, 1}, {1, 1}, {1, 2}) // child
+	P := affine_from_vectors({0, 0}, {0, 2}, {0, 0}, {1, 2}) // parent
+	C := affine_from_vectors({0, 0}, {0, 1}, {1, 1}, {1, 2}) // child
 	for p in ([]Vec2{{0, 1}, {1, 0}, {-2, 3}}) {
 		testing.expect_value(
 			t,
@@ -86,30 +87,43 @@ transform_test :: proc(t: ^testing.T) {
 	}
 }
 
-AFFINE2_UNIT :: Affine2 {
-	m      = {1, 0, 0, 1},
-	offset = {0, 0},
-}
-Affine2 :: struct {
-	m:      Mat2,
-	offset: Vec2,
-}
+AFFINE2_UNIT :: Affine2{{1, 0}, {0, 1}, {0, 0}}
+// Sadly, in Odin the Mat2 has align=16, but in wgsl mat2x2<f32> only has align=8, see https://www.w3.org/TR/WGSL/#alignment-and-size
+// But if we apply align(8) in Odin, we get segmentation faults when multiplying unaligned matrices. 
+// so here we opt to just split up the Mat2 into two columns instead, to get alignment down to 8, doing the 
+// matrix operations manually. Slower on CPU probably, but at least we waste less space in GPU memory.
+// 
+// actually this is a struct {m: Mat2, offset: Vec2}, but for alignment and math reasons, we just represent it as this here.
+Affine2 :: distinct [3]Vec2 // struct {m: Mat2, offset: Vec2},
 // applied the affine transform to a point p, rotating and scaling it
 affine_apply :: proc(t: Affine2, p: Vec2) -> Vec2 {
-	return t.m * p + t.offset
+	return _mat_mul(t, p) + t.z
 }
+// multiplies the matrix of the affine with a point
+@(private)
+_mat_mul :: #force_inline proc "contextless" (t: Affine2, p: Vec2) -> Vec2 {
+	return Vec2{t[0][0] * p.x + t[1][0] * p.y, t[0][1] * p.x + t[1][1] * p.y}
+}
+
 // a 2d affine transform, applied to a point p by:    p' = mat * p + offset,
 // `apply(combine(P, C), p)   ===   apply(P, apply(C, p))`
 affine_combine :: proc(parent: Affine2, child: Affine2) -> Affine2 {
-	merged_mat := parent.m * child.m
-	merged_offset := parent.m * child.offset + parent.offset
-	return Affine2{merged_mat, merged_offset}
+	return Affine2 {
+		_mat_mul(parent, child[0]),
+		_mat_mul(parent, child[1]),
+		_mat_mul(parent, child.z) + parent.z,
+	}
 }
 // creates a new affine transform from two offsetted vectors, mapping the `from` to the `to` when the 
 // resulting affine transform A is applied, so: 
 // - `to_root === affine_apply(A, from_root)`
 // - `to_head === affine_apply(A, from_head)`
-affine_create :: proc(from_root: Vec2, from_head: Vec2, to_root: Vec2, to_head: Vec2) -> Affine2 {
+affine_from_vectors :: proc(
+	from_root: Vec2,
+	from_head: Vec2,
+	to_root: Vec2,
+	to_head: Vec2,
+) -> Affine2 {
 	a := from_head - from_root
 	b := to_head - to_root
 	// the transformation matrix M that is needed to map from `a` to `b` needs to be found:
@@ -122,7 +136,18 @@ affine_create :: proc(from_root: Vec2, from_head: Vec2, to_root: Vec2, to_head: 
 	M := A_INV * B
 	diff := to_root - from_root
 	offset := (M * (-from_root)) + to_root
-	return Affine2{M, offset}
+	return Affine2{M[0], M[1], offset}
+}
+affine_from_rotation :: proc(
+	rotation: f32,
+	around: Vec2 = {0, 0},
+	offset := Vec2{0, 0},
+) -> Affine2 {
+	co := math.cos(rotation)
+	si := math.sin(rotation)
+	M := Mat2{co, -si, si, co}
+	offset := (M * -around) + around + offset
+	return Affine2{M[0], M[1], offset}
 }
 
 next_pow2_number :: proc(n: int) -> int {
@@ -190,14 +215,14 @@ ElementOrNextFreeIdx :: struct($T: typeid) #raw_union {
 SlotMap :: struct($T: typeid) {
 	slots:         [dynamic]ElementOrNextFreeIdx(T),
 	next_free_idx: u32, // there is a linked stack of next free indices starting here, that can be followed through the slots array until NO_FREE_IDX is hit
+	initialized:   bool, // set to true only once on first insert, to set the next_free_idx to NO_FREE_IDX instead of 0
 }
 NO_FREE_IDX: u32 : max(u32)
-slotmap_create :: proc($T: typeid, reserve_n: int = 4) -> (slotmap: SlotMap(T)) {
-	reserve(&slotmap.slots, reserve_n)
-	slotmap.next_free_idx = NO_FREE_IDX
-	return slotmap
-}
 slotmap_insert :: proc(self: ^SlotMap($T), element: T) -> (handle: u32) {
+	if !self.initialized {
+		self.next_free_idx = NO_FREE_IDX
+		self.initialized = true
+	}
 	if self.next_free_idx == NO_FREE_IDX {
 		// append a new element to end of elements array:
 		append(&self.slots, ElementOrNextFreeIdx(T){element = element})

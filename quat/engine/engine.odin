@@ -21,6 +21,7 @@ Renderers :: struct {
 	ui_renderer:         q.UiRenderer,
 	color_mesh_renderer: q.ColorMeshRenderer,
 	tritex_renderer:     q.TritexRenderer,
+	skinned_renderer:    q.SkinnedRenderer,
 }
 
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
@@ -31,6 +32,7 @@ _renderers_create :: proc(ren: ^Renderers, platform: ^q.Platform) {
 	q.ui_renderer_create(&ren.ui_renderer, platform)
 	q.color_mesh_renderer_create(&ren.color_mesh_renderer, platform)
 	q.tritex_renderer_create(&ren.tritex_renderer, platform)
+	q.skinned_renderer_create(&ren.skinned_renderer, platform)
 }
 _renderers_destroy :: proc(ren: ^Renderers) {
 	q.bloom_renderer_destroy(&ren.bloom_renderer)
@@ -39,6 +41,7 @@ _renderers_destroy :: proc(ren: ^Renderers) {
 	q.ui_renderer_destroy(&ren.ui_renderer)
 	q.color_mesh_renderer_destroy(&ren.color_mesh_renderer)
 	q.tritex_renderer_destroy(&ren.tritex_renderer)
+	q.skinned_renderer_destroy(&ren.skinned_renderer)
 }
 
 EngineSettings :: struct {
@@ -227,16 +230,16 @@ _engine_prepare :: proc(engine: ^Engine) {
 	)
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
+
+	// for the skinned mesh renderer, we currently let the user 
+	// do updates directly with `update_skinned_mesh_bones``
 }
 
 _engine_render :: proc(engine: ^Engine) {
-
-
 	// acquire surface texture:
 	surface_texture, surface_view, command_encoder := q.platform_start_render(&engine.platform)
 
 	// hdr render pass:
-
 	hdr_pass := q.platform_start_hdr_pass(engine.platform, command_encoder)
 	global_bind_group := engine.platform.globals.bind_group
 	asset_manager := engine.platform.asset_manager
@@ -249,7 +252,20 @@ _engine_render :: proc(engine: ^Engine) {
 		asset_manager,
 	)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
+	// todo: this is certainly stupid, because then we render all skinned meshes on top of sprites. 
+	//
+	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
+	// Solution 2: use depth writes for at least one of the two and render that first.
+	// 
+	// also consider, that we might need a second "shine through" skinned shader for stuff behind geometry.
 	q.sprite_renderer_render(&engine.sprite_renderer, hdr_pass, global_bind_group, asset_manager)
+	q.skinned_renderer_render(
+		&engine.skinned_renderer,
+		engine.scene.skinned_render_commands[:],
+		hdr_pass,
+		global_bind_group,
+		asset_manager,
+	)
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .WORLD)
 	q.ui_renderer_render(
 		&engine.ui_renderer,
@@ -421,6 +437,34 @@ is_shift_pressed :: #force_inline proc() -> bool {
 }
 is_ctrl_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_CONTROL]
+}
+create_skinned_mesh :: proc(
+	triangles: []q.IdxTriangle,
+	vertices: []q.SkinnedVertex,
+	bone_count: int,
+	texture: q.TextureHandle = q.DEFAULT_TEXTURE,
+) -> q.SkinnedMeshHandle {
+	return q.skinned_mesh_register(
+		&ENGINE.skinned_renderer,
+		triangles,
+		vertices,
+		bone_count,
+		texture,
+	)
+}
+destroy_skinned_mesh :: proc(handle: q.SkinnedMeshHandle) {
+	q.skinned_mesh_deregister(&ENGINE.skinned_renderer, handle)
+}
+// call this with a slice of bone transforms that has the same length as what the skinned mesh expects
+update_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) {
+	q.skinned_mesh_update_bones(&ENGINE.skinned_renderer, handle, bones)
+}
+draw_skinned_mesh :: proc(
+	handle: q.SkinnedMeshHandle,
+	pos: Vec2 = Vec2{0, 0},
+	color: Color = q.ColorWhite,
+) {
+	append(&ENGINE.scene.skinned_render_commands, q.SkinnedRenderCommand{pos, color, handle})
 }
 // expected to be 8bit RGBA png
 load_texture :: proc(

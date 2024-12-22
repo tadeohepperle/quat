@@ -91,7 +91,6 @@ interaction :: proc(id: $T, state: ^InteractionState(T)) -> Interaction {
 		just_unfocused = state.just_unfocused_id == id,
 	}
 }
-
 ActiveValue :: struct #raw_union {
 	slider_value_start_drag:     f32,
 	slider_value_start_drag_int: int,
@@ -290,6 +289,7 @@ Padding :: struct {
 	top:    f32,
 	bottom: f32,
 }
+BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED :: BorderWidth{-10, -10, -10, -10} // apply this to your vertices in custom meshes, it fixes otherwise translucent colors, because then the corner flags are not set 
 BorderWidth :: struct {
 	top:    f32,
 	left:   f32,
