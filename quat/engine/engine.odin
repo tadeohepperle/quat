@@ -77,6 +77,7 @@ Scene :: struct {
 	colliders:               [dynamic]q.Collider,
 	last_frame_colliders:    [dynamic]q.Collider,
 	skinned_render_commands: [dynamic]q.SkinnedRenderCommand,
+	annotations:             [dynamic]Annotation,
 }
 
 HitInfo :: struct {
@@ -98,6 +99,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.last_frame_colliders)
 	delete(scene.colliders)
 	delete(scene.skinned_render_commands)
+	delete(scene.annotations)
 }
 
 _scene_clear :: proc(scene: ^Scene) {
@@ -108,6 +110,7 @@ _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.colliders)
 	clear(&scene.top_level_ui_elements)
 	clear(&scene.skinned_render_commands)
+	clear(&scene.annotations)
 }
 
 ENGINE: Engine
@@ -183,13 +186,13 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 }
 
 _engine_end_frame :: proc(engine: ^Engine) {
-
 	// RESIZE AND END INPUT:
 	if engine.platform.screen_resized {
 		q.platform_resize(&engine.platform)
 		q.bloom_renderer_resize(&engine.bloom_renderer, engine.platform.screen_size)
 	}
-
+	// ADD SOME ADDITIONAL DRAW DATA:
+	_engine_draw_annotations(engine)
 	if engine.settings.debug_ui_gizmos {
 		_engine_debug_ui_gizmos(engine)
 	}
@@ -456,7 +459,7 @@ destroy_skinned_mesh :: proc(handle: q.SkinnedMeshHandle) {
 	q.skinned_mesh_deregister(&ENGINE.skinned_renderer, handle)
 }
 // call this with a slice of bone transforms that has the same length as what the skinned mesh expects
-update_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) {
+set_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) {
 	q.skinned_mesh_update_bones(&ENGINE.skinned_renderer, handle, bones)
 }
 draw_skinned_mesh :: proc(
@@ -703,4 +706,59 @@ access_last_frame_colliders :: proc() -> []q.Collider {
 }
 get_aspect_ratio :: proc() -> f32 {
 	return ENGINE.platform.screen_size_f32.x / ENGINE.platform.screen_size_f32.y
+}
+Annotation :: struct {
+	pos:       Vec2,
+	str:       string,
+	font_size: f32, // 10 = 0.1 units in world space
+	color:     Color,
+}
+draw_annotation :: proc(pos: Vec2, str: string, font_size: f32 = 12.0, color := q.ColorWhite) {
+	append(&ENGINE.scene.annotations, Annotation{pos, str, font_size, color})
+}
+_engine_draw_annotations :: proc(engine: ^Engine) {
+	if len(engine.scene.annotations) == 0 {
+		return
+	}
+	cover := div(q.COVER_DIV)
+	add_ui(cover)
+
+	screen_size := engine.platform.screen_size_f32
+	camera := engine.scene.camera
+	half_cam_world_size := Vec2{camera.height * screen_size.x / screen_size.y, camera.height}
+	culling_aabb := q.Aabb {
+		min = camera.focus_pos - half_cam_world_size - Vec2{1, 1},
+		max = camera.focus_pos + half_cam_world_size + Vec2{1, 1},
+	}
+	for ann in engine.scene.annotations {
+		// cull points that are likely offscreen anyway
+		if !q.aabb_contains(culling_aabb, ann.pos) {
+			continue
+		}
+
+		screen_pos := q.world_to_screen_pos(camera, ann.pos, screen_size)
+		screen_unit_pos := screen_pos / screen_size
+		div_at_pt := child_div(
+			cover,
+			Div {
+				flags = q.DivFlags {
+					.Absolute,
+					.MainAlignCenter,
+					.ZeroSizeButInfiniteSizeForChildren,
+					.CrossAlignCenter,
+				},
+				absolute_unit_pos = screen_unit_pos,
+			},
+		)
+		// red_box := child_div(div_at_pt, q.RED_BOX_DIV)
+		child_text(
+			div_at_pt,
+			Text {
+				color     = ann.color,
+				shadow    = 0.5,
+				font_size = 10.80 / camera.height * ann.font_size, // because UI layout assumes screen is 1080 px in height
+				str       = ann.str,
+			},
+		)
+	}
 }

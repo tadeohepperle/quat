@@ -11,12 +11,15 @@ var s_diffuse: sampler;
 struct SkinnedPushConstants {
     color: vec4<f32>,
     pos: vec2<f32>,
+    _pad: vec2<f32>, 
 }
 var<push_constant> push: SkinnedPushConstants;
 
 struct Affine2 {
     m: mat2x2<f32>,
     offset: vec2<f32>,
+    _pad: vec2<f32>, // because in Odin {m: Mat2, offeset: Vec2} has size 32 and align 16.
+    // we could get around that though later, optimizing the Odin side to not use Mat2 there anymore 
 }
 
 struct Vertex {

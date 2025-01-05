@@ -3,6 +3,7 @@ package quat
 import "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:math/linalg"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -22,6 +23,12 @@ IdxTriangle :: [3]u32
 Aabb :: struct {
 	min: Vec2,
 	max: Vec2,
+}
+aabb_extend :: proc(aabb: ^Aabb, p: Vec2) {
+	aabb.max.x = max(aabb.max.x, p.x)
+	aabb.max.y = max(aabb.max.y, p.y)
+	aabb.min.x = min(aabb.min.x, p.x)
+	aabb.min.y = min(aabb.min.y, p.y)
 }
 UNIT_AABB :: Aabb{Vec2{0, 0}, Vec2{1, 1}}
 // ensures that both x and y of the max are >= than the min
@@ -86,58 +93,81 @@ transform_test :: proc(t: ^testing.T) {
 		)
 	}
 }
-
-AFFINE2_UNIT :: Affine2{{1, 0}, {0, 1}, {0, 0}}
+AFFINE2_UNIT :: Affine2{{1, 0, 0, 1}, {0, 0}}
 // Sadly, in Odin the Mat2 has align=16, but in wgsl mat2x2<f32> only has align=8, see https://www.w3.org/TR/WGSL/#alignment-and-size
 // But if we apply align(8) in Odin, we get segmentation faults when multiplying unaligned matrices. 
-// so here we opt to just split up the Mat2 into two columns instead, to get alignment down to 8, doing the 
-// matrix operations manually. Slower on CPU probably, but at least we waste less space in GPU memory.
 // 
-// actually this is a struct {m: Mat2, offset: Vec2}, but for alignment and math reasons, we just represent it as this here.
-Affine2 :: distinct [3]Vec2 // struct {m: Mat2, offset: Vec2},
-// applied the affine transform to a point p, rotating and scaling it
-affine_apply :: proc(t: Affine2, p: Vec2) -> Vec2 {
-	return _mat_mul(t, p) + t.z
-}
-// multiplies the matrix of the affine with a point
-@(private)
-_mat_mul :: #force_inline proc "contextless" (t: Affine2, p: Vec2) -> Vec2 {
-	return Vec2{t[0][0] * p.x + t[1][0] * p.y, t[0][1] * p.x + t[1][1] * p.y}
+// so we have 8 useless bytes of padding at the end, meh. 
+// In the future we might optimize this using not the builtin Mat2, wgpu will be happy too.
+Affine2 :: struct {
+	m:      Mat2,
+	offset: Vec2,
 }
 
-// a 2d affine transform, applied to a point p by:    p' = mat * p + offset,
+affine_mul :: proc(t: Affine2, w: f32) -> Affine2 {
+	return Affine2{w * t.m, w * t.offset}
+}
+
+affine_sum :: proc(affines: ..Affine2) -> (res: Affine2) {
+	for a in affines {
+		res.m += a.m
+		res.offset += a.offset
+	}
+	return res
+}
+
+
+// applied the affine transform to a point p, rotating and scaling it
+// 2d affine transformation can be applied on any point p by p' = mat * p + offset,
+affine_apply :: proc(t: Affine2, p: Vec2) -> Vec2 {
+	return t.m * p + t.offset
+}
+
+AffineCombineOptions :: struct {
+	no_scaling_from_parent: bool,
+}
+// compute child affine transform given parent transform
 // `apply(combine(P, C), p)   ===   apply(P, apply(C, p))`
 affine_combine :: proc(parent: Affine2, child: Affine2) -> Affine2 {
-	return Affine2 {
-		_mat_mul(parent, child[0]),
-		_mat_mul(parent, child[1]),
-		_mat_mul(parent, child.z) + parent.z,
-	}
+	return Affine2{parent.m * child.m, parent.m * child.offset + parent.offset}
 }
+
 // creates a new affine transform from two offsetted vectors, mapping the `from` to the `to` when the 
 // resulting affine transform A is applied, so: 
 // - `to_root === affine_apply(A, from_root)`
 // - `to_head === affine_apply(A, from_head)`
+//
+// solution: M = A^-1 * B  
 affine_from_vectors :: proc(
 	from_root: Vec2,
 	from_head: Vec2,
 	to_root: Vec2,
 	to_head: Vec2,
-) -> Affine2 {
+) -> (
+	res: Affine2,
+) {
 	a := from_head - from_root
 	b := to_head - to_root
-	// the transformation matrix M that is needed to map from `a` to `b` needs to be found:
-	// goal: find M, such that Ma = b
-	// solution: M = A^-1 * B, where A and B are the ortho-bases for a and b
+
 	A := Mat2{a.x, -a.y, a.y, a.x}
-	B := Mat2{b.x, -b.y, b.y, b.x}
 	A_DET := A[0, 0] * A[1, 1] - A[1, 0] * A[0, 1]
 	A_INV := (f32(1.0) / A_DET) * Mat2{A[1, 1], -A[0, 1], -A[1, 0], A[0, 0]}
-	M := A_INV * B
-	diff := to_root - from_root
-	offset := (M * (-from_root)) + to_root
-	return Affine2{M[0], M[1], offset}
+
+	// if true, the scaling only applies in the direction of the bone, not sideways to it.
+	// if false, a bone being made longer, makes its hull also thicker.
+	NO_SIDE_SCALING :: true
+	when NO_SIDE_SCALING {
+		a_len := linalg.length(a)
+		b_len := linalg.length(b)
+
+		len_factor := a_len / b_len
+		B := Mat2{b.x * len_factor, -b.y, b.y * len_factor, b.x}
+	} else {
+		B := Mat2{b.x, -b.y, b.y, b.x}
+	}
+	return Affine2{A_INV * B, (res.m * (-from_root)) + to_root}
 }
+// todo: affine_from_rotation does not support NO_SIDE_SCALING yet
 affine_from_rotation :: proc(
 	rotation: f32,
 	around: Vec2 = {0, 0},
@@ -145,9 +175,23 @@ affine_from_rotation :: proc(
 ) -> Affine2 {
 	co := math.cos(rotation)
 	si := math.sin(rotation)
-	M := Mat2{co, -si, si, co}
-	offset := (M * -around) + around + offset
-	return Affine2{M[0], M[1], offset}
+
+	res: Affine2
+	res.m = Mat2{co, -si, si, co}
+	res.offset = (res.m * -around) + around + offset
+	return res
+}
+
+affine_around_and_offset :: proc(affine: Affine2) -> (around: Vec2, offset: Vec2) {
+	I := Mat2{1, 0, 0, 1} // Identity matrix
+	M := affine.m
+	inv_I_minus_M := linalg.inverse(I - M) // Invert (I - res.m)
+
+	// Assume a point (e.g., Vec2{0, 0}) is `offset` to start solving
+	around = inv_I_minus_M * affine.offset
+	offset = affine.offset - (I - M) * around
+	return around, offset
+
 }
 
 next_pow2_number :: proc(n: int) -> int {
@@ -159,8 +203,8 @@ next_pow2_number :: proc(n: int) -> int {
 		next *= 2
 	}
 }
-lerp :: proc(a: $T, b: T, s: f32) -> T {
-	return a + (b - a) * s
+lerp :: proc "contextless" (a: $T, b: T, t: f32) -> T {
+	return a + (b - a) * t
 }
 
 Empty :: struct {}
@@ -257,7 +301,7 @@ slotmap_to_tmp_slice :: proc(self: SlotMap($T)) -> []T {
 	elements := make([dynamic]T, 0, len(self.slots), allocator = context.temp_allocator)
 
 	// follow the linked list to collect the indices of all empty slots:
-	next_free_idx := self.next_free_idx
+	next_free_idx := self.next_free_idx if self.initialized else NO_FREE_IDX
 	for next_free_idx != NO_FREE_IDX {
 		empty_slot_indices[next_free_idx] = Empty{}
 		next_free_idx = self.slots[next_free_idx].next_free_idx

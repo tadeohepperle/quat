@@ -11,7 +11,9 @@ DEFAULT_CAMERA_CONTROLLER_SETTINGS := CameraSettings {
 	lerp_speed         = 40.0,
 	zoom_sensitivity   = 0.24,
 	scroll_sensitivity = 0.2,
-	wasd_move_speed    = 20,
+	move_speed         = 1.0, // is multiplied with current height, to have same speed on different scales
+	move_with_wasd     = true,
+	move_with_arrows   = true,
 }
 
 CameraSettings :: struct {
@@ -21,7 +23,9 @@ CameraSettings :: struct {
 	lerp_speed:         f32,
 	zoom_sensitivity:   f32,
 	scroll_sensitivity: f32,
-	wasd_move_speed:    f32,
+	move_speed:         f32,
+	move_with_wasd:     bool,
+	move_with_arrows:   bool,
 }
 
 CameraController :: struct {
@@ -76,10 +80,17 @@ camera_controller_update :: proc(cam: ^CameraController) {
 
 	dt := get_delta_secs()
 
-	move := get_wasd()
-	if cam.settings.wasd_move_speed != 0 && move != {0, 0} {
-		cam.target.focus_pos += move * cam.settings.wasd_move_speed * dt
+	move: Vec2
+	if cam.settings.move_with_wasd {
+		move += get_wasd()
 	}
+	if cam.settings.move_with_arrows {
+		move += get_arrows()
+	}
+	if cam.settings.move_speed != 0 && move != {0, 0} {
+		cam.target.focus_pos += move * cam.settings.move_speed * cam.current.height * dt
+	}
+
 
 	s := dt * cam.settings.lerp_speed
 	cam.current.focus_pos = q.lerp(cam.current.focus_pos, cam.target.focus_pos, s)
