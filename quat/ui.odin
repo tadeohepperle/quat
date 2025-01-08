@@ -167,6 +167,7 @@ CachedElement :: struct {
 	color:                Color,
 	border_color:         Color,
 	user_data:            CachedUserData,
+	clipped_to:           Maybe(Aabb),
 }
 
 ComputedGlyph :: struct {
@@ -524,6 +525,12 @@ ui_ctx_start_frame :: proc(platform: ^Platform) {
 				cache.cursor_pos.y >= cached.pos.y &&
 				cache.cursor_pos.x <= cached.pos.x + cached.size.x &&
 				cache.cursor_pos.y <= cached.pos.y + cached.size.y
+
+			// for elements that are clipped by parent, the cursor also needs to be in the clipping rect! (hovering a clipped region should not trigger anything)
+			if clipped_to, ok := cached.clipped_to.(Aabb); cursor_in_bounds && ok {
+				cursor_in_bounds &= aabb_contains(clipped_to, cache.cursor_pos)
+			}
+
 			if cursor_in_bounds {
 				highest_z = cached.z_info
 				hovered_id = id
@@ -1301,6 +1308,7 @@ build_ui_batches_and_attach_z_info :: proc(
 			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
 			cached := &b.cached[base.id]
 			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer}
+			cached.clipped_to = b.current.clipped_to
 		}
 		b.traversal_idx += 1
 		write := &b.batches.primitives

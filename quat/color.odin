@@ -46,13 +46,15 @@ color_from_hex :: proc(hex: string) -> Color {
 		return 16 * hex_digit_value(rune(s[start])) + hex_digit_value(rune(s[start + 1]))
 	}
 
-	if len(hex) != 7 || hex[0] != '#' {
-		fmt.panicf("Hex Color is expected to start with '#' and have 7 characters, got: %s", hex)
+	offset: int = 1 if hex[0] == '#' else 0
+	if len(hex) - offset != 6 {
+		fmt.panicf("Hex color should be formatted `#798B9C` or `798b9c`, got: %s", hex)
 	}
 
-	r := color_map_to_srgb(parse_hex_pair(hex, 1))
-	g := color_map_to_srgb(parse_hex_pair(hex, 3))
-	b := color_map_to_srgb(parse_hex_pair(hex, 5))
+
+	r := color_map_to_srgb(parse_hex_pair(hex, offset))
+	g := color_map_to_srgb(parse_hex_pair(hex, offset + 2))
+	b := color_map_to_srgb(parse_hex_pair(hex, offset + 4))
 	return Color{r, g, b, 1.0}
 }
 
