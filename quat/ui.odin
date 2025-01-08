@@ -91,15 +91,42 @@ interaction :: proc(id: $T, state: ^InteractionState(T)) -> Interaction {
 		just_unfocused = state.just_unfocused_id == id,
 	}
 }
-ActiveValue :: struct #raw_union {
-	slider_value_start_drag:     f32,
-	slider_value_start_drag_int: int,
-	window_pos_start_drag:       Vec2,
+
+ui_get_cached :: proc(
+	id: UiId,
+	$USER_DATA_TY: typeid,
+) -> (
+	pos, size: Vec2,
+	user_data: ^USER_DATA_TY,
+	ok: bool,
+) where size_of(CachedUserData) >=
+	size_of(USER_DATA_TY) {
+	cached, _ok := &UI_CTX_PTR.cache.cached[id]
+	if !_ok {
+		return {}, {}, nil, false
+	}
+	user_data = cast(^USER_DATA_TY)(&cached.user_data)
+	return cached.pos, cached.size, user_data, true
 }
 
-cache_any_pressed_or_focused :: proc(cache: ^UiCache, ids: []UiId) -> bool {
+ui_get_cached_no_user_data :: proc(id: UiId) -> (pos, size: Vec2, ok: bool) {
+	cached, _ok := &UI_CTX_PTR.cache.cached[id]
+	if !_ok {
+		return {}, {}, false
+	}
+	return cached.pos, cached.size, true
+}
+
+// cursor pos scaled to the UI layout extent {1920,1080}
+ui_cursor_pos :: proc() -> (cursor_pos: Vec2, cursor_pos_start_press: Vec2) {
+	return UI_CTX_PTR.cache.cursor_pos, UI_CTX_PTR.cache.cursor_pos_start_press
+}
+ui_layout_extent :: proc() -> Vec2 {
+	return UI_CTX_PTR.cache.layout_extent
+}
+ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	for id in ids {
-		if cache.state.pressed_id == id || cache.state.focused_id == id {
+		if UI_CTX_PTR.cache.state.pressed_id == id || UI_CTX_PTR.cache.state.focused_id == id {
 			return true
 		}
 	}
@@ -111,7 +138,6 @@ UiCache :: struct {
 	cached:                 map[UiId]CachedElement,
 	state:                  InteractionState(UiId),
 	cursor_pos_start_press: Vec2,
-	active_value:           ActiveValue,
 	platform:               ^Platform,
 	cursor_pos:             Vec2, // (scaled to reference cursor pos)
 	layout_extent:          Vec2,
@@ -130,6 +156,7 @@ z_gte :: #force_inline proc "contextless" (a: ZInfo, b: ZInfo) -> bool {
 	return transmute(u64)a >= transmute(u64)b
 }
 
+CachedUserData :: [4]i64 // 32 bytes of custom data that can be used to store custom values
 CachedElement :: struct {
 	pos:                  Vec2,
 	size:                 Vec2,
@@ -138,7 +165,9 @@ CachedElement :: struct {
 	pointer_pass_through: bool,
 	color:                Color,
 	border_color:         Color,
+	user_data:            CachedUserData,
 }
+
 ComputedGlyph :: struct {
 	pos:  Vec2,
 	size: Vec2,
@@ -191,10 +220,9 @@ UiGlyphInstance :: struct {
 }
 
 UiElementBase :: struct {
-	pos:    Vec2, // computed: in layout (`set_position`)
-	size:   Vec2, // computed: in layout (`set_size`)
-	z_info: ZInfo, // computed: parent.z + 1
-	id:     UiId,
+	pos:  Vec2, // computed: in layout (`set_position`)
+	size: Vec2, // computed: in layout (`set_size`)
+	id:   UiId,
 }
 
 TextElement :: struct {
@@ -360,7 +388,11 @@ Ui :: union {
 // nested function call is just less convenient.
 // The other alternative would be to use the context.user_ptr of Odin, but in effect that
 // is the same, harder to control and even easier to fuck up.
+@(private = "file")
 UI_CTX_PTR: ^UiCtx
+set_global_ui_ctx_ptr :: proc(ptr: ^UiCtx) {
+	UI_CTX_PTR = ptr
+}
 UiCtx :: struct {
 	// all buffers here are fixed size, allocated once because any reallocation could
 	// fuck up the internal ptrs in the childrens arrays!
@@ -526,8 +558,8 @@ ui_end_frame :: proc(
 	for ui in top_level_elements {
 		layout(ui, max_size) // warning! uses the global context at the moment
 	}
-	build_ui_batches_and_attach_z_info(top_level_elements, out_batches)
-	update_ui_cache(delta_secs) // important! do this after z-info is attached to divs, done in `build_ui_batches_and_attach_z_info`
+	update_ui_cache(delta_secs)
+	build_ui_batches_and_attach_z_info(top_level_elements, out_batches, &UI_CTX_PTR.cache.cached)
 	return
 }
 
@@ -1089,16 +1121,14 @@ merge_line_metrics_to_max :: proc(a: LineMetrics, b: LineMetrics) -> (res: LineM
 // SECTION: Batching and other stuff
 // /////////////////////////////////////////////////////////////////////////////
 
-/// Note: also modifies the Ui-Elements in the UI_Memory to achieve lerping from the last frame.
+// Note: also modifies the Ui-Elements in the UI_Memory to achieve lerping from the last frame.
+// Does NOT attach z-info, this is done later during batching. But update_ui_cache needs to be called
+// before batching, because during batching primitives are created, so color lerping has to happen before.
 update_ui_cache :: proc(delta_secs: f32) {
 	@(thread_local)
 	generation: int
-	@(thread_local)
-	remove_queue: [dynamic]UiId
 
 	DIV_DEFAULT_LERP_SPEED :: 5.0
-
-	clear(&remove_queue)
 	generation += 1
 
 	cache := &UI_CTX_PTR.cache
@@ -1106,15 +1136,16 @@ update_ui_cache :: proc(delta_secs: f32) {
 		if div.id == NO_ID {
 			continue
 		}
+		// Todo: this logic could be more elegant, especially since Laytans map-entry PR in now merged in Odin (2025-01-08)
 		old_cached, has_old_cached := cache.cached[div.id]
 		new_cached: CachedElement = CachedElement {
 			pos        = div.pos,
 			size       = div.size,
-			z_info     = div.z_info,
 			generation = generation,
 		}
 		new_cached.pointer_pass_through = .PointerPassThrough in div.flags
 		if has_old_cached {
+			new_cached.user_data = old_cached.user_data
 			lerp_style := .LerpStyle in div.flags
 			lerp_transform := .LerpTransform in div.flags
 			s: f32 = --- // lerp factor
@@ -1141,6 +1172,9 @@ update_ui_cache :: proc(delta_secs: f32) {
 				new_cached.size = lerp(old_cached.size, div.size, s)
 				div.size = new_cached.size
 			}
+		} else {
+			new_cached.color = div.color
+			new_cached.border_color = div.border_color
 		}
 		cache.cached[div.id] = new_cached
 	}
@@ -1152,7 +1186,6 @@ update_ui_cache :: proc(delta_secs: f32) {
 		cache.cached[text.id] = CachedElement {
 			pos                  = text.pos,
 			size                 = text.size,
-			z_info               = text.z_info,
 			generation           = generation,
 			pointer_pass_through = text.pointer_pass_through,
 		}
@@ -1165,7 +1198,6 @@ update_ui_cache :: proc(delta_secs: f32) {
 		cache.cached[custom.id] = CachedElement {
 			pos        = custom.pos,
 			size       = custom.size,
-			z_info     = custom.z_info,
 			generation = generation,
 		}
 	}
@@ -1173,11 +1205,8 @@ update_ui_cache :: proc(delta_secs: f32) {
 	// delete old elements from the cache
 	for k, &v in cache.cached {
 		if v.generation != generation {
-			append(&remove_queue, k)
+			delete_key(&cache.cached, k)
 		}
-	}
-	for k in remove_queue {
-		delete_key(&cache.cached, k)
 	}
 }
 
@@ -1188,7 +1217,11 @@ PreBatch :: struct {
 	handle:  TextureOrFontHandle,
 }
 // writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
-build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches: ^UiBatches) {
+build_ui_batches_and_attach_z_info :: proc(
+	top_level_elements: []Ui,
+	out_batches: ^UiBatches,
+	cached: ^map[UiId]CachedElement,
+) {
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {
@@ -1197,18 +1230,19 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		clipped_to: Maybe(Aabb),
 	}
 	CurrentBatch :: struct {
-		start_idx: int, // index into glyph instances or (vertex) indices array
-		kind:      BatchKind,
-		handle:    TextureOrFontHandle,
+		start_idx:  int, // index into glyph instances or (vertex) indices array
+		kind:       BatchKind,
+		handle:     TextureOrFontHandle,
+		clipped_to: Maybe(Aabb),
 	}
 	// a new z region is added for each top level element and for each child div with a non-zero z-layer (offset)
 	Batcher :: struct {
-		current_z_layer:    u32,
-		traversal_idx:      u32,
-		z_regions:          [dynamic]ZRegion, // kept sorted by region.z_info.layer
-		batches:            ^UiBatches,
-		current:            CurrentBatch,
-		current_clipped_to: Maybe(Aabb), // todo! clipping not implemented yet!
+		current_z_layer: u32,
+		traversal_idx:   u32,
+		z_regions:       [dynamic]ZRegion, // kept sorted by region.z_info.layer
+		batches:         ^UiBatches,
+		current:         CurrentBatch,
+		cached:          ^map[UiId]CachedElement,
 	}
 	_insert_z_region :: proc(z_regions: ^[dynamic]ZRegion, region: ZRegion) {
 		// search from the back to the front, adding when larger or equal to the highest layer up to now:
@@ -1236,19 +1270,21 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		}
 		return Batcher{batches = out_batches, z_regions = z_regions}
 	}
-
-	// print("++++++++++++++++++++++++++++++++++++++++++++++++")
-
 	// Note: currently no sorting by z here
 	b: Batcher = _batcher_create(top_level_elements, out_batches)
+	b.cached = cached
 	idx := 0
 	for ; idx < len(b.z_regions); idx += 1 {
 		reg: ZRegion = b.z_regions[idx]
 		b.current_z_layer = reg.z_layer
-		b.current_clipped_to = reg.clipped_to // note: Aabb{{0,0}, {0,0}} means no clipping
+		if reg.clipped_to != b.current.clipped_to {
+			_flush_and_apply_new_clipping_rect(&b, reg.clipped_to)
+		}
 		_add(&b, reg.ui)
 	}
 	_flush(&b)
+	return
+
 	// Idea: we should actually abuse the fact that most text is on the very top and it happens 
 	// super rarely that there are any rects over text
 	_clear_batches :: proc(batches: ^UiBatches) {
@@ -1257,12 +1293,14 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		clear(&batches.primitives.glyphs_instances)
 		clear(&batches.batches)
 	}
-
-
 	// Note: currently no sorting or z-index, just add children recursively in order.
 	_add :: proc(b: ^Batcher, ui: Ui) {
 		base := _element_base_ptr(ui)
-		base.z_info = ZInfo{b.traversal_idx, b.current_z_layer}
+		if base.id != NO_ID {
+			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
+			cached := &b.cached[base.id]
+			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer}
+		}
 		b.traversal_idx += 1
 		write := &b.batches.primitives
 		switch e in ui {
@@ -1270,16 +1308,15 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 			_flush_if_mismatch(b, .Rect, TextureOrFontHandle(e.texture.handle))
 			_add_div_rect(e, &write.vertices, &write.indices)
 
-
-			prev_clip: Maybe(Aabb) = ---
+			prev_clip: Maybe(Aabb) = --- // stored in stack frame only for clipping rects to restore this value after children are done
 			all_children_are_clipped := 0
-			clips_content: bool = .ClipContent in e.flags
+			clips_content: bool = .ClipContent in e.flags && len(e.children) != 0
 			if clips_content {
-				prev_clip = b.current_clipped_to // save to restore later, when done with children
+				prev_clip = b.current.clipped_to // save to restore later, when done with children
 				div_aabb := Aabb{base.pos, base.pos + base.size}
-				if current_clip, ok := b.current_clipped_to.(Aabb); !ok {
+				if current_clip, ok := b.current.clipped_to.(Aabb); !ok {
 					// no clipping currently applied, set the clipping to the area covered by this div
-					b.current_clipped_to = div_aabb
+					_flush_and_apply_new_clipping_rect(b, div_aabb)
 				} else {
 					intersection_clip, has_overlap := aabb_intersection(div_aabb, current_clip)
 					if !has_overlap {
@@ -1291,19 +1328,19 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 						// so it is like the div would not clip anything at all.
 						clips_content = false
 					} else {
-						b.current_clipped_to = intersection_clip
+						_flush_and_apply_new_clipping_rect(b, intersection_clip)
 					}
 				}
 			}
 
 			// add primitives for all children, pushing children with a higher z layer back in the queue of handled ZRegions.
 			for ch, i in e.children {
-				if div, ok := ch.(^DivElement); ok && div.z_layer != 0 {
+				if child_div, ok := ch.(^DivElement); ok && child_div.z_layer != 0 {
 					// handle this child later (on top of the other ui elements with lower z)
-					child_z_layer := div.z_layer + b.current_z_layer
+					child_z_layer := child_div.z_layer + b.current_z_layer
 					_insert_z_region(
 						&b.z_regions,
-						ZRegion{ch, child_z_layer, b.current_clipped_to},
+						ZRegion{ch, child_z_layer, b.current.clipped_to},
 					)
 				} else {
 					// add the batches for this child and all of its children recursively
@@ -1313,7 +1350,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 
 			// restore the clipping rect that was present before:
 			if clips_content {
-				b.current_clipped_to = prev_clip
+				_flush_and_apply_new_clipping_rect(b, prev_clip)
 			}
 		case ^TextElement:
 			_flush_if_mismatch(b, .Glyph, TextureOrFontHandle(e.font))
@@ -1357,6 +1394,12 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		}
 	}
 
+	_flush_and_apply_new_clipping_rect :: proc(b: ^Batcher, new_clipping_rect: Maybe(Aabb)) {
+		_flush(b)
+		b.current.start_idx = _idx_for_batch_kind(&b.batches.primitives, b.current.kind)
+		b.current.clipped_to = new_clipping_rect
+	}
+
 	_flush_if_mismatch :: proc(b: ^Batcher, kind: BatchKind, handle: TextureOrFontHandle) {
 		if b.current.kind != kind || b.current.handle != handle {
 			_flush(b)
@@ -1375,7 +1418,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 					end_idx = end_idx,
 					kind = b.current.kind,
 					handle = b.current.handle,
-					clipped_to = b.current_clipped_to,
+					clipped_to = b.current.clipped_to,
 				},
 			)
 		}
@@ -1398,7 +1441,7 @@ _add_div_rect :: #force_inline proc(
 	vertices: ^[dynamic]UiVertex,
 	indices: ^[dynamic]u32,
 ) {
-	if e.color == {0, 0, 0, 0} || e.size.x == 0 || e.size.y == 0 {
+	if e.color == 0 || e.size.x <= 0 || e.size.y <= 0 {
 		return
 	}
 	start_v := u32(len(vertices))

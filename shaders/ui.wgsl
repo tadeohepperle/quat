@@ -43,6 +43,7 @@ fn vs_rect(vertex: Vertex) -> VsRectOut {
     if (vertex.flags & BOTTOM_VERTEX) == 0u {
         rel_pos.y *= -1.;
     }
+    out.uv = vertex.uv;
     out.rel_pos = rel_pos;
 	out.size = vertex.size;
 	out.color = vertex.color;

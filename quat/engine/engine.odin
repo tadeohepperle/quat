@@ -120,16 +120,15 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	engine.settings = settings
 	q.platform_create(&engine.platform, settings.platform)
 	engine.ui_ctx = q.ui_ctx_create(&engine.platform)
-	q.UI_CTX_PTR = &engine.ui_ctx
+	q.set_global_ui_ctx_ptr(&engine.ui_ctx)
 	_renderers_create(&engine.renderers, &engine.platform)
 	_scene_create(&engine.scene)
 }
-
 _engine_destroy :: proc(engine: ^Engine) {
 	q.platform_destroy(&engine.platform)
 	_renderers_destroy(&engine.renderers)
 	_scene_destroy(&engine.scene)
-	q.UI_CTX_PTR = nil
+	q.set_global_ui_ctx_ptr(nil)
 	q.ui_ctx_drop(&engine.ui_ctx)
 }
 
@@ -381,6 +380,10 @@ get_mouse_btn :: proc(btn: q.MouseButton = .Left) -> q.PressFlags {
 get_scroll :: proc() -> f32 {
 	return ENGINE.platform.scroll
 }
+// characters typed this frame
+get_input_chars :: proc() -> []rune {
+	return ENGINE.platform.chars[:ENGINE.platform.chars_len]
+}
 get_hit :: #force_inline proc() -> HitInfo {
 	return ENGINE.hit
 }
@@ -435,11 +438,23 @@ is_key_just_pressed :: #force_inline proc(key: q.Key) -> bool {
 is_key_just_repeated :: #force_inline proc(key: q.Key) -> bool {
 	return .JustRepeated in ENGINE.platform.keys[key]
 }
+is_key_just_pressed_or_repeated :: #force_inline proc(key: q.Key) -> bool {
+	return q.PressFlags{.JustPressed, .JustRepeated} & ENGINE.platform.keys[key] != q.PressFlags{}
+}
 is_shift_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_SHIFT]
 }
 is_ctrl_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_CONTROL]
+}
+set_clipboard :: proc(s: string) {
+	q.platform_set_clipboard(&ENGINE.platform, s)
+}
+get_clipboard :: proc() -> string {
+	return q.platform_get_clipboard(&ENGINE.platform)
+}
+maximize_window :: proc() {
+	q.platform_maximize(&ENGINE.platform)
 }
 create_skinned_mesh :: proc(
 	triangles: []q.IdxTriangle,

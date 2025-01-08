@@ -576,3 +576,6 @@ platform_just_pressed :: proc(platform: ^Platform, key: Key) -> bool {
 platform_is_pressed :: proc(platform: ^Platform, key: Key) -> bool {
 	return .Pressed in platform.keys[key]
 }
+platform_maximize :: proc(platform: ^Platform) {
+	glfw.MaximizeWindow(platform.window)
+}

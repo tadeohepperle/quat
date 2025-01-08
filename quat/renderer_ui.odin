@@ -33,18 +33,10 @@ ui_renderer_render :: proc(
 		return
 	}
 	last_kind := rend.batches.batches[0].kind
+	last_clipped_to: Maybe(Aabb) = Aabb{} // no batch will have this, so the first batch already fulfills batch.clipped_to != last_clipped_to
 	pipeline: ^RenderPipeline = nil
 	for &batch in rend.batches.batches {
-		if batch.kind != last_kind || pipeline == nil {
-			last_kind = batch.kind
-			switch batch.kind {
-			case .Rect:
-				pipeline = &rend.rect_pipeline
-			case .Glyph:
-				pipeline = &rend.glyph_pipeline
-			}
-
-
+		if batch.clipped_to != last_clipped_to {
 			if clipped_to, ok := batch.clipped_to.(Aabb); ok {
 				// convert clipping rect from layout to screen space and then set it:
 				min_f32 := layout_to_screen_space(clipped_to.min, screen_size_f32)
@@ -55,6 +47,7 @@ ui_renderer_render :: proc(
 				width_y := u32(max_f32.y) - min_y
 				wgpu.RenderPassEncoderSetScissorRect(render_pass, min_x, min_y, width_x, width_y)
 			} else {
+				// remove scissor
 				wgpu.RenderPassEncoderSetScissorRect(
 					render_pass,
 					0,
@@ -62,6 +55,16 @@ ui_renderer_render :: proc(
 					screen_size.x,
 					screen_size.y,
 				)
+			}
+		}
+
+		if batch.kind != last_kind || pipeline == nil {
+			last_kind = batch.kind
+			switch batch.kind {
+			case .Rect:
+				pipeline = &rend.rect_pipeline
+			case .Glyph:
+				pipeline = &rend.glyph_pipeline
 			}
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline.pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_bind_group)

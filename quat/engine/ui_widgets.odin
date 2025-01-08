@@ -121,27 +121,27 @@ row :: proc(container: Div, elements: []Ui) -> Ui {
 
 add_window :: proc(title: string, content: []Ui, window_width: f32 = 500) {
 	id := q.ui_id(title)
-	cache := &q.UI_CTX_PTR.cache
+	cached_pos, cached_size, window_pos_start_drag, ok := q.ui_get_cached(id, Vec2)
+	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
+	layout_extent := q.ui_layout_extent()
+
 	res := q.ui_interaction(id)
 	if res.just_pressed {
-		cache.active_value.window_pos_start_drag = q.UI_CTX_PTR.cache.cached[id].pos
+		window_pos_start_drag^ = cached_pos
 	}
 
+
 	window_pos: Vec2 = ---
-	cache_entry, ok := cache.cached[id]
 	if ok {
 		if res.pressed {
-			window_pos =
-				cache.active_value.window_pos_start_drag +
-				cache.cursor_pos -
-				cache.cursor_pos_start_press
+			window_pos = window_pos_start_drag^ + cursor_pos - cursor_pos_start_press
 		} else {
-			window_pos = cache_entry.pos
+			window_pos = cached_pos
 		}
 	} else {
 		window_pos = Vec2{0, 0}
 	}
-	max_pos := cache.layout_extent - cache_entry.size
+	max_pos := layout_extent - cached_size
 	window_pos.x = clamp(window_pos.x, 0, max_pos.x)
 	window_pos.y = clamp(window_pos.y, 0, max_pos.y)
 
@@ -296,28 +296,28 @@ slider :: proc {
 slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) -> Ui {
 	slider_width: f32 = 192
 	knob_width: f32 = 24
-
-	cache: ^q.UiCache = &q.UI_CTX_PTR.cache
 	id := id if id != 0 else u64(uintptr(value))
 	val: int = value^
 
+	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
+	cached_pos, cached_size, start_drag_slider_value, ok := q.ui_get_cached(id, int)
 
 	f := (f32(val) - f32(min)) / (f32(max) - f32(min))
 	res := q.ui_interaction(id)
 
-	scroll := cache.platform.scroll
+
+	scroll := get_scroll()
 	if res.just_pressed {
-		cached := cache.cached[id]
-		f = (cache.cursor_pos.x - knob_width / 2 - cached.pos.x) / (cached.size.x - knob_width)
+		f = (cursor_pos.x - knob_width / 2 - cached_pos.x) / (cached_size.x - knob_width)
 		val = int(math.round(f32(min) + f * f32(max - min)))
-		cache.active_value.slider_value_start_drag_int = val
+		start_drag_slider_value^ = val
 	} else if res.pressed || (scroll != 0 && res.hovered) {
 
 		if res.pressed {
-			cursor_x := cache.cursor_pos.x
-			cursor_x_start_active := cache.cursor_pos_start_press.x
+			cursor_x := cursor_pos.x
+			cursor_x_start_active := cursor_pos_start_press.x
 			f_shift := (cursor_x - cursor_x_start_active) / (slider_width - knob_width)
-			start_f := f32(cache.active_value.slider_value_start_drag_int - min) / f32(max - min)
+			start_f := f32(start_drag_slider_value^ - min) / f32(max - min)
 			f = start_f + f_shift
 		} else {
 			f -= scroll * 0.05
@@ -395,27 +395,28 @@ slider_f64 :: proc(value: ^f64, min: f64 = 0, max: f64 = 1, id: UiId = 0) -> Ui 
 slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0) -> Ui {
 	slider_width: f32 = 192
 	knob_width: f32 = 24
-
-	cache: ^q.UiCache = &q.UI_CTX_PTR.cache
 	id := id if id != 0 else u64(uintptr(value))
 	val: f32 = value^
+
+	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
+	cached_pos, cached_size, start_drag_slider_value, ok := q.ui_get_cached(id, f32)
+
 
 	f := (val - min) / (max - min)
 	res := q.ui_interaction(id)
 
-	scroll := cache.platform.scroll
+	scroll := get_scroll()
 	if res.just_pressed {
-		cached := cache.cached[id]
-		f = (cache.cursor_pos.x - knob_width / 2 - cached.pos.x) / (cached.size.x - knob_width)
+		f = (cursor_pos.x - knob_width / 2 - cached_pos.x) / (cached_size.x - knob_width)
 		val = min + f * (max - min)
-		cache.active_value.slider_value_start_drag = val
+		start_drag_slider_value^ = val
 	} else if res.pressed || (scroll != 0 && res.hovered) {
 
 		if res.pressed {
-			cursor_x := cache.cursor_pos.x
-			cursor_x_start_active := cache.cursor_pos_start_press.x
+			cursor_x := cursor_pos.x
+			cursor_x_start_active := cursor_pos_start_press.x
 			f_shift := (cursor_x - cursor_x_start_active) / (slider_width - knob_width)
-			start_f := (cache.active_value.slider_value_start_drag - min) / (max - min)
+			start_f := (start_drag_slider_value^ - min) / (max - min)
 			f = start_f + f_shift
 		} else {
 			f -= scroll * 0.05
@@ -642,9 +643,8 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 	hue_slider_id := q.ui_id_next(square_id)
 	text_edit_id := q.ui_id_next(hue_slider_id)
 
-	cache := &q.UI_CTX_PTR.cache
 	color_picker_ids := [?]UiId{id, dialog_id, square_id, hue_slider_id, text_edit_id}
-	show_dialog := q.cache_any_pressed_or_focused(cache, color_picker_ids[:])
+	show_dialog := q.ui_any_pressed_or_focused(color_picker_ids[:])
 	res_knob := q.ui_interaction(id)
 
 
@@ -658,11 +658,11 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 			g_hsv = q.rbg_to_hsv(color_rgb)
 		}
 
-		cached_square, ok := cache.cached[square_id]
+		cursor_pos, _ := q.ui_cursor_pos()
+		cached_square_pos, cached_square_size, ok := q.ui_get_cached_no_user_data(square_id)
 		if ok {
 			if res_square.pressed {
-				unit_pos_in_square: Vec2 =
-					(cache.cursor_pos - cached_square.pos) / cached_square.size
+				unit_pos_in_square: Vec2 = (cursor_pos - cached_square_pos) / cached_square_size
 				unit_pos_in_square.x = clamp(unit_pos_in_square.x, 0, 1)
 				unit_pos_in_square.y = clamp(unit_pos_in_square.y, 0, 1)
 				g_hsv.s = f64(unit_pos_in_square.x)
@@ -670,11 +670,12 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 			}
 		}
 
-		cached_hue_slider, h_ok := cache.cached[hue_slider_id]
+		cached_hue_slider_pos, cached_hue_slider_size, h_ok := q.ui_get_cached_no_user_data(
+			hue_slider_id,
+		)
 		if h_ok {
 			if res_hue_slider.pressed {
-				fract_in_slider: f32 =
-					(cache.cursor_pos.x - cached_square.pos.x) / cached_square.size.x
+				fract_in_slider: f32 = (cursor_pos.x - cached_square_pos.x) / cached_square_size.x
 				fract_in_slider = clamp(fract_in_slider, 0, 1)
 				g_hsv.h = f64(fract_in_slider) * 359.8 // so that we dont loop around
 			}
@@ -954,9 +955,6 @@ text_edit :: proc(
 	text_id := q.ui_id_next(id)
 	res := q.ui_interaction(id)
 
-
-	cache := &q.UI_CTX_PTR.cache
-	platform := cache.platform
 	if res.focused {
 		if id != g_id {
 			g_id = id
@@ -966,26 +964,26 @@ text_edit :: proc(
 			}
 			edit.begin(&g_state, id, value)
 		}
-		for c in platform.chars[:platform.chars_len] {
+		for c in get_input_chars() {
 			if strings.rune_count(strings.to_string(value^)) < max_characters {
 				edit.input_rune(&g_state, c)
 			}
 		}
 
-		is_ctrl_pressed := q.platform_is_pressed(platform, .LEFT_CONTROL)
-		is_shift_pressed := q.platform_is_pressed(platform, .LEFT_SHIFT)
+		is_ctrl_pressed := is_ctrl_pressed()
+		is_shift_pressed := is_shift_pressed()
 
-		if q.platform_just_pressed_or_repeated(platform, .BACKSPACE) {
+		if is_key_just_pressed_or_repeated(.BACKSPACE) {
 			edit.delete_to(&g_state, .Left)
 		}
-		if q.platform_just_pressed_or_repeated(platform, .DELETE) {
+		if is_key_just_pressed_or_repeated(.DELETE) {
 			edit.delete_to(&g_state, .Right)
 		}
-		if q.platform_just_pressed_or_repeated(platform, .ENTER) {
+		if is_key_just_pressed_or_repeated(.ENTER) {
 			edit.perform_command(&g_state, .New_Line)
 		}
-		if q.platform_is_pressed(platform, .LEFT_CONTROL) {
-			if q.platform_just_pressed(platform, .A) {
+		if is_ctrl_pressed {
+			if is_key_just_pressed(.A) {
 				edit.perform_command(&g_state, .Select_All)
 			}
 			// if input_just_pressed(input, .Z) { // nor working at the moment, I don't understand the undo API of text edit.
@@ -994,18 +992,18 @@ text_edit :: proc(
 			// if input_just_pressed(input, .Y) {
 			// 	edit.perform_command(&g_state, .Redo)
 			// }
-			if q.platform_just_pressed(platform, .C) {
-				q.platform_set_clipboard(platform, edit.current_selected_text(&g_state))
+			if is_key_just_pressed(.C) {
+				set_clipboard(edit.current_selected_text(&g_state))
 			}
-			if q.platform_just_pressed(platform, .X) {
-				q.platform_set_clipboard(platform, edit.current_selected_text(&g_state))
+			if is_key_just_pressed(.X) {
+				set_clipboard(edit.current_selected_text(&g_state))
 				edit.selection_delete(&g_state)
 			}
-			if q.platform_just_pressed(platform, .V) {
-				edit.input_text(&g_state, q.platform_get_clipboard(platform))
+			if is_key_just_pressed(.V) {
+				edit.input_text(&g_state, get_clipboard())
 			}
 		}
-		if q.platform_just_pressed_or_repeated(platform, .LEFT) {
+		if is_key_just_pressed_or_repeated(.LEFT) {
 			if is_shift_pressed {
 				if is_ctrl_pressed {
 					edit.select_to(&g_state, .Word_Left)
@@ -1021,7 +1019,7 @@ text_edit :: proc(
 			}
 		}
 
-		if q.platform_just_pressed_or_repeated(platform, .RIGHT) {
+		if is_key_just_pressed_or_repeated(.RIGHT) {
 			if is_shift_pressed {
 				if is_ctrl_pressed {
 					edit.select_to(&g_state, .Word_Right)
@@ -1048,7 +1046,7 @@ text_edit :: proc(
 	border_color: Color = THEME.surface_border if res.focused else THEME.surface
 	bg_color: Color = THEME.surface_deep
 
-	caret_opacity: f32 = 1.0 if math.sin(platform.total_secs * 8.0) > 0.0 else 0.0
+	caret_opacity: f32 = 1.0 if math.sin(ENGINE.platform.total_secs * 8.0) > 0.0 else 0.0
 	markers_data: MarkersData = {
 		text_id         = text_id,
 		just_pressed    = res.just_pressed,
@@ -1057,7 +1055,7 @@ text_edit :: proc(
 		caret_width     = 4,
 		caret_color     = {THEME.text.r, THEME.text.g, THEME.text.b, caret_opacity},
 		selection_color = THEME.surface,
-		shift_pressed   = q.platform_is_pressed(platform, .LEFT_SHIFT),
+		shift_pressed   = is_shift_pressed(),
 	}
 
 	ui := div(
@@ -1131,13 +1129,14 @@ text_edit :: proc(
 		indices: [dynamic]u32 = make([dynamic]u32, context.temp_allocator)
 
 
-		text_ctx, ok := q.UI_CTX_PTR.text_ids_to_tmp_layouts[data.text_id] // nil if text is empty string!
+		// really hacky:
+		text_ctx, ok := ENGINE.ui_ctx.text_ids_to_tmp_layouts[data.text_id] // nil if text is empty string!
 		assert(ok)
 		assert(text_ctx != nil)
 		byte_count := len(text_ctx.byte_advances)
 
 		// get the glyph we are currently on:
-		cursor_pos := q.UI_CTX_PTR.cache.cursor_pos
+		cursor_pos := ENGINE.ui_ctx.cache.cursor_pos
 		rel_cursor_pos := cursor_pos - pos
 		current_byte_idx := byte_count
 		byte_start_idx := 0
@@ -1323,10 +1322,12 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 	A_REL_POS :: Vec2{0, 1}
 	B_REL_POS :: Vec2{1, 1}
 	C_REL_POS :: Vec2{0.5, 0}
-	cache: ^q.UiCache = &q.UI_CTX_PTR.cache
+
+
 	if res.pressed {
-		cached := cache.cached[id]
-		rel := (cache.cursor_pos - cached.pos) / cached.size
+		cursor_pos, _ := q.ui_cursor_pos()
+		cached_pos, cached_size, _ := q.ui_get_cached_no_user_data(id)
+		rel := (cursor_pos - cached_pos) / cached_size
 		w := barycentric_coordinates_non_zero(A_REL_POS, B_REL_POS, C_REL_POS, rel)
 		weights^ = w
 		// text_to_show = fmt.tprintf("%f,%f", rel.x, rel.y)

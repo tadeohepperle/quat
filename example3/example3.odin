@@ -23,7 +23,7 @@ main :: proc() {
 	E.set_clear_color({0.02, 0.02, 0.04, 1.0})
 
 	cam := E.camera_controller_create()
-	cam.settings.wasd_move_speed = 0.0
+	cam.settings.move_with_wasd = false
 	cam.target.focus_pos = {0, 3}
 	cam.current.focus_pos = cam.target.focus_pos
 
@@ -101,7 +101,7 @@ main :: proc() {
 			bone.head = q.affine_apply(transform, original.head)
 			bone.root = q.affine_apply(transform, original.root)
 		}
-		E.update_skinned_mesh_bones(skinned_mesh, current_pose[:])
+		E.set_skinned_mesh_bones(skinned_mesh, current_pose[:])
 		E.draw_skinned_mesh(skinned_mesh, {0, 0}, {1, 1, 1, 0.3})
 		E.draw_grid(1, q.Color{1, 1, 1, 0.2})
 		write_v, write_i := E.access_color_mesh_write_buffers()
