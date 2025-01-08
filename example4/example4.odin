@@ -31,6 +31,7 @@ Affine2 :: q.Affine2
 Mat2 :: matrix[2, 2]f32
 
 
+// a table where the 4 regions (corner, left header, top header, field) can be scrolled to see different parts of the field
 main :: proc() {
 	engine.init()
 	defer {engine.deinit()}
@@ -39,15 +40,18 @@ main :: proc() {
 	engine.set_clear_color({0.02, 0.02, 0.04, 1.0})
 	TESTING_TEXTURE = engine.load_texture("./assets/testing_texture_bw.png")
 
-
 	FIELD_SIZE :: Vec2{1200, 1000}
 	CORNER_SIZE :: Vec2{80, 40}
 	SQUEEZE_SIZE :: Vec2{700, 500}
 
+	state: ScrollTableState
+	top_slider_id := q.ui_id("top")
+	left_slider_id := q.ui_id("left")
+
 	for engine.next_frame() {
 		add_ui(
 			scroll_table(
-				ScrollTable {
+				ScrollTableProps {
 					field_size = FIELD_SIZE,
 					corner_size = CORNER_SIZE,
 					squeeze_into = SQUEEZE_SIZE,
@@ -58,18 +62,16 @@ main :: proc() {
 						q.ColorSoftPurpleBlue,
 					),
 					field_ui = test_div(FIELD_SIZE),
-					x_n_steps = 16,
-					y_n_steps = 20,
 				},
+				&state,
+				top_slider_id,
+				left_slider_id,
 			),
 		)
 	}
 }
 TESTING_TEXTURE: q.TextureHandle
 test_div :: proc(size: Vec2 = {100, 100}, color: Color = q.ColorWhite) -> Ui {
-	color := color
-	color[3] = 0.01
-
 	return div(
 		Div {
 			width = size.x,
@@ -81,8 +83,7 @@ test_div :: proc(size: Vec2 = {100, 100}, color: Color = q.ColorWhite) -> Ui {
 	)
 }
 
-
-ScrollTable :: struct {
+ScrollTableProps :: struct {
 	field_size:     Vec2,
 	corner_size:    Vec2,
 	squeeze_into:   Vec2,
@@ -90,23 +91,65 @@ ScrollTable :: struct {
 	top_header_ui:  Ui,
 	side_header_ui: Ui,
 	field_ui:       Ui,
-	// how many rows/cols are there on the x and y axis to scroll to/from
-	x_n_steps:      int,
-	y_n_steps:      int,
-	// position where the two scrolls are currently
-	x_cur_step:     int,
-	y_cur_step:     int,
 }
-scroll_table :: proc(using props: ScrollTable) -> Ui {
-	SCROLL_BAR_WIDTH: f32 : 8.0
+ScrollTableState :: struct {
+	top_slider_f:  f32,
+	left_slider_f: f32,
+}
 
+scroll_table :: proc(
+	using props: ScrollTableProps,
+	state: ^ScrollTableState,
+	top_slider_id: q.UiId,
+	left_slider_id: q.UiId,
+) -> Ui {
+	SCROLL_BAR_WIDTH: f32 : 16.0
+	KNOB_BORDER_RADIUS :: q.BorderRadius {
+		SCROLL_BAR_WIDTH / 2,
+		SCROLL_BAR_WIDTH / 2,
+		SCROLL_BAR_WIDTH / 2,
+		SCROLL_BAR_WIDTH / 2,
+	}
 
 	total_size_uncut := SCROLL_BAR_WIDTH + corner_size + field_size
-
 	total_size := Vec2 {
 		min(squeeze_into.x, total_size_uncut.x),
 		min(squeeze_into.y, total_size_uncut.y),
 	}
+	visible_field_size := total_size - props.corner_size - SCROLL_BAR_WIDTH
+	assert(visible_field_size.x > props.corner_size.x + SCROLL_BAR_WIDTH)
+	assert(visible_field_size.y > props.corner_size.y + SCROLL_BAR_WIDTH)
+	top_slider_knob_w := visible_field_size.x * visible_field_size.x / field_size.x
+	left_slider_knob_h := visible_field_size.y * visible_field_size.y / field_size.y
+
+	top_slider_interaction := q.ui_interaction(top_slider_id)
+	left_slider_interaction := q.ui_interaction(left_slider_id)
+	cursor_pos, start_drag_cursor_pos := q.ui_cursor_pos()
+	top_slider_c_pos, top_slider_c_size, _ := q.ui_get_cached_no_user_data(top_slider_id)
+	left_slider_c_pos, left_slider_c_size, _ := q.ui_get_cached_no_user_data(left_slider_id)
+
+	if top_slider_interaction.pressed {
+		state.top_slider_f = math.remap_clamped(
+			cursor_pos.x,
+			top_slider_c_pos.x + top_slider_knob_w / 2,
+			top_slider_c_pos.x + top_slider_c_size.x - top_slider_knob_w / 2,
+			0,
+			1,
+		)
+	}
+	if left_slider_interaction.pressed {
+		state.left_slider_f = math.remap_clamped(
+			cursor_pos.y,
+			left_slider_c_pos.y + left_slider_knob_h / 2,
+			left_slider_c_pos.y + left_slider_c_size.y - left_slider_knob_h / 2,
+			0,
+			1,
+		)
+	}
+
+	// calculate by how many pixels the cropped content should be offsetted:
+	y_offset: f32 = state.left_slider_f * (field_size.y - visible_field_size.y)
+	x_offset: f32 = state.top_slider_f * (field_size.x - visible_field_size.x)
 
 	container := div(
 		Div {
@@ -116,10 +159,6 @@ scroll_table :: proc(using props: ScrollTable) -> Ui {
 			color = q.ColorDarkGrey,
 		},
 	)
-
-	visible_field_size := total_size - props.corner_size - SCROLL_BAR_WIDTH
-	assert(visible_field_size.x > props.corner_size.x + SCROLL_BAR_WIDTH)
-	assert(visible_field_size.y > props.corner_size.y + SCROLL_BAR_WIDTH)
 	top_slider := child_div(
 		container,
 		Div {
@@ -127,9 +166,22 @@ scroll_table :: proc(using props: ScrollTable) -> Ui {
 			width = visible_field_size.x,
 			height = SCROLL_BAR_WIDTH,
 			flags = {.WidthPx, .HeightPx, .Absolute},
-			color = q.ColorSoftOrange,
+			color = q.ColorBlack,
+		},
+		top_slider_id,
+	)
+	top_slider_knob := child_div(
+		top_slider,
+		Div {
+			width = top_slider_knob_w,
+			height = SCROLL_BAR_WIDTH,
+			absolute_unit_pos = {state.top_slider_f, 0},
+			flags = {.WidthPx, .HeightPx, .Absolute},
+			color = q.ColorMiddleGrey,
+			border_radius = KNOB_BORDER_RADIUS,
 		},
 	)
+
 	left_slider := child_div(
 		container,
 		Div {
@@ -137,7 +189,19 @@ scroll_table :: proc(using props: ScrollTable) -> Ui {
 			width = SCROLL_BAR_WIDTH,
 			height = visible_field_size.y,
 			flags = {.WidthPx, .HeightPx, .Absolute},
-			color = q.ColorSoftOrange,
+			color = q.ColorBlack,
+		},
+		left_slider_id,
+	)
+	left_slider_knob := child_div(
+		left_slider,
+		Div {
+			width = SCROLL_BAR_WIDTH,
+			height = left_slider_knob_h,
+			absolute_unit_pos = {0, state.left_slider_f},
+			flags = {.WidthPx, .HeightPx, .Absolute},
+			color = q.ColorMiddleGrey,
+			border_radius = KNOB_BORDER_RADIUS,
 		},
 	)
 	corner_container := child_div(
@@ -161,9 +225,7 @@ scroll_table :: proc(using props: ScrollTable) -> Ui {
 			flags = {.Absolute, .WidthPx, .HeightPx, .ClipContent},
 		},
 	)
-	if top_header_ui != nil {
-		child(top_header_container, top_header_ui)
-	}
+	_add_offsetted_child({-x_offset, 0}, top_header_container, top_header_ui)
 	side_header_container := child_div(
 		container,
 		q.Div {
@@ -173,9 +235,7 @@ scroll_table :: proc(using props: ScrollTable) -> Ui {
 			flags = {.Absolute, .WidthPx, .HeightPx, .ClipContent},
 		},
 	)
-	if side_header_ui != nil {
-		child(side_header_container, side_header_ui)
-	}
+	_add_offsetted_child({0, -y_offset}, side_header_container, side_header_ui)
 	field_container := child_div(
 		container,
 		q.Div {
@@ -185,8 +245,14 @@ scroll_table :: proc(using props: ScrollTable) -> Ui {
 			flags = {.Absolute, .WidthPx, .HeightPx, .ClipContent},
 		},
 	)
-	if field_ui != nil {
-		child(field_container, field_ui)
-	}
+	_add_offsetted_child({-x_offset, -y_offset}, field_container, field_ui)
 	return container
+
+	_add_offsetted_child :: proc(offset_px: Vec2, parent: ^q.DivElement, child: Ui) {
+		if child == nil do return
+		assert(parent != nil)
+		wrapper := child_div(parent, q.Div{offset = offset_px, flags = {.Absolute}})
+		q.ui_add_child(wrapper, child)
+	}
+
 }

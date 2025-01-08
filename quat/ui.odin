@@ -96,7 +96,8 @@ ui_get_cached :: proc(
 	id: UiId,
 	$USER_DATA_TY: typeid,
 ) -> (
-	pos, size: Vec2,
+	pos: Vec2,
+	size: Vec2,
 	user_data: ^USER_DATA_TY,
 	ok: bool,
 ) where size_of(CachedUserData) >=
