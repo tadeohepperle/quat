@@ -50,7 +50,11 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 
 	_create_bloom_textures(rend, platform.screen_size)
 
-	globals_layout := platform.globals.bind_group_layout
+
+	bind_group_layouts := bind_group_layouts(
+		platform.globals.bind_group_layout,
+		rgba_bind_group_layout_cached(platform.device),
+	)
 	first_downsample_config := RenderPipelineConfig {
 		debug_name           = "bloom first_downsample",
 		vs_shader            = "screen",
@@ -60,7 +64,7 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 		topology             = .TriangleStrip,
 		vertex               = {},
 		instance             = {},
-		bind_group_layouts   = {globals_layout, rgba_bind_group_layout_cached(platform.device)},
+		bind_group_layouts   = bind_group_layouts,
 		push_constant_ranges = {},
 		blend                = nil,
 		format               = HDR_FORMAT,
@@ -74,7 +78,7 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 		topology             = .TriangleStrip,
 		vertex               = {},
 		instance             = {},
-		bind_group_layouts   = {globals_layout, rgba_bind_group_layout_cached(platform.device)},
+		bind_group_layouts   = bind_group_layouts,
 		push_constant_ranges = {},
 		blend                = nil,
 		format               = HDR_FORMAT,
@@ -88,7 +92,7 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 		topology = .TriangleStrip,
 		vertex = {},
 		instance = {},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(platform.device)},
+		bind_group_layouts = bind_group_layouts,
 		push_constant_ranges = {},
 		blend = wgpu.BlendState {
 			color = wgpu.BlendComponent{srcFactor = .One, dstFactor = .One, operation = .Add},
@@ -105,7 +109,7 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 		topology = .TriangleStrip,
 		vertex = {},
 		instance = {},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(platform.device)},
+		bind_group_layouts = bind_group_layouts,
 		push_constant_ranges = {},
 		blend = wgpu.BlendState {
 			color = wgpu.BlendComponent{srcFactor = .Constant, dstFactor = .One, operation = .Add},

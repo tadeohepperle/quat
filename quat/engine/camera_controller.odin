@@ -14,6 +14,7 @@ DEFAULT_CAMERA_CONTROLLER_SETTINGS := CameraSettings {
 	move_speed         = 1.0, // is multiplied with current height, to have same speed on different scales
 	move_with_wasd     = true,
 	move_with_arrows   = true,
+	scroll_when_on_ui  = false,
 }
 
 CameraSettings :: struct {
@@ -26,12 +27,14 @@ CameraSettings :: struct {
 	move_speed:         f32,
 	move_with_wasd:     bool,
 	move_with_arrows:   bool,
+	scroll_when_on_ui:  bool,
 }
 
 CameraController :: struct {
-	settings: CameraSettings,
-	target:   q.Camera,
-	current:  q.Camera,
+	settings:    CameraSettings,
+	target:      q.Camera,
+	current:     q.Camera,
+	is_dragging: bool,
 }
 
 camera_controller_create :: proc(
@@ -47,22 +50,33 @@ camera_controller_set_immediately :: proc(cam: ^CameraController) {
 
 camera_controller_update :: proc(cam: ^CameraController) {
 	screen_size := get_screen_size_f32()
-	pan_button_pressed := .Pressed in get_mouse_btn(.Middle)
+	pan_btn := get_mouse_btn(.Middle)
+	is_on_ui := get_hit().is_on_ui
 	cursor_pos := get_cursor_pos()
 	cursor_delta := get_cursor_delta()
 
+	if .JustPressed in pan_btn && !is_on_ui {
+		cam.is_dragging = true
+	}
+	if cam.is_dragging {
+		if .Pressed not_in pan_btn {
+			cam.is_dragging = false
+		} else if cursor_delta != {0, 0} {
 
-	if pan_button_pressed && cursor_delta != {0, 0} {
-		cursor_pos_before := cursor_pos - cursor_delta
+			cursor_pos_before := cursor_pos - cursor_delta
 
 
-		point_before := q.screen_to_world_pos(cam.current, cursor_pos_before, screen_size)
-		point_after := q.screen_to_world_pos(cam.current, cursor_pos, screen_size)
-		diff := point_before - point_after
-		cam.target.focus_pos += diff
+			point_before := q.screen_to_world_pos(cam.current, cursor_pos_before, screen_size)
+			point_after := q.screen_to_world_pos(cam.current, cursor_pos, screen_size)
+			diff := point_before - point_after
+			cam.target.focus_pos += diff
+		}
 	}
 
 	scroll := get_scroll()
+	if !cam.settings.scroll_when_on_ui && is_on_ui {
+		scroll = 0.0
+	}
 	if abs(scroll) > 0 && !is_shift_pressed() && !is_ctrl_pressed() {
 		// calculate new size
 		size_before := cam.current.height

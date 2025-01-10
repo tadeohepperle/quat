@@ -41,11 +41,17 @@ ui_renderer_render :: proc(
 				// convert clipping rect from layout to screen space and then set it:
 				min_f32 := layout_to_screen_space(clipped_to.min, screen_size_f32)
 				max_f32 := layout_to_screen_space(clipped_to.max, screen_size_f32)
-				min_x := u32(min_f32.x)
-				min_y := u32(min_f32.y)
-				width_x := u32(max_f32.x) - min_x
-				width_y := u32(max_f32.y) - min_y
-				wgpu.RenderPassEncoderSetScissorRect(render_pass, min_x, min_y, width_x, width_y)
+				min_x := min(u32(min_f32.x), screen_size.x)
+				min_y := min(u32(min_f32.y), screen_size.x)
+				max_x := min(u32(max_f32.x), screen_size.x)
+				max_y := min(u32(max_f32.y), screen_size.x)
+				wgpu.RenderPassEncoderSetScissorRect(
+					render_pass,
+					min_x,
+					min_y,
+					max_x - min_x,
+					max_y - min_y,
+				)
 			} else {
 				// remove scissor
 				wgpu.RenderPassEncoderSetScissorRect(
@@ -123,6 +129,11 @@ ui_renderer_render :: proc(
 			wgpu.RenderPassEncoderDraw(render_pass, 4, instance_count, 0, u32(batch.start_idx))
 		}
 	}
+	// remove scissor again after all batches are done if last batch was in scissor:
+	if last_clipped_to != nil {
+		// remove scissor
+		wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size.x, screen_size.y)
+	}
 }
 
 
@@ -193,7 +204,7 @@ ui_rect_pipeline_config :: proc(
 		topology = .TriangleList,
 		vertex = {
 			ty_id = UiVertex,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(UiVertex, pos)},
 				{format = .Float32x2, offset = offset_of(UiVertex, size)},
 				{format = .Float32x2, offset = offset_of(UiVertex, uv)},
@@ -202,10 +213,13 @@ ui_rect_pipeline_config :: proc(
 				{format = .Float32x4, offset = offset_of(UiVertex, border_radius)},
 				{format = .Float32x4, offset = offset_of(UiVertex, border_width)},
 				{format = .Uint32, offset = offset_of(UiVertex, flags)},
-			},
+			),
 		},
 		instance = {},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(device)},
+		bind_group_layouts = bind_group_layouts(
+			globals_layout,
+			rgba_bind_group_layout_cached(device),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -227,15 +241,18 @@ ui_glyph_pipeline_config :: proc(
 		vertex = {},
 		instance = {
 			ty_id = UiGlyphInstance,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(UiGlyphInstance, pos)},
 				{format = .Float32x2, offset = offset_of(UiGlyphInstance, size)},
 				{format = .Float32x4, offset = offset_of(UiGlyphInstance, uv)},
 				{format = .Float32x4, offset = offset_of(UiGlyphInstance, color)},
 				{format = .Float32, offset = offset_of(UiGlyphInstance, shadow)},
-			},
+			),
 		},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(device)},
+		bind_group_layouts = bind_group_layouts(
+			globals_layout,
+			rgba_bind_group_layout_cached(device),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

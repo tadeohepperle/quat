@@ -79,13 +79,13 @@ color_mesh_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> Rend
 		topology = .TriangleList,
 		vertex = {
 			ty_id = ColorMeshVertex,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(ColorMeshVertex, pos)},
 				{format = .Float32x4, offset = offset_of(ColorMeshVertex, color)},
-			},
+			),
 		},
 		instance = {},
-		bind_group_layouts = {globals_layout},
+		bind_group_layouts = bind_group_layouts(globals_layout),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

@@ -917,15 +917,17 @@ colored_triangle :: proc() -> Ui {
 		return SIZE
 	}
 	add_primitives :: proc(e: ^Empty, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
-		context.allocator = context.temp_allocator
-		verts: [dynamic]q.UiVertex = {
-			v({0, 0}, q.ColorSoftBlue),
-			v({100, 150}, q.ColorSoftGreen),
-			v({200, 0}, q.ColorSoftPink),
-		}
-		inds: [dynamic]u32 = {0, 1, 2}
-		res: [dynamic]q.CustomPrimitives = {q.CustomUiMesh{verts[:], inds[:], 0}}
-		return res[:]
+		verts := make([]q.UiVertex, 3, allocator = context.temp_allocator)
+		verts[0] = v({0, 0}, q.ColorSoftBlue)
+		verts[1] = v({100, 150}, q.ColorSoftGreen)
+		verts[2] = v({200, 0}, q.ColorSoftPink)
+		inds := make([]u32, 3, context.temp_allocator)
+		inds[0] = 0
+		inds[1] = 1
+		inds[2] = 2
+		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
+		res[0] = q.CustomUiMesh{verts, inds, 0}
+		return res
 	}
 	Empty :: struct {}
 	return q.ui_custom(Empty{}, set_size, add_primitives)
@@ -1455,10 +1457,17 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 		a := pos + Vec2{0, size.y}
 		b := pos + size
 		c := pos + Vec2{size.x / 2, 0}
-		verts: [dynamic]q.UiVertex = {v(a, data.color), v(b, data.color), v(c, data.color)}
-		inds: [dynamic]u32 = {0, 1, 2}
-		res: [dynamic]q.CustomPrimitives = {q.CustomUiMesh{verts[:], inds[:], 0}}
-		return res[:]
+		verts := make([]q.UiVertex, 3, allocator = context.temp_allocator)
+		verts[0] = v(a, data.color)
+		verts[1] = v(b, data.color)
+		verts[2] = v(c, data.color)
+		inds := make([]u32, 3, context.temp_allocator)
+		inds[0] = 0
+		inds[1] = 1
+		inds[2] = 2
+		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
+		res[0] = q.CustomUiMesh{verts, inds, 0}
+		return res
 	}
 	return q.ui_custom(widget_data, set_size, add_primitives)
 }

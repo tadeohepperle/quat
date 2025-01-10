@@ -253,14 +253,8 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.tritex_textures,
 		asset_manager,
 	)
-	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
-	// todo: this is certainly stupid, because then we render all skinned meshes on top of sprites. 
-	//
-	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
-	// Solution 2: use depth writes for at least one of the two and render that first.
-	// 
-	// also consider, that we might need a second "shine through" skinned shader for stuff behind geometry.
 	q.sprite_renderer_render(&engine.sprite_renderer, hdr_pass, global_bind_group, asset_manager)
+	// todo: this is certainly stupid, because then we render all skinned meshes on top of sprites:
 	q.skinned_renderer_render(
 		&engine.skinned_renderer,
 		engine.scene.skinned_render_commands[:],
@@ -268,6 +262,13 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		asset_manager,
 	)
+	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
+
+	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
+	// Solution 2: use depth writes for at least one of the two and render that first.
+	// 
+	// also consider, that we might need a second "shine through" skinned shader for stuff behind geometry.
+
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .WORLD)
 	q.ui_renderer_render(
 		&engine.ui_renderer,
@@ -447,6 +448,9 @@ is_shift_pressed :: #force_inline proc() -> bool {
 is_ctrl_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_CONTROL]
 }
+is_alt_pressed :: proc() -> bool {
+	return .Pressed in ENGINE.platform.keys[.LEFT_ALT]
+}
 set_clipboard :: proc(s: string) {
 	q.platform_set_clipboard(&ENGINE.platform, s)
 }
@@ -563,8 +567,8 @@ draw_tritex_mesh :: proc(mesh: ^q.TritexMesh) {
 draw_gizmos_rect :: proc(center: Vec2, size: Vec2, color := GIZMOS_COLOR) {
 	q.gizmos_renderer_add_rect(&ENGINE.gizmos_renderer, center, size, color, .WORLD)
 }
-draw_gizmos_aabb :: proc(aabb: q.Aabb, color := GIZMOS_COLOR) {
-	q.gizmos_renderer_add_aabb(&ENGINE.gizmos_renderer, aabb, color, .WORLD)
+draw_gizmos_aabb :: proc(aabb: q.Aabb, color := GIZMOS_COLOR, mode: q.GizmosMode = .WORLD) {
+	q.gizmos_renderer_add_aabb(&ENGINE.gizmos_renderer, aabb, color, mode)
 }
 draw_gizmos_line :: proc(from: Vec2, to: Vec2, color := GIZMOS_COLOR) {
 	q.gizmos_renderer_add_line(&ENGINE.gizmos_renderer, from, to, color)
@@ -661,7 +665,7 @@ set_bloom_blend_factor :: proc(factor: f64) {
 set_tonemapping_mode :: proc(mode: q.TonemappingMode) {
 	ENGINE.settings.platform.tonemapping = mode
 }
-create_tritex_mesh :: proc(vertices: [dynamic]q.TritexVertex) -> q.TritexMesh {
+create_tritex_mesh :: proc(vertices: []q.TritexVertex) -> q.TritexMesh {
 	return q.tritex_mesh_create(vertices, ENGINE.platform.device, ENGINE.platform.queue)
 }
 KeyVecPair :: struct {

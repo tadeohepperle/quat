@@ -391,16 +391,19 @@ sprite_default_pipeline_config :: proc(
 		vertex = {},
 		instance = {
 			ty_id = SpriteInstance,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(SpriteInstance, pos)},
 				{format = .Float32x2, offset = offset_of(SpriteInstance, size)},
 				{format = .Float32x4, offset = offset_of(SpriteInstance, color)},
 				{format = .Float32x4, offset = offset_of(SpriteInstance, uv)},
 				{format = .Float32, offset = offset_of(SpriteInstance, rotation)},
 				{format = .Float32, offset = offset_of(SpriteInstance, z)},
-			},
+			),
 		},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(device)},
+		bind_group_layouts = bind_group_layouts(
+			globals_layout,
+			rgba_bind_group_layout_cached(device),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -422,20 +425,20 @@ sprite_depth_pipeline_config :: proc(
 		vertex = {},
 		instance = {
 			ty_id = SpriteInstance,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(SpriteInstance, pos)},
 				{format = .Float32x2, offset = offset_of(SpriteInstance, size)},
 				{format = .Float32x4, offset = offset_of(SpriteInstance, color)},
 				{format = .Float32x4, offset = offset_of(SpriteInstance, uv)},
 				{format = .Float32, offset = offset_of(SpriteInstance, rotation)},
 				{format = .Float32, offset = offset_of(SpriteInstance, z)},
-			},
+			),
 		},
-		bind_group_layouts = {
+		bind_group_layouts = bind_group_layouts(
 			globals_layout,
 			rgba_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device), // is actually for R16Uint depth, but should be okay
-		},
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -457,16 +460,19 @@ sprite_shine_pipeline_config :: proc(
 		vertex = {},
 		instance = {
 			ty_id = SpriteInstance,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(SpriteInstance, pos)},
 				{format = .Float32x2, offset = offset_of(SpriteInstance, size)},
 				{format = .Float32x4, offset = offset_of(SpriteInstance, color)},
 				{format = .Float32x4, offset = offset_of(SpriteInstance, uv)},
 				{format = .Float32, offset = offset_of(SpriteInstance, rotation)},
 				{format = .Float32, offset = offset_of(SpriteInstance, z)},
-			},
+			),
 		},
-		bind_group_layouts = {globals_layout, rgba_bind_group_layout_cached(device)},
+		bind_group_layouts = bind_group_layouts(
+			globals_layout,
+			rgba_bind_group_layout_cached(device),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

@@ -298,26 +298,26 @@ skinned_pipeline_config :: proc(
 		topology = .TriangleList,
 		vertex = {
 			ty_id = SkinnedVertex,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(SkinnedVertex, pos)},
 				{format = .Float32x2, offset = offset_of(SkinnedVertex, uv)},
 				{format = .Uint32x2, offset = offset_of(SkinnedVertex, indices)},
 				{format = .Float32x2, offset = offset_of(SkinnedVertex, weights)},
-			},
+			),
 		},
 		instance = {},
-		bind_group_layouts = {
+		bind_group_layouts = bind_group_layouts(
 			globals_layout,
 			bones_storage_buffer_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
-		},
-		push_constant_ranges = {
+		),
+		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange {
 				stages = {.Vertex, .Fragment},
 				start = 0,
 				end = size_of(SkinnedRendererPushConstants),
 			},
-		},
+		),
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,

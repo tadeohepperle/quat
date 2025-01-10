@@ -316,6 +316,19 @@ slotmap_to_tmp_slice :: proc(self: SlotMap($T)) -> []T {
 }
 
 
+// Note: all these functions (vert_attributes, bind_group_layouts, push_const_ranges)
+// just clone the args from a stack slice into the default allocator
+vert_attributes :: proc(args: ..VertAttibute) -> []VertAttibute {
+	return slice.clone(args)
+}
+bind_group_layouts :: proc(args: ..wgpu.BindGroupLayout) -> []wgpu.BindGroupLayout {
+	return slice.clone(args)
+}
+push_const_ranges :: proc(args: ..wgpu.PushConstantRange) -> []wgpu.PushConstantRange {
+	return slice.clone(args)
+}
+
+
 // Range :: struct {
 // 	start: int,
 // 	end:   int,

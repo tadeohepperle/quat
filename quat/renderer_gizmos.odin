@@ -204,16 +204,16 @@ gizmos_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> RenderPi
 		topology = .LineList,
 		vertex = {
 			ty_id = GizmosVertex,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(GizmosVertex, pos)},
 				{format = .Float32x4, offset = offset_of(GizmosVertex, color)},
-			},
+			),
 		},
 		instance = {},
-		bind_group_layouts = {globals_layout},
-		push_constant_ranges = {
+		bind_group_layouts = bind_group_layouts(globals_layout),
+		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(GizmosMode)},
-		},
+		),
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,

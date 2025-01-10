@@ -137,8 +137,8 @@ RenderPipelineConfig :: struct {
 	topology:             wgpu.PrimitiveTopology,
 	vertex:               VertLayout,
 	instance:             VertLayout,
-	bind_group_layouts:   [dynamic]wgpu.BindGroupLayout,
-	push_constant_ranges: [dynamic]wgpu.PushConstantRange,
+	bind_group_layouts:   []wgpu.BindGroupLayout,
+	push_constant_ranges: []wgpu.PushConstantRange,
 	blend:                Maybe(wgpu.BlendState), // if nil, no blending.
 	format:               wgpu.TextureFormat,
 	depth:                Maybe(DepthConfig),
@@ -182,7 +182,7 @@ VertAttibute :: struct {
 }
 VertLayout :: struct {
 	ty_id:      typeid,
-	attributes: [dynamic]VertAttibute,
+	attributes: []VertAttibute,
 }
 
 RenderPipeline :: struct {

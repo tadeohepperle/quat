@@ -28,7 +28,7 @@ color_to_hex :: proc(color: Color) -> string {
 	return fmt.aprintf("#%02x%02x%02x", r, g, b, allocator = context.temp_allocator)
 }
 
-color_from_hex :: proc(hex: string) -> Color {
+color_from_hex :: proc(hex: string, alpha: f32 = 1.0) -> Color {
 	hex_digit_value :: proc(c: rune) -> u8 {
 		switch c {
 		case '0' ..= '9':
@@ -55,7 +55,7 @@ color_from_hex :: proc(hex: string) -> Color {
 	r := color_map_to_srgb(parse_hex_pair(hex, offset))
 	g := color_map_to_srgb(parse_hex_pair(hex, offset + 2))
 	b := color_map_to_srgb(parse_hex_pair(hex, offset + 4))
-	return Color{r, g, b, 1.0}
+	return Color{r, g, b, alpha}
 }
 
 

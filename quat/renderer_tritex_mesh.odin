@@ -9,12 +9,12 @@ TritexVertex :: struct {
 }
 
 TritexMesh :: struct {
-	vertices:      [dynamic]TritexVertex,
+	vertices:      []TritexVertex,
 	vertex_buffer: DynamicBuffer(TritexVertex),
 }
 
 tritex_mesh_create :: proc(
-	vertices: [dynamic]TritexVertex,
+	vertices: []TritexVertex,
 	device: wgpu.Device,
 	queue: wgpu.Queue,
 ) -> (
@@ -98,14 +98,14 @@ tritex_pipeline_config :: proc(
 		topology = .TriangleList,
 		vertex = {
 			ty_id = TritexVertex,
-			attributes = {
+			attributes = vert_attributes(
 				{format = .Float32x2, offset = offset_of(TritexVertex, pos)},
 				{format = .Uint32x3, offset = offset_of(TritexVertex, indices)},
 				{format = .Float32x3, offset = offset_of(TritexVertex, weights)},
-			},
+			),
 		},
 		instance = {},
-		bind_group_layouts = {globals_layout, tritex_textures_layout},
+		bind_group_layouts = bind_group_layouts(globals_layout, tritex_textures_layout),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

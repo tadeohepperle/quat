@@ -11,14 +11,14 @@ tonemapping_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig
 		topology = .TriangleList,
 		vertex = {},
 		instance = {},
-		bind_group_layouts = {rgba_bind_group_layout_cached(device)},
-		push_constant_ranges = {
+		bind_group_layouts = bind_group_layouts(rgba_bind_group_layout_cached(device)),
+		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange {
 				stages = {.Fragment},
 				start = 0,
 				end = size_of(TonemappingMode),
 			},
-		},
+		),
 		blend = ALPHA_BLENDING,
 		format = SURFACE_FORMAT,
 	}
