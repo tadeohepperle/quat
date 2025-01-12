@@ -104,9 +104,9 @@ main :: proc() {
 }
 
 Snake :: struct {
-	indices:  [dynamic]u32,
-	vertices: [dynamic]q.ColorMeshVertex,
-	points:   [dynamic]Vec2,
+	triangles: [dynamic]q.IdxTriangle,
+	vertices:  [dynamic]q.ColorMeshVertex,
+	points:    [dynamic]Vec2,
 }
 SNAKE_PTS :: 50
 SNAKE_PT_DIST :: 0.16
@@ -141,7 +141,7 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 		color.a = 1 // learned: when alpha > 1 in two regions overlapping -> alpha blending makes alpha be 0 insteaq. (happ)
 	}
 	clear(&snake.vertices)
-	clear(&snake.indices)
+	clear(&snake.triangles)
 	for i in 0 ..< SNAKE_PTS {
 		pt := snake.points[i]
 		is_first := i == 0
@@ -164,12 +164,8 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 		append(&snake.vertices, q.ColorMeshVertex{pos = pt - dir_t * body_width, color = color})
 		base_idx := u32(i * 2)
 		if i != SNAKE_PTS - 1 {
-			append(&snake.indices, base_idx)
-			append(&snake.indices, base_idx + 1)
-			append(&snake.indices, base_idx + 2)
-			append(&snake.indices, base_idx + 2)
-			append(&snake.indices, base_idx + 3)
-			append(&snake.indices, base_idx + 1)
+			append(&snake.triangles, [3]u32{base_idx, base_idx + 1, base_idx + 2})
+			append(&snake.triangles, [3]u32{base_idx + 2, base_idx + 3, base_idx + 1})
 		}
 	}
 	// add a circle for the head:
@@ -190,9 +186,7 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 		if i == CIRCLE_N - 1 {
 			v_idx_next = 0 // right side of circle (second pt of mesh)
 		}
-		append(&snake.indices, 1)
-		append(&snake.indices, v_idx)
-		append(&snake.indices, v_idx_next)
+		append(&snake.triangles, [3]u32{1, v_idx, v_idx_next})
 	}
 }
 
@@ -217,7 +211,7 @@ snake_draw :: proc(snake: ^Snake) {
 	// 	append(&new_vertices, snake.vertices[i])
 	// }
 	// q.draw_color_mesh(new_vertices[:])
-	E.draw_color_mesh_indexed(snake.vertices[:], snake.indices[:])
+	E.draw_color_mesh_indexed(snake.vertices[:], snake.triangles[:])
 }
 
 

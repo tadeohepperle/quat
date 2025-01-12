@@ -81,6 +81,10 @@ assets_get_texture_info :: proc(assets: AssetManager, handle: TextureHandle) -> 
 	texture := slotmap_get(assets.textures, u32(handle))
 	return texture.info
 }
+assets_get_texture :: proc(assets: AssetManager, handle: TextureHandle) -> Texture {
+	texture := slotmap_get(assets.textures, u32(handle))
+	return texture
+}
 
 assets_get_font :: proc(assets: AssetManager, handle: FontHandle) -> Font {
 	return slotmap_get(assets.fonts, u32(handle))
@@ -95,7 +99,10 @@ assets_load_depth_texture :: proc(assets: ^AssetManager, path: string) -> Textur
 	texture_handle := TextureHandle(slotmap_insert(&assets.textures, texture))
 	return texture_handle
 }
-
+assets_add_texture :: proc(assets: ^AssetManager, texture: Texture) -> TextureHandle {
+	texture_handle := TextureHandle(slotmap_insert(&assets.textures, texture))
+	return texture_handle
+}
 assets_load_texture :: proc(
 	assets: ^AssetManager,
 	path: string,
@@ -106,8 +113,7 @@ assets_load_texture :: proc(
 		print("error:", err)
 		panic("Panic loading texture.")
 	}
-	texture_handle := TextureHandle(slotmap_insert(&assets.textures, texture))
-	return texture_handle
+	return assets_add_texture(assets, texture)
 }
 
 assets_load_texture_array :: proc(

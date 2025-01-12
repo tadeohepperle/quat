@@ -15,13 +15,14 @@ Color :: q.Color
 print :: q.print
 
 Renderers :: struct {
-	bloom_renderer:      q.BloomRenderer,
-	sprite_renderer:     q.SpriteRenderer,
-	gizmos_renderer:     q.GizmosRenderer,
-	ui_renderer:         q.UiRenderer,
-	color_mesh_renderer: q.ColorMeshRenderer,
-	tritex_renderer:     q.TritexRenderer,
-	skinned_renderer:    q.SkinnedRenderer,
+	bloom_renderer:         q.BloomRenderer,
+	sprite_renderer:        q.SpriteRenderer,
+	gizmos_renderer:        q.GizmosRenderer,
+	ui_renderer:            q.UiRenderer,
+	color_mesh_renderer:    q.ColorMeshRenderer,
+	textured_mesh_renderer: q.TexturedMeshRenderer,
+	tritex_renderer:        q.TritexRenderer,
+	skinned_renderer:       q.SkinnedRenderer,
 }
 
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
@@ -31,6 +32,7 @@ _renderers_create :: proc(ren: ^Renderers, platform: ^q.Platform) {
 	q.gizmos_renderer_create(&ren.gizmos_renderer, platform)
 	q.ui_renderer_create(&ren.ui_renderer, platform)
 	q.color_mesh_renderer_create(&ren.color_mesh_renderer, platform)
+	q.textured_mesh_renderer_create(&ren.textured_mesh_renderer, platform)
 	q.tritex_renderer_create(&ren.tritex_renderer, platform)
 	q.skinned_renderer_create(&ren.skinned_renderer, platform)
 }
@@ -40,6 +42,7 @@ _renderers_destroy :: proc(ren: ^Renderers) {
 	q.gizmos_renderer_destroy(&ren.gizmos_renderer)
 	q.ui_renderer_destroy(&ren.ui_renderer)
 	q.color_mesh_renderer_destroy(&ren.color_mesh_renderer)
+	q.textured_mesh_renderer_destroy(&ren.textured_mesh_renderer)
 	q.tritex_renderer_destroy(&ren.tritex_renderer)
 	q.skinned_renderer_destroy(&ren.skinned_renderer)
 }
@@ -231,6 +234,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 		engine.platform.asset_manager,
 	)
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
+	q.textured_mesh_renderer_prepare(&engine.textured_mesh_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
 
 	// for the skinned mesh renderer, we currently let the user 
@@ -263,7 +267,12 @@ _engine_render :: proc(engine: ^Engine) {
 		asset_manager,
 	)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
-
+	q.textured_mesh_renderer_render(
+		&engine.textured_mesh_renderer,
+		hdr_pass,
+		global_bind_group,
+		asset_manager,
+	)
 	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
 	// Solution 2: use depth writes for at least one of the two and render that first.
 	// 
@@ -499,6 +508,23 @@ load_texture :: proc(
 ) -> q.TextureHandle {
 	return q.assets_load_texture(&ENGINE.platform.asset_manager, path, settings)
 }
+create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
+	texture := q.texture_from_image(
+		ENGINE.platform.device,
+		ENGINE.platform.queue,
+		img,
+		q.TEXTURE_SETTINGS_RGBA,
+	)
+	handle := q.assets_add_texture(&ENGINE.platform.asset_manager, texture)
+	return handle
+}
+destroy_texture :: proc(handle: q.TextureHandle) {
+	q.assets_deregister_texture(&ENGINE.platform.asset_manager, handle)
+}
+write_image_to_texture :: proc(img: q.Image, handle: q.TextureHandle) {
+	texture := q.assets_get_texture(ENGINE.platform.asset_manager, handle)
+	q.texture_write_from_image(ENGINE.platform.queue, texture, img)
+}
 // is expected to be 16bit R channel only png
 load_depth_texture :: proc(path: string) -> q.TextureHandle {
 	return q.assets_load_depth_texture(&ENGINE.platform.asset_manager, path)
@@ -604,33 +630,47 @@ draw_gizmos_circle :: proc(
 access_color_mesh_write_buffers :: proc(
 ) -> (
 	vertices: ^[dynamic]q.ColorMeshVertex,
-	indices: ^[dynamic]u32,
+	triangles: ^[dynamic]q.IdxTriangle,
+	start: u32,
 ) {
-	indices = &ENGINE.color_mesh_renderer.indices
 	vertices = &ENGINE.color_mesh_renderer.vertices
+	triangles = &ENGINE.color_mesh_renderer.triangles
+	start = u32(len(vertices))
 	return
 }
+// Can write directly into these, instead of using one of the `draw_color_mesh` procs.
+access_textured_mesh_write_buffers :: proc(
+) -> (
+	vertices: ^[dynamic]q.TexturedVertex,
+	triangles: ^[dynamic]q.IdxTriangle,
+	start: u32,
+) {
+	vertices = &ENGINE.textured_mesh_renderer.vertices
+	triangles = &ENGINE.textured_mesh_renderer.triangles
+	start = u32(len(vertices))
+	return
+}
+set_textured_mesh_texture :: proc(texture: q.TextureHandle) {
+	q.textured_mesh_renderer_set_texture(&ENGINE.textured_mesh_renderer, texture)
+}
+
 draw_color_mesh :: proc {
-	draw_color_mesh_vertices_single_color,
 	draw_color_mesh_vertices,
 	draw_color_mesh_indexed_single_color,
 	draw_color_mesh_indexed,
 }
-draw_color_mesh_vertices_single_color :: proc(positions: []Vec2, color := Color{1, 0, 0, 1}) {
-	q.color_mesh_add_vertices_single_color(&ENGINE.color_mesh_renderer, positions, color)
-}
 draw_color_mesh_vertices :: proc(vertices: []q.ColorMeshVertex) {
 	q.color_mesh_add_vertices(&ENGINE.color_mesh_renderer, vertices)
 }
-draw_color_mesh_indexed :: proc(vertices: []q.ColorMeshVertex, indices: []u32) {
-	q.color_mesh_add_indexed(&ENGINE.color_mesh_renderer, vertices, indices)
+draw_color_mesh_indexed :: proc(vertices: []q.ColorMeshVertex, triangles: []q.IdxTriangle) {
+	q.color_mesh_add_indexed(&ENGINE.color_mesh_renderer, vertices, triangles)
 }
 draw_color_mesh_indexed_single_color :: proc(
 	positions: []Vec2,
-	indices: []u32,
+	triangles: []q.IdxTriangle,
 	color := Color{1, 0, 0, 1},
 ) {
-	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, indices, color)
+	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, triangles, color)
 }
 add_ui :: proc(ui: q.Ui) {
 	append(&ENGINE.scene.top_level_ui_elements, ui)

@@ -27,7 +27,7 @@ main :: proc() {
 	cam.target.focus_pos = {0, 3}
 	cam.current.focus_pos = cam.target.focus_pos
 
-	// texture := E.load_texture("assets/t_0.png")
+	texture := E.load_texture("assets/t_0.png")
 	base_bones := []Bone{Bone{{0, 0}, {0, 2}}, Bone{{0, 2}, {0, 4}}}
 	pose1_bones := []Bone{Bone{{0, 0}, {1.5, 1.5}}, Bone{{1.5, 1.5}, {1, 3}}}
 	pose2_bones := []Bone{Bone{{0, 0}, {0, 3}}, Bone{{0, 3}, {-1, 5}}}
@@ -49,7 +49,7 @@ main :: proc() {
 		v(1, 8, .Two),
 		v(-1, 8, .Two),
 	}
-	tris := []q.IdxTriangle {
+	triangles := []q.IdxTriangle {
 		{0, 1, 2},
 		{1, 3, 4},
 		{1, 4, 2},
@@ -59,7 +59,7 @@ main :: proc() {
 		{5, 8, 6},
 	}
 
-	skinned_mesh := E.create_skinned_mesh(tris, vertices, 2, 0)
+	skinned_mesh := E.create_skinned_mesh(triangles, vertices, 2, 0)
 
 	LERP_SPEED :: 20
 	current_pose_mix: [3]f32 = {1, 0, 0}
@@ -103,22 +103,26 @@ main :: proc() {
 		E.set_skinned_mesh_bones(skinned_mesh, current_pose[:])
 		E.draw_skinned_mesh(skinned_mesh, {0, 0}, {1, 1, 1, 0.3})
 		E.draw_grid(1, q.Color{1, 1, 1, 0.2})
-		write_v, write_i := E.access_color_mesh_write_buffers()
-		start := u32(len(write_v))
-		for v in vertices {
-			pos := v.pos
-			pos =
-				v.weights[0] * q.affine_apply(current_pose[0], v.pos) +
-				v.weights[1] * q.affine_apply(current_pose[1], v.pos)
-			append(
-				write_v,
-				q.ColorMeshVertex{pos = pos, color = {v.weights[0], v.weights[1], 0, 0.1}},
-			)
-		}
-		for tri in tris {
-			append(write_i, tri.x + start)
-			append(write_i, tri.y + start)
-			append(write_i, tri.z + start)
+		if !E.is_key_pressed(.SPACE) {
+			E.set_textured_mesh_texture(texture)
+			verts, tris, start := E.access_textured_mesh_write_buffers()
+			for v in vertices {
+				pos := v.pos
+				pos =
+					v.weights[0] * q.affine_apply(current_pose[0], v.pos) +
+					v.weights[1] * q.affine_apply(current_pose[1], v.pos)
+				append(
+					verts,
+					q.TexturedVertex {
+						pos = pos,
+						uv = pos,
+						color = {v.weights[0], v.weights[1], 0, 0.5},
+					},
+				)
+			}
+			for tri in triangles {
+				append(tris, tri + start)
+			}
 		}
 		for bone in current_bones {
 			E.draw_gizmos_circle(bone.head, 0.2)

@@ -73,8 +73,8 @@ texture_from_image_path :: proc(
 	error: Error,
 ) {
 	img := image_load(path) or_return
-	defer {image_drop(&img)}
 	texture = texture_from_image(device, queue, img, settings)
+	image_drop(&img)
 	return
 }
 
@@ -87,20 +87,27 @@ texture_from_image :: proc(
 ) -> (
 	texture: Texture,
 ) {
+	assert(settings.format == IMAGE_FORMAT)
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
-	texture = texture_create(device, size, settings)
-
 	if size.x % 64 != 0 {
 		panic(
 			"Currently only images with at least 64px per row (256 bytes per row) are supported, bc. of https://docs.rs/wgpu/latest/wgpu/struct.ImageDataLayout.html",
 		)
 	}
-	assert(settings.format == IMAGE_FORMAT)
-	block_size: u32 = 4
+	texture = texture_create(device, size, settings)
+	texture_write_from_image(queue, texture, img)
+	return texture
+}
+texture_write_from_image :: proc(queue: wgpu.Queue, texture: Texture, img: Image) {
+	size := texture.info.size
+	assert(size.x == u32(img.size.x))
+	assert(size.y == u32(img.size.y))
+
+	BLOCK_SIZE :: 4
 	bytes_per_row :=
-		((size.x * block_size + COPY_BYTES_PER_ROW_ALIGNMENT - 1) &
+		((size.x * BLOCK_SIZE + COPY_BYTES_PER_ROW_ALIGNMENT - 1) &
 			~(COPY_BYTES_PER_ROW_ALIGNMENT - 1))
-	image_copy := texture_as_image_copy(&texture)
+	image_copy := texture_as_image_copy(texture)
 	data_layout := wgpu.TextureDataLayout {
 		offset       = 0,
 		bytesPerRow  = bytes_per_row,
@@ -114,7 +121,6 @@ texture_from_image :: proc(
 		&data_layout,
 		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 	)
-	return
 }
 
 depth_texture_16bit_r_from_image_path :: proc(
@@ -139,7 +145,7 @@ depth_texture_16bit_r_from_image_path :: proc(
 	}
 	block_size: u32 = 2
 	bytes_per_row := size.x * block_size
-	image_copy := texture_as_image_copy(&texture)
+	image_copy := texture_as_image_copy(texture)
 	data_layout := wgpu.TextureDataLayout {
 		offset       = 0,
 		bytesPerRow  = bytes_per_row,
@@ -156,7 +162,7 @@ depth_texture_16bit_r_from_image_path :: proc(
 	return texture, {}
 }
 
-texture_as_image_copy :: proc(texture: ^Texture) -> wgpu.ImageCopyTexture {
+texture_as_image_copy :: proc(texture: Texture) -> wgpu.ImageCopyTexture {
 	return wgpu.ImageCopyTexture {
 		texture = texture.texture,
 		mipLevel = 0,
@@ -168,7 +174,7 @@ texture_as_image_copy :: proc(texture: ^Texture) -> wgpu.ImageCopyTexture {
 _texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> Texture {
 	texture := texture_create(device, {1, 1}, TEXTURE_SETTINGS_RGBA)
 	block_size: u32 = 4
-	image_copy := texture_as_image_copy(&texture)
+	image_copy := texture_as_image_copy(texture)
 	data_layout := wgpu.TextureDataLayout {
 		offset       = 0,
 		bytesPerRow  = 4,
