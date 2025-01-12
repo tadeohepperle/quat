@@ -378,6 +378,10 @@ _engine_debug_collider_gizmos :: proc(engine: ^Engine) {
 get_mouse_btn :: proc(btn: q.MouseButton = .Left) -> q.PressFlags {
 	return ENGINE.platform.mouse_buttons[btn]
 }
+// returns nil if no files dropped into window this frame, returned strings are only valid until end of frame
+get_dropped_file_paths :: proc() -> []string {
+	return ENGINE.platform.dropped_file_paths
+}
 get_scroll :: proc() -> f32 {
 	return ENGINE.platform.scroll
 }

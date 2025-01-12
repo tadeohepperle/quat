@@ -73,7 +73,6 @@ main :: proc() {
 	key_and_pose_targets := []KeyAndPoseTarget{{.A, {1, 0, 0}}, {.S, {0, 1, 0}}, {.D, {0, 0, 1}}}
 
 	for E.next_frame() {
-
 		for target in key_and_pose_targets {
 			if E.is_key_pressed(target.key) {
 				t := E.get_delta_secs() * LERP_SPEED
@@ -129,6 +128,11 @@ main :: proc() {
 			E.draw_gizmos_triangle(bone.head, bone.root + perp, bone.root - perp)
 		}
 		E.camera_controller_update(&cam)
+
+		file_paths := E.get_dropped_file_paths()
+		if file_paths != nil {
+			fmt.println(file_paths)
+		}
 	}
 }
 

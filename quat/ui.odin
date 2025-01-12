@@ -7,6 +7,7 @@ import "core:math"
 import "core:math/rand"
 import "core:mem"
 import "core:os"
+import "core:slice"
 
 SCREEN_REFERENCE_SIZE :: [2]u32{1920, 1080}
 
@@ -26,6 +27,11 @@ ui_id_combined :: proc(a: UiId, b: UiId) -> UiId {
 	bytes := transmute([16]u8)[2]UiId{a, b}
 	return hash.crc64_xz(bytes[:])
 }
+ui_id_from_any :: proc(data: any) -> UiId {
+	ty_info := type_info_of(data.id)
+	bytes := slice.bytes_from_ptr(data.data, ty_info.size)
+	return hash.crc64_xz(bytes[:])
+}
 
 ui_interaction :: proc(id: UiId) -> Interaction {
 	return interaction(id, &UI_CTX_PTR.cache.state)
@@ -33,8 +39,8 @@ ui_interaction :: proc(id: UiId) -> Interaction {
 
 
 UiWithInteraction :: struct {
-	ui:     Ui,
-	action: Interaction,
+	ui:  Ui,
+	res: Interaction,
 }
 InteractionState :: struct($ID: typeid) {
 	hovered_id:        ID,

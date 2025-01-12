@@ -78,6 +78,7 @@ Platform :: struct {
 	scroll:                      f32,
 	last_left_just_pressed_time: time.Time,
 	double_clicked:              bool,
+	dropped_file_paths:          []string,
 
 	// globals: 
 	globals_data:                ShaderGlobals,
@@ -281,7 +282,6 @@ platform_start_render :: proc(
 }
 
 // platform
-
 platform_reset_input_at_end_of_frame :: proc(platform: ^Platform) {
 	platform.scroll = 0
 	platform.chars_len = 0
@@ -302,6 +302,16 @@ platform_reset_input_at_end_of_frame :: proc(platform: ^Platform) {
 			btn = {}
 		}
 	}
+	_clear_file_paths(&platform.dropped_file_paths)
+}
+_clear_file_paths :: proc(paths: ^[]string) {
+	if len(paths) > 0 {
+		for path in paths {
+			delete(path)
+		}
+		delete(paths^)
+	}
+	paths^ = nil
 }
 
 platform_resize :: proc(platform: ^Platform) {
@@ -429,6 +439,17 @@ _init_glfw_window :: proc(platform: ^Platform) {
 		_platform_receive_glfw_mouse_btn_event(platform, button, action)
 	}
 	glfw.SetMouseButtonCallback(platform.window, mouse_button_callback)
+
+	drop_callback :: proc "c" (window: glfw.WindowHandle, count: i32, paths: [^]cstring) {
+		context = runtime.default_context()
+		platform: ^Platform = auto_cast glfw.GetWindowUserPointer(window)
+		_clear_file_paths(&platform.dropped_file_paths)
+		platform.dropped_file_paths = make([]string, int(count))
+		for i in 0 ..< count {
+			platform.dropped_file_paths[i] = strings.clone_from_cstring(paths[i])
+		}
+	}
+	glfw.SetDropCallback(platform.window, drop_callback)
 }
 
 _init_wgpu :: proc(platform: ^Platform) {

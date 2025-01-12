@@ -64,6 +64,10 @@ THEME: UiTheme = UiTheme {
 child :: #force_inline proc(parent: UiDiv, ch: Ui) {
 	q.ui_add_child(parent, ch)
 }
+child_res :: #force_inline proc(parent: UiDiv, ch: q.UiWithInteraction) -> Interaction {
+	q.ui_add_child(parent, ch.ui)
+	return ch.res
+}
 
 with_children :: #force_inline proc(parent: UiDiv, children: []Ui) -> UiDiv {
 	for ch in children {
@@ -212,7 +216,20 @@ button :: proc(title: string, id: string = "") -> UiWithInteraction {
 	return {ui, action}
 }
 
-toggle :: proc(value: ^bool, title: string) -> Ui {
+
+ToggleProps :: struct {
+	height:      f32,
+	pill_width:  f32,
+	pill_height: f32,
+	font_size:   f32,
+}
+DEFAULT_TOGGLE_PROPS :: ToggleProps {
+	height      = 36,
+	pill_width  = 64,
+	pill_height = 32,
+	font_size   = 0,
+}
+toggle :: proc(value: ^bool, title: string, opt: ToggleProps = DEFAULT_TOGGLE_PROPS) -> Ui {
 	id := u64(uintptr(value))
 	res := q.ui_interaction(id)
 	active := value^
@@ -221,13 +238,7 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 		value^ = active
 	}
 
-	ui := div(
-		Div {
-			height = THEME.control_standard_height,
-			flags = {.AxisX, .CrossAlignCenter, .HeightPx},
-			gap = 8,
-		},
-	)
+	ui := div(Div{height = opt.height, flags = {.AxisX, .CrossAlignCenter, .HeightPx}, gap = 8})
 
 	circle_color: Color = ---
 	pill_color: Color = ---
@@ -249,14 +260,16 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 	if active {
 		pill_flags |= {.MainAlignEnd}
 	}
+	pad := opt.pill_height / 8
+	rad := opt.pill_height / 2
 	pill := div(
 		Div {
 			color = pill_color,
-			width = 64,
-			height = 32,
-			padding = {4, 4, 4, 4},
+			width = opt.pill_width,
+			height = opt.pill_height,
+			padding = {pad, pad, pad, pad},
 			flags = pill_flags,
-			border_radius = {16, 16, 16, 16},
+			border_radius = {rad, rad, rad, rad},
 		},
 		id = id,
 	)
@@ -264,8 +277,8 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 		pill,
 		Div {
 			color = circle_color,
-			width = 24,
-			height = 24,
+			width = 0.75 * opt.pill_height,
+			height = 0.75 * opt.pill_height,
 			lerp_speed = 10,
 			flags = {.WidthPx, .HeightPx, .LerpStyle, .LerpTransform, .PointerPassThrough},
 			border_radius = {12, 12, 12, 12},
@@ -278,7 +291,7 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 		Text {
 			str = title,
 			color = text_color,
-			font_size = THEME.font_size,
+			font_size = THEME.font_size if opt.font_size == 0 else opt.font_size,
 			shadow = THEME.text_shadow,
 		},
 	)
@@ -486,11 +499,11 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0) -> Ui 
 check_box :: proc(value: ^bool, title: string, id: UiId = 0) -> Ui {
 	id := id if id != 0 else u64(uintptr(value))
 	val := value^
-	res := _check_box_inner(val, title, id)
-	if res.action.just_pressed {
+	ineraction := _check_box_inner(val, title, id)
+	if ineraction.res.just_pressed {
 		value^ = !val
 	}
-	return res.ui
+	return ineraction.ui
 }
 
 
