@@ -1,8 +1,6 @@
 package quat
 
 import "core:fmt"
-import "core:image"
-import "core:image/png"
 import wgpu "vendor:wgpu"
 
 IMAGE_FORMAT :: wgpu.TextureFormat.RGBA8Unorm
@@ -72,14 +70,10 @@ texture_from_image_path :: proc(
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
 	texture: Texture,
-	error: image.Error,
+	error: Error,
 ) {
-	img, img_error := image.load_from_file(path, options = image.Options{.alpha_add_if_missing})
-	if img_error != nil {
-		error = img_error
-		return
-	}
-	defer {image.destroy(img)}
+	img := image_load(path) or_return
+	defer {image_drop(&img)}
 	texture = texture_from_image(device, queue, img, settings)
 	return
 }
@@ -88,12 +82,12 @@ COPY_BYTES_PER_ROW_ALIGNMENT: u32 : 256 // Buffer-Texture copies must have [`byt
 texture_from_image :: proc(
 	device: wgpu.Device,
 	queue: wgpu.Queue,
-	img: ^image.Image,
+	img: Image,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
 	texture: Texture,
 ) {
-	size := UVec2{u32(img.width), u32(img.height)}
+	size := UVec2{u32(img.size.x), u32(img.size.y)}
 	texture = texture_create(device, size, settings)
 
 	if size.x % 64 != 0 {
@@ -115,8 +109,8 @@ texture_from_image :: proc(
 	wgpu.QueueWriteTexture(
 		queue,
 		&image_copy,
-		raw_data(img.pixels.buf),
-		uint(len(img.pixels.buf)),
+		raw_data(img.pixels),
+		uint(len(img.pixels) * 4),
 		&data_layout,
 		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 	)
@@ -130,16 +124,12 @@ depth_texture_16bit_r_from_image_path :: proc(
 	settings: TextureSettings = TEXTURE_SETTINGS_DEPTH_SPRITE,
 ) -> (
 	texture: Texture,
-	error: image.Error,
+	error: Error,
 ) {
 	assert(settings.format == DEPTH_SPRITE_IMAGE_FORMAT)
-	img, img_error := image.load_from_file(path, options = image.Options{.do_not_expand_grayscale})
-	if img_error != nil {
-		error = img_error
-		return
-	}
-	defer {image.destroy(img)}
-	size := UVec2{u32(img.width), u32(img.height)}
+	img := depth_image_load(path) or_return
+	defer {depth_image_drop(&img)}
+	size := UVec2{u32(img.size.x), u32(img.size.y)}
 	texture = texture_create(device, size, settings)
 
 	if size.x % 128 != 0 {
@@ -149,9 +139,6 @@ depth_texture_16bit_r_from_image_path :: proc(
 	}
 	block_size: u32 = 2
 	bytes_per_row := size.x * block_size
-	print(bytes_per_row)
-	print(img)
-	print(len(img.pixels.buf))
 	image_copy := texture_as_image_copy(&texture)
 	data_layout := wgpu.TextureDataLayout {
 		offset       = 0,
@@ -161,8 +148,8 @@ depth_texture_16bit_r_from_image_path :: proc(
 	wgpu.QueueWriteTexture(
 		queue,
 		&image_copy,
-		raw_data(img.pixels.buf),
-		uint(len(img.pixels.buf)),
+		raw_data(img.pixels),
+		uint(len(img.pixels) * 2),
 		&data_layout,
 		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 	)
@@ -482,34 +469,22 @@ texture_array_from_image_paths :: proc(
 	array: Texture,
 	error: Error,
 ) {
-	images := make([dynamic]^image.Image)
-	defer {delete(images)}
-	defer {for img in images {
-			image.destroy(img)
-		}}
+	images := make([dynamic]Image)
+
 	width: int
 	height: int
 	for path, i in paths {
-		img, img_error := image.load_from_file(
-			path,
-			options = image.Options{.alpha_add_if_missing},
-		)
-		if img_error != nil {
-			error = tmp_str(img_error)
-			return
-		}
+		img := image_load(path) or_return
 		if i == 0 {
-			width = img.width
-			height = img.height
+			width = img.size.x
+			height = img.size.y
 		} else {
-			if img.width != width || img.height != height {
+			if img.size.x != width || img.size.y != height {
 				error = fmt.aprintf(
-					"Image at path %s has size %d,%d but it should be %d,%d",
+					"Image at path %s has size %v but it should be %v",
 					path,
-					img.width,
-					img.height,
-					width,
-					height,
+					img.size,
+					IVec2{width, height},
 					allocator = context.temp_allocator,
 				)
 				return
@@ -518,6 +493,11 @@ texture_array_from_image_paths :: proc(
 		append(&images, img)
 	}
 	array = texture_array_from_images(device, queue, images[:], settings)
+
+	for &img in images {
+		image_drop(&img)
+	}
+	delete(images)
 	return
 }
 
@@ -525,20 +505,17 @@ texture_array_from_image_paths :: proc(
 texture_array_from_images :: proc(
 	device: wgpu.Device,
 	queue: wgpu.Queue,
-	images: []^image.Image,
+	images: []Image,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
 	array: Texture,
 ) {
 	assert(len(images) > 0)
 
-	width := images[0].width
-	height := images[0].height
 	for e in images {
-		assert(e.width == width)
-		assert(e.height == height)
+		assert(e.size == images[0].size)
 	}
-	size := UVec2{u32(width), u32(height)}
+	size := UVec2{u32(images[0].size.x), u32(images[0].size.y)}
 	layers := u32(len(images))
 	array = texture_array_create(device, size, layers, settings)
 
@@ -562,8 +539,8 @@ texture_array_from_images :: proc(
 		wgpu.QueueWriteTexture(
 			queue,
 			&image_copy,
-			raw_data(img.pixels.buf),
-			uint(len(img.pixels.buf)),
+			raw_data(img.pixels),
+			uint(len(img.pixels) * 4),
 			&data_layout,
 			&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 		)

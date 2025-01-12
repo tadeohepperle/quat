@@ -33,12 +33,6 @@ Glyph :: struct {
 	uv_min:         Vec2,
 	uv_max:         Vec2,
 }
-FontLoadError :: union {
-	string,
-	json.Unmarshal_Error,
-	image.Error,
-}
-
 font_destroy :: proc(font: ^Font) {
 	delete(font.glyphs)
 	delete(font.name)
@@ -52,7 +46,7 @@ _font_load_from_path :: proc(
 ) -> (
 	font: Font,
 	font_texture: Texture,
-	error: FontLoadError,
+	error: Error,
 ) {
 	// read json:
 	FontWithStringKeys :: struct {
@@ -71,7 +65,7 @@ _font_load_from_path :: proc(
 	defer {delete(json_bytes)}
 	json_err := json.unmarshal(json_bytes, &font_with_string_keys)
 	if json_err != nil {
-		error = json_err
+		error = tprint(json_err)
 		return
 	}
 	font.rasterization_size = font_with_string_keys.rasterization_size
@@ -91,10 +85,6 @@ _font_load_from_path :: proc(
 	// read image: 
 	png_path := fmt.aprintf("%s.sdf_font.png", path, allocator = context.temp_allocator)
 	tex_err: png.Error
-	font_texture, tex_err = texture_from_image_path(device, queue, path = png_path)
-	if tex_err != nil {
-		error = tex_err
-		return
-	}
+	font_texture = texture_from_image_path(device, queue, path = png_path) or_return
 	return font, font_texture, nil
 }

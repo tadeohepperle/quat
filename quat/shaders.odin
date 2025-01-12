@@ -14,7 +14,6 @@ ShaderRegistry :: struct {
 	registered_pipelines:             [dynamic]^RenderPipeline,
 }
 
-
 ShaderSourceWgsl :: struct {
 	path:            string,
 	last_write_time: os.File_Time,
@@ -237,7 +236,7 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 	// print_line("read content:")
 	// print(changed_shader.src.wgsl_code)
 	// set a chain reaction in motion updating this shader and all its dependants:
-	shaders_with_changed_modules := make(map[string]Empty, allocator = context.temp_allocator)
+	shaders_with_changed_modules := make(map[string]None, allocator = context.temp_allocator)
 	queue := make([dynamic]string, allocator = context.temp_allocator)
 	append(&queue, changed_shader_name)
 	for len(queue) > 0 {
@@ -264,7 +263,7 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 				return
 			}
 			wgpu.ShaderModuleRelease(old_shader_module)
-			shaders_with_changed_modules[shader_name] = Empty{}
+			shaders_with_changed_modules[shader_name] = None{}
 		}
 		for name, shader in reg.shaders {
 			if name == shader_name {

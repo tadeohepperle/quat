@@ -494,7 +494,7 @@ _init_wgpu :: proc(platform: ^Platform) {
 		&adapter_res,
 	)
 	if adapter_res.status != .Success {
-		panic(tmp_str("Failed to get wgpu adapter: %s", adapter_res.message))
+		panic(tprint("Failed to get wgpu adapter: %s", adapter_res.message))
 	}
 	assert(adapter_res.adapter != nil)
 	platform.adapter = adapter_res.adapter

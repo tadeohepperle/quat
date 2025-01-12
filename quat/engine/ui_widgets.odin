@@ -587,16 +587,14 @@ enum_radio :: proc(
 		str := fmt.aprint(variant, allocator = context.temp_allocator)
 		id := q.ui_id(str) ~ u64(uintptr(value))
 		label := fmt.aprint(variant, allocator = context.temp_allocator)
-		res := _check_box_inner(value^ == variant, label, id)
-		if res.action.just_pressed {
+		interaction := _check_box_inner(value^ == variant, label, id)
+		if interaction.res.just_pressed {
 			value^ = variant
 		}
-		child(ui, res.ui)
+		child(ui, interaction.ui)
 	}
-
 	return ui
 }
-
 
 DisplayValuePos :: enum {
 	TopLeft,

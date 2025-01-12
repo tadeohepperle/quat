@@ -11,12 +11,23 @@ import "core:testing"
 import wgpu "vendor:wgpu"
 
 import "core:math/rand"
+None :: struct {}
 Error :: union {
 	string,
 }
-
+print :: fmt.println
+tprint :: fmt.tprint
+tmp_arr :: proc($T: typeid, cap: int = 8) -> [dynamic]T {
+	return make([dynamic]T, 0, cap, context.temp_allocator)
+}
+tmp_slice :: proc($T: typeid, len: int) -> []T {
+	return make([]T, len, context.temp_allocator)
+}
 triangles_to_u32s :: proc(tris: []IdxTriangle) -> []u32 {
 	return slice.from_ptr(cast(^u32)raw_data(tris), len(tris) * 3)
+}
+tmp_cstr :: proc(str: string) -> cstring {
+	return strings.clone_to_cstring(str, allocator = context.temp_allocator)
 }
 
 IdxTriangle :: [3]u32
@@ -80,7 +91,6 @@ Mat3 :: matrix[3, 3]f32
 Mat4 :: matrix[4, 4]f32
 UVec2 :: [2]u32
 UVec3 :: [3]u32
-IVec2 :: [2]i32
 
 
 @(test)
@@ -209,27 +219,11 @@ next_pow2_number :: proc(n: int) -> int {
 lerp :: proc "contextless" (a: $T, b: T, t: f32) -> T {
 	return a + (b - a) * t
 }
-
-Empty :: struct {}
-
-print :: fmt.println
-
 dump :: proc(args: ..any, filename := "log.txt") {
 	sb: strings.Builder
 	fmt.sbprint(&sb, args)
 	os.write_entire_file(filename, sb.buf[:])
 }
-
-tmp_str :: proc(args: ..any) -> string {
-	return fmt.aprint(..args, allocator = context.temp_allocator)
-}
-tmp_arr :: proc($T: typeid, cap: int = 8) -> [dynamic]T {
-	return make([dynamic]T, 0, cap, context.temp_allocator)
-}
-tmp_slice :: proc($T: typeid, len: int) -> []T {
-	return make([]T, len, context.temp_allocator)
-}
-
 print_line :: proc(message: string = "") {
 	if message != "" {
 		fmt.printfln(
@@ -300,13 +294,13 @@ slotmap_access :: #force_inline proc(self: ^SlotMap($T), handle: u32) -> ^T {
 }
 // returns slice in tmp memory with only the taken slots in it, useful for calling a drop function on  all elements in the slotmap
 slotmap_to_tmp_slice :: proc(self: SlotMap($T)) -> []T {
-	empty_slot_indices := make(map[u32]Empty, allocator = context.temp_allocator)
+	empty_slot_indices := make(map[u32]None, allocator = context.temp_allocator)
 	elements := make([dynamic]T, 0, len(self.slots), allocator = context.temp_allocator)
 
 	// follow the linked list to collect the indices of all empty slots:
 	next_free_idx := self.next_free_idx if self.initialized else NO_FREE_IDX
 	for next_free_idx != NO_FREE_IDX {
-		empty_slot_indices[next_free_idx] = Empty{}
+		empty_slot_indices[next_free_idx] = None{}
 		next_free_idx = self.slots[next_free_idx].next_free_idx
 	}
 
