@@ -102,7 +102,6 @@ textured_mesh_renderer_render :: proc(
 		0,
 		rend.index_buffer.size,
 	)
-	print(rend.texture_regions)
 	for reg in rend.texture_regions {
 		if reg.end_tri_idx <= reg.start_tri_idx do continue
 		wgpu.RenderPassEncoderSetBindGroup(

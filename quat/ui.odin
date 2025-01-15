@@ -1320,8 +1320,10 @@ build_ui_batches_and_attach_z_info :: proc(
 		write := &b.batches.primitives
 		switch e in ui {
 		case ^DivElement:
-			_flush_if_mismatch(b, .Rect, TextureOrFontHandle(e.texture.handle))
-			_add_div_rect(e, &write.vertices, &write.indices)
+			if e.color != 0 && e.size.x > 0 && e.size.y > 0 {
+				_flush_if_mismatch(b, .Rect, TextureOrFontHandle(e.texture.handle))
+				_add_div_rect(e, &write.vertices, &write.indices)
+			}
 
 			prev_clip: Maybe(Aabb) = --- // stored in stack frame only for clipping rects to restore this value after children are done
 			all_children_are_clipped := 0
@@ -1456,9 +1458,6 @@ _add_div_rect :: #force_inline proc(
 	vertices: ^[dynamic]UiVertex,
 	indices: ^[dynamic]u32,
 ) {
-	if e.color == 0 || e.size.x <= 0 || e.size.y <= 0 {
-		return
-	}
 	start_v := u32(len(vertices))
 
 	max_border_radius := min(e.size.x, e.size.y) / 2.0

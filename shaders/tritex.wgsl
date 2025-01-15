@@ -35,46 +35,80 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 
 
-const SQRT_3_HALF: f32 = 0.86602540378;
+fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32) -> vec3f {
+    let offset = pos / wavelength;
+    let off_a = offset + (f32(indices[0]) + SEED);
+    let off_b = offset + (f32(indices[1]) + SEED);
+    let off_c = offset + (f32(indices[2]) + SEED);
+    let noise_val : vec3f = vec3f(
+        noise2(off_a),
+        noise2(off_b),
+        noise2(off_c),
+    );
+    return noise_val * amplitude;
+}
 
+const SQRT_3_HALF: f32 = 0.86602540378;
+const WAVELENGTH: f32 = 0.3;
+const AMPLITUDE: f32 = 0.15;
+const SEED: f32 = 1.2832;
+const BLUR: f32 = 0.1;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     let n = perlinNoise2(in.pos *0.7);
+    // let color_0 = RED.rgb;  
+    // let color_1 = GREEN.rgb;
+    // let color_2 = BLUE.rgb;  
 
+    let sample_uv = in.pos * 0.2; 
+    let color_0 =  textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[0]).rgb;
+    let color_1 =  textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[1]).rgb;
+    let color_2 =  textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[2]).rgb;
     var weights = in.weights;               
 
+    let noise_octave_1 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH, AMPLITUDE);
+    let noise_octave_2 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /2, AMPLITUDE /2);
+    let noise_octave_3 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /4, AMPLITUDE /4);
+    // let noise_octave_4 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /8, AMPLITUDE /8);
+    let noise_total = noise_octave_1 + noise_octave_2 + noise_octave_3;
+    let noise_mul_w = weights * noise_total;
+    let noise_scalar = (noise_mul_w.x + noise_mul_w.y + noise_mul_w.z ) / 3.0;
+    weights += noise_total;
+    // // color can be obtained by blur mixing:
+    let col_1_2 = mix(
+        color_1,
+        color_2,
+        smoothstep(BLUR, -BLUR, weights.y - weights.z)
+    );
+    let color = mix(
+        col_1_2,
+        color_0,
+        smoothstep(BLUR, -BLUR, max(weights.y, weights.z) - weights.x)
+    );
+    // let a_weights = accentuate_weights_max(weights);
+    // let color = a_weights[0] * color_0 + a_weights[1] * color_1 + a_weights[2] * color_2;
 
 
-    // let min_weight = select(&weights[0], &weights[1], in.indices[0] > in.indices[1]);
+    let mod_color = color + noise_scalar;
+    return vec4(vec3(color),1.0) ;
+}
+
+fn blend_colors_with_blur(weights: vec3<f32>, color_0: vec3<f32>, color_1: vec3<f32>, color_2: vec3<f32>, blur: f32) -> vec3<f32> {
+    // First blend between color_1 and color_2 based on their relative weights
+    let col_1_2 = mix(
+        color_1,
+        color_2,
+        smoothstep(blur, -blur, weights.y - weights.z)
+    );
     
-    // let min_idx : u32 = min(min(in.indices[0], in.indices[1]), in.indices[2]);
-    let idx_a = in.indices[0];
-    let idx_b = in.indices[1];
-    let idx_c = in.indices[2];
-    let max_i: u32 = select(select(0u, 1u, idx_b > idx_a),2u, idx_c > max(idx_b, idx_a));
-
-   
-    let hex_dist = length(offset_hex_center(in.pos));
-    let alter_factor = 1.0 - smoothstep(0.45,0.5, hex_dist);
-              
-    // weights[max_i]  *= (n + 0.5 )* alter_factor;
-     weights = accentuate_weights_exp(weights,9.0);
-
-
-
-    let sample_uv = in.pos * 0.2; // (in.pos  + (dir_2d * n * 0.2)) * 0.4;
-    let color_0 = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[0]).rgb;
-    let color_1 = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[1]).rgb;
-    let color_2 = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[2]).rgb;
-    var color: vec3<f32> = (color_0 * weights[0] + color_1 * weights[1] + color_2 * weights[2]);
+    // Then blend between color_0 and the previous blend result
+    let final_color = mix(
+        color_0,
+        col_1_2,
+        smoothstep(blur, -blur, weights.y - weights.x)
+    );
     
-    // color = textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[max_i]).rgb;
-    
-    // color = (in.direction + 1.0) /2.0;
-    // let l = smoothstep(0.3,0.4,length(dir_2d));
-    // let l = length(weights);
-    // color += vec3f(alter_factor) * 0.7; 
-    return vec4(color,1.0) ;
+    return final_color;
 }
 
 const s: vec2<f32> = vec2<f32>(1, 1.7320508); // 1.7320508 = sqrt(3)
@@ -84,6 +118,15 @@ fn offset_hex_center(pos: vec2f) -> vec2<f32>{
     let hex_center: vec4<f32> = round(vec4(p, p - vec2(0.5, 1.0)) / s.xyxy);
     let offset: vec4<f32> = vec4(p - hex_center.xy * s, p - (hex_center.zw + .5) * s);
     return select(offset.zw, offset.xy, dot(offset.xy, offset.xy) < dot(offset.zw, offset.zw));
+}
+
+fn accentuate_weights_max(weights: vec3<f32>) -> vec3<f32> {
+    let max_weight = max(max(weights.x, weights.y), weights.z);
+    return vec3<f32>(
+        select(0.0, 1.0, weights.x >= max_weight),
+        select(0.0, 1.0, weights.y >= max_weight),
+        select(0.0, 1.0, weights.z >= max_weight)
+    );
 }
 
 

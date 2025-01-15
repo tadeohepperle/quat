@@ -91,7 +91,9 @@ Mat3 :: matrix[3, 3]f32
 Mat4 :: matrix[4, 4]f32
 UVec2 :: [2]u32
 UVec3 :: [3]u32
-
+ivec2_to_vec2 :: proc "contextless" (i: IVec2) -> Vec2 {
+	return Vec2{f32(i.x), f32(i.y)}
+}
 
 @(test)
 transform_test :: proc(t: ^testing.T) {
@@ -132,7 +134,7 @@ affine_sum :: proc(affines: ..Affine2) -> (res: Affine2) {
 
 // applied the affine transform to a point p, rotating and scaling it
 // 2d affine transformation can be applied on any point p by p' = mat * p + offset,
-affine_apply :: proc(t: Affine2, p: Vec2) -> Vec2 {
+affine_apply :: proc "contextless" (t: Affine2, p: Vec2) -> Vec2 {
 	return t.m * p + t.offset
 }
 
@@ -144,42 +146,18 @@ AffineCombineOptions :: struct {
 affine_combine :: proc(parent: Affine2, child: Affine2) -> Affine2 {
 	return Affine2{parent.m * child.m, parent.m * child.offset + parent.offset}
 }
-
-// creates a new affine transform from two offsetted vectors, mapping the `from` to the `to` when the 
-// resulting affine transform A is applied, so: 
-// - `to_root === affine_apply(A, from_root)`
-// - `to_head === affine_apply(A, from_head)`
-//
-// solution: M = A^-1 * B  
-affine_from_vectors :: proc(
-	from_root: Vec2,
-	from_head: Vec2,
-	to_root: Vec2,
-	to_head: Vec2,
-) -> (
-	res: Affine2,
-) {
-	a := from_head - from_root
-	b := to_head - to_root
-
-	A := Mat2{a.x, -a.y, a.y, a.x}
-	A_DET := A[0, 0] * A[1, 1] - A[1, 0] * A[0, 1]
-	A_INV := (f32(1.0) / A_DET) * Mat2{A[1, 1], -A[0, 1], -A[1, 0], A[0, 0]}
-
-	// if true, the scaling only applies in the direction of the bone, not sideways to it.
-	// if false, a bone being made longer, makes its hull also thicker.
-	NO_SIDE_SCALING :: true
-	when NO_SIDE_SCALING {
-		a_len := linalg.length(a)
-		b_len := linalg.length(b)
-
-		len_factor := a_len / b_len
-		B := Mat2{b.x * len_factor, -b.y, b.y * len_factor, b.x}
-	} else {
-		B := Mat2{b.x, -b.y, b.y, b.x}
+affine_from_vectors :: proc(a_old: Vec2, b_old: Vec2, a_new: Vec2, b_new: Vec2) -> Affine2 {
+	// If the points are identical, return identity matrix with translation
+	if a_old == b_old {
+		return Affine2{m = Mat2{1, 0, 0, 1}, offset = a_new}
 	}
-	return Affine2{A_INV * B, (res.m * (-from_root)) + to_root}
+	v_old := b_old - a_old
+	v_new := b_new - a_new
+	m := Mat2{v_new.x / v_old.x, 0, 0, v_new.y / v_old.y}
+	offset := a_new - m * a_old
+	return Affine2{m = m, offset = offset}
 }
+
 // todo: affine_from_rotation does not support NO_SIDE_SCALING yet
 affine_from_rotation :: proc(
 	rotation: f32,

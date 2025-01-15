@@ -36,3 +36,80 @@ fn perlinNoise2(P: vec2f) -> f32 {
     let n_xy = mix(n_x.x, n_x.y, fade_xy.y);
     return 2.3 * n_xy;
 }
+
+
+
+// credit: Morgan McGuire, https://www.shadertoy.com/view/4dS3Wd
+
+fn hash1(p: f32) -> f32 {
+    var p_mut = fract(p * 0.011);
+    p_mut *= p_mut + 7.5;
+    p_mut *= p_mut + p_mut;
+    return fract(p_mut);
+}
+
+fn hash2(p: vec2<f32>) -> f32 {
+    var p3 = fract(vec3<f32>(p.x, p.y, p.x) * 0.13);
+    p3 += dot(p3, p3.yzx + vec3<f32>(3.333));
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+fn noise1(x: f32) -> f32 {
+    let i = floor(x);
+    let f = fract(x);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(hash1(i), hash1(i + 1.0), u);
+}
+
+fn noise2(x: vec2<f32>) -> f32 {
+    let i = floor(x);
+    let f = fract(x);
+
+    // Four corners in 2D of a tile
+    let a = hash2(i);
+    let b = hash2(i + vec2<f32>(1.0, 0.0));
+    let c = hash2(i + vec2<f32>(0.0, 1.0));
+    let d = hash2(i + vec2<f32>(1.0, 1.0));
+
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+fn noise3(x: vec3<f32>) -> f32 {
+    let step = vec3<f32>(110.0, 241.0, 171.0);
+    let i = floor(x);
+    let f = fract(x);
+
+    let n = dot(i, step);
+    let u = f * f * (3.0 - 2.0 * f);
+
+    return mix(
+        mix(
+            mix(
+                hash1(n + dot(step, vec3<f32>(0.0, 0.0, 0.0))),
+                hash1(n + dot(step, vec3<f32>(1.0, 0.0, 0.0))),
+                u.x
+            ),
+            mix(
+                hash1(n + dot(step, vec3<f32>(0.0, 1.0, 0.0))),
+                hash1(n + dot(step, vec3<f32>(1.0, 1.0, 0.0))),
+                u.x
+            ),
+            u.y
+        ),
+        mix(
+            mix(
+                hash1(n + dot(step, vec3<f32>(0.0, 0.0, 1.0))),
+                hash1(n + dot(step, vec3<f32>(1.0, 0.0, 1.0))),
+                u.x
+            ),
+            mix(
+                hash1(n + dot(step, vec3<f32>(0.0, 1.0, 1.0))),
+                hash1(n + dot(step, vec3<f32>(1.0, 1.0, 1.0))),
+                u.x
+            ),
+            u.y
+        ),
+        u.z
+    );
+}

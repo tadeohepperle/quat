@@ -3,7 +3,7 @@ package quat
 import "core:fmt"
 import wgpu "vendor:wgpu"
 
-IMAGE_FORMAT :: wgpu.TextureFormat.RGBA8Unorm
+IMAGE_FORMAT :: wgpu.TextureFormat.RGBA8UnormSrgb
 DEPTH_SPRITE_IMAGE_FORMAT :: wgpu.TextureFormat.R16Unorm
 
 TEXTURE_SETTINGS_RGBA :: TextureSettings {
@@ -87,7 +87,11 @@ texture_from_image :: proc(
 ) -> (
 	texture: Texture,
 ) {
-	assert(settings.format == IMAGE_FORMAT)
+	// todo: remove this stupid restriction, but we currently only support rgba8 textures
+	assert(
+		settings.format == wgpu.TextureFormat.RGBA8UnormSrgb ||
+		settings.format == wgpu.TextureFormat.RGBA8Unorm,
+	)
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
 	if size.x % 64 != 0 {
 		panic(

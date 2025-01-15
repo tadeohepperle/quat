@@ -85,6 +85,20 @@ _font_load_from_path :: proc(
 	// read image: 
 	png_path := fmt.aprintf("%s.sdf_font.png", path, allocator = context.temp_allocator)
 	tex_err: png.Error
-	font_texture = texture_from_image_path(device, queue, path = png_path) or_return
+
+	TEXTURE_SETTINGS_SDF_FONT :: TextureSettings {
+		label        = "sdf font",
+		format       = wgpu.TextureFormat.RGBA8Unorm,
+		address_mode = .Repeat,
+		mag_filter   = .Linear,
+		min_filter   = .Nearest,
+		usage        = {.TextureBinding, .CopyDst},
+	}
+	font_texture = texture_from_image_path(
+		device,
+		queue,
+		png_path,
+		TEXTURE_SETTINGS_SDF_FONT,
+	) or_return
 	return font, font_texture, nil
 }

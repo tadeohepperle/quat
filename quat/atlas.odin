@@ -1,11 +1,13 @@
 package quat
 
+import "core:slice"
+
 IVec2 :: [2]int
 // guillotine atlas allocator 
 Atlas :: struct {
-	size:       IVec2,
-	free_areas: [dynamic]Area,
-	used_areas: map[Area]None,
+	size:        IVec2,
+	free_areas:  [dynamic]Area,
+	allocations: map[IVec2]IVec2, // maps pos to size
 }
 Area :: struct {
 	pos:  IVec2, // top left corner of the allocation
@@ -14,16 +16,24 @@ Area :: struct {
 atlas_init :: proc(atlas: ^Atlas, size: IVec2) {
 	atlas.size = size
 	clear(&atlas.free_areas)
-	clear(&atlas.used_areas)
+	clear(&atlas.allocations)
 	append(&atlas.free_areas, Area{pos = {0, 0}, size = size})
+}
+atlas_clone :: proc(atlas: Atlas) -> (res: Atlas) {
+	res.size = atlas.size
+	res.free_areas = slice.clone_to_dynamic(atlas.free_areas[:])
+	for pos, size in atlas.allocations {
+		res.allocations[pos] = size
+	}
+	return res
 }
 atlas_drop :: proc(atlas: ^Atlas) {
 	delete(atlas.free_areas)
-	delete(atlas.used_areas)
+	delete(atlas.allocations)
 }
 atlas_allocate :: proc(atlas: ^Atlas, item_size: IVec2) -> (pos: IVec2, ok: bool) {
 	assert(is_non_negative(item_size))
-	idx := _select_allocation_rect(atlas^, item_size) or_return
+	idx := _atlas_select_allocation_rect(atlas^, item_size) or_return
 	area := atlas.free_areas[idx]
 	pos = area.pos
 	unordered_remove(&atlas.free_areas, idx)
@@ -50,17 +60,23 @@ atlas_allocate :: proc(atlas: ^Atlas, item_size: IVec2) -> (pos: IVec2, ok: bool
 			size = {area.size.x, area.size.y - item_size.y},
 		}
 	}
-	append(&atlas.free_areas, new_area_1)
-	append(&atlas.free_areas, new_area_2)
-	assert(Area{pos, item_size} not_in atlas.used_areas)
-	atlas.used_areas[Area{pos, item_size}] = None{}
+	// only add non-sero sized areas:
+	if new_area_1.size.x > 0 && new_area_1.size.y > 0 {
+		append(&atlas.free_areas, new_area_1)
+	}
+	if new_area_2.size.x > 0 && new_area_2.size.y > 0 {
+		append(&atlas.free_areas, new_area_2)
+	}
+	assert(pos not_in atlas.allocations)
+	atlas.allocations[pos] = item_size
 	return pos, true
 }
 atlas_deallocate :: proc(atlas: ^Atlas, rect: Area) -> bool {
-	if rect not_in atlas.used_areas {
+	if rect.pos not_in atlas.allocations {
 		return false
 	}
-	delete_key(&atlas.used_areas, rect)
+	assert(atlas.allocations[rect.pos] == rect.size)
+	delete_key(&atlas.allocations, rect.pos)
 	append(&atlas.free_areas, rect)
 
 	// merge free areas that are next to each other:
@@ -124,7 +140,7 @@ _try_merge_areas :: proc(a: ^Area, b: ^Area) -> bool {
 //    |            |
 //    |____________|
 //
-_select_allocation_rect :: proc(atlas: Atlas, item_size: IVec2) -> (idx: int, ok: bool) {
+_atlas_select_allocation_rect :: proc(atlas: Atlas, item_size: IVec2) -> (idx: int, ok: bool) {
 	best_idx: int = -1
 	best_min_dim := max(int)
 	for area, i in atlas.free_areas {
@@ -142,4 +158,107 @@ _select_allocation_rect :: proc(atlas: Atlas, item_size: IVec2) -> (idx: int, ok
 
 is_non_negative :: proc "contextless" (size: IVec2) -> bool {
 	return size.x >= 0 && size.y >= 0
+}
+
+
+// if atlas was grown, positions of allocations can get remapped, so they are != nil if grown (old_pos -> new_pos)
+// note: atlas_sizes must be in ascending order
+// remap_allocs is returned in tmp memory
+atlas_allocate_growing_if_necessary :: proc(
+	atlas: ^Atlas,
+	item_size: IVec2,
+	atlas_sizes: []IVec2,
+) -> (
+	pos: IVec2,
+	remap_allocs: map[IVec2]IVec2,
+	ok: bool,
+) {
+	pos, ok = atlas_allocate(atlas, item_size)
+	if ok {
+		return pos, nil, true
+	}
+	// allocation did not work, needs to grow atlas
+
+	next_size_idx: int = -1
+	// find the first element that is greater than the current atlas size:
+	assert(_sizes_are_ascending(atlas_sizes))
+	for size, idx in atlas_sizes {
+		if ivec2_greater(size, atlas.size) {
+			next_size_idx = idx
+			break
+		}
+	}
+	if next_size_idx == -1 {
+		// there is no size in the provided sizes greater than the current atlas size
+		return {}, nil, false
+	}
+
+	// try the new sizes one by one, until we reach one that fits:
+	original_atlas := atlas_clone(atlas^)
+	for {
+		next_size := atlas_sizes[next_size_idx]
+		current_remap := atlas_grow_to_size(atlas, next_size)
+		if remap_allocs == nil {
+			remap_allocs = current_remap // the first generation of growth
+		} else {
+			// the remaps need to survive over possibly many generations of growth attempts
+			for old_pos, &new_pos in remap_allocs {
+				new_new_pos, has_it := current_remap[new_pos]
+				assert(has_it)
+				new_pos = new_new_pos
+			}
+		}
+		pos, ok = atlas_allocate(atlas, item_size)
+		if ok {
+			atlas_drop(&original_atlas)
+			return pos, remap_allocs, true
+		}
+		next_size_idx += 1
+		if next_size_idx >= len(atlas_sizes) {
+			// no more sizes to try, restore the atlas like it was before this function call
+			atlas_drop(atlas)
+			atlas^ = original_atlas
+			return {}, nil, false
+		}
+	}
+}
+
+_sizes_are_ascending :: proc(sizes: []IVec2) -> bool {
+	if len(sizes) == 0 {
+		return true
+	}
+	last := sizes[0]
+	for size in sizes[1:] {
+		if !ivec2_greater(size, last) {
+			return false
+		}
+		last = size
+	}
+	return true
+}
+
+ivec2_greater :: proc(a: IVec2, b: IVec2) -> bool {
+	return a.y >= b.y && a.x >= b.x && a != b
+}
+
+// remapped_allocations
+atlas_grow_to_size :: proc(
+	atlas: ^Atlas,
+	new_size: IVec2,
+) -> (
+	remap_allocs: map[IVec2]IVec2, // pos to pos
+) {
+	remap_allocs = make(map[IVec2]IVec2, allocator = context.temp_allocator)
+	assert(ivec2_greater(new_size, atlas.size))
+	// store the old positions andasizes in here to avoid another allocation
+	for pos, size in atlas.allocations {
+		remap_allocs[pos] = size
+	}
+	atlas_init(atlas, new_size)
+	for _old_pos, &size in remap_allocs {
+		new_pos, ok := atlas_allocate(atlas, size)
+		assert(ok, "allocating the same rects in a bigger atlas should always be possible")
+		size = new_pos // to return to the user
+	}
+	return remap_allocs
 }

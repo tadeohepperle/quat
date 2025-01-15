@@ -266,13 +266,14 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		asset_manager,
 	)
-	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
 	q.textured_mesh_renderer_render(
 		&engine.textured_mesh_renderer,
 		hdr_pass,
 		global_bind_group,
 		asset_manager,
 	)
+	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
+
 	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
 	// Solution 2: use depth writes for at least one of the two and render that first.
 	// 
@@ -521,6 +522,9 @@ create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
 destroy_texture :: proc(handle: q.TextureHandle) {
 	q.assets_deregister_texture(&ENGINE.platform.asset_manager, handle)
 }
+get_texture_info :: proc(handle: q.TextureHandle) -> q.TextureInfo {
+	return q.assets_get_texture_info(ENGINE.platform.asset_manager, handle)
+}
 write_image_to_texture :: proc(img: q.Image, handle: q.TextureHandle) {
 	texture := q.assets_get_texture(ENGINE.platform.asset_manager, handle)
 	q.texture_write_from_image(ENGINE.platform.queue, texture, img)
@@ -627,7 +631,7 @@ draw_gizmos_circle :: proc(
 	)
 }
 // Can write directly into these, instead of using one of the `draw_color_mesh` procs.
-access_color_mesh_write_buffers :: proc(
+access_color_mesh_write_buffers :: #force_inline proc(
 ) -> (
 	vertices: ^[dynamic]q.ColorMeshVertex,
 	triangles: ^[dynamic]q.IdxTriangle,
@@ -639,7 +643,7 @@ access_color_mesh_write_buffers :: proc(
 	return
 }
 // Can write directly into these, instead of using one of the `draw_color_mesh` procs.
-access_textured_mesh_write_buffers :: proc(
+access_textured_mesh_write_buffers :: #force_inline proc(
 ) -> (
 	vertices: ^[dynamic]q.TexturedVertex,
 	triangles: ^[dynamic]q.IdxTriangle,

@@ -45,13 +45,16 @@ depth_image_drop :: proc(this: ^DepthImage16) {
 }
 Image :: struct {
 	size:           IVec2,
-	pixels:         []Rgba,
+	pixels:         []Rgba `fmt:"-"`,
 	backed_by_stbi: bool,
 }
 StbiAllocation :: distinct rawptr // buffer containing the pixels allocated by stbi
 ArrayAllocation :: [dynamic]Rgba // buffer allocated by odin
 Rgba :: [4]u8
 
+is_image_path :: proc(path: string) -> bool {
+	return strings.ends_with(path, ".png") // todo: extend further later, needs to support jpeg as well
+}
 image_load :: proc(path: string) -> (Image, Error) {
 	x, y, c: i32
 	DESIRED_CHANNELS :: 4
@@ -74,6 +77,9 @@ image_drop :: proc(this: ^Image) {
 	} else {
 		delete(this.pixels)
 	}
+}
+image_clear :: proc(this: ^Image) {
+	mem.zero_slice(this.pixels)
 }
 image_create :: proc(size: IVec2) -> Image {
 	buf_len := size.x * size.y
@@ -474,7 +480,6 @@ create_voronoi_texture :: proc(
 				for nei_off in neighbor_offsets {
 					// wrapping position:
 					nei_pos := IVec2{(pos.x + nei_off.x) %% size.x, (pos.y + nei_off.y) %% size.y}
-					// fmt.println(nei_pos)
 					nei_pix := &distances[nei_pos.y * size.x + nei_pos.x]
 					if nei_pix.dist != UNDEFINED_DIST {
 						if pix_undefined || nei_pix.dist < pix.dist {
