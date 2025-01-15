@@ -124,13 +124,7 @@ main :: proc() {
 	engine.init(settings)
 	defer engine.deinit()
 	terrain_textures := engine.load_texture_array(
-		{
-			"./assets/t_0.png",
-			"./assets/t_1.png",
-			"./assets/t_2.png",
-			"./assets/t_3.png",
-			"./assets/t_3.png",
-		},
+		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_3.png"},
 	)
 	engine.set_tritex_textures(terrain_textures)
 
@@ -145,6 +139,13 @@ main :: proc() {
 		{0, 1} = .Rock,
 		{0, 1} = .Rock,
 		{1, 1} = .Mars,
+		{5, 6} = .Grass,
+		{6, 6} = .Grass,
+		{7, 7} = .Sand,
+		{7, 8} = .Sand,
+		{8, 8} = .Sand,
+		{8, 6} = .Sand,
+		{8, 7} = .Sand,
 	}
 	terrain_mesh := engine.create_tritex_mesh(world_vertices(world))
 	cam := engine.camera_controller_create()

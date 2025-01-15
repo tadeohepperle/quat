@@ -35,11 +35,11 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 
 
-fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32) -> vec3f {
+fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> vec3f {
     let offset = pos / wavelength;
-    let off_a = offset + (f32(indices[0]) + SEED);
-    let off_b = offset + (f32(indices[1]) + SEED);
-    let off_c = offset + (f32(indices[2]) + SEED);
+    let off_a = offset + (f32(indices[0]) + seed);
+    let off_b = offset + (f32(indices[1]) + seed);
+    let off_c = offset + (f32(indices[2]) + seed);
     let noise_val : vec3f = vec3f(
         noise2(off_a),
         noise2(off_b),
@@ -52,7 +52,13 @@ const SQRT_3_HALF: f32 = 0.86602540378;
 const WAVELENGTH: f32 = 0.3;
 const AMPLITUDE: f32 = 0.15;
 const SEED: f32 = 1.2832;
-const BLUR: f32 = 0.1;
+const BLUR: f32 = 0.4;
+
+fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
+
+    return select(textureSample(t_diffuse, s_diffuse, sample_uv, idx-1).rgba, vec4f(0.0), idx == 0);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     let n = perlinNoise2(in.pos *0.7);
@@ -61,20 +67,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     // let color_2 = BLUE.rgb;  
 
     let sample_uv = in.pos * 0.2; 
-    let color_0 =  textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[0]).rgb;
-    let color_1 =  textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[1]).rgb;
-    let color_2 =  textureSample(t_diffuse, s_diffuse, sample_uv, in.indices[2]).rgb;
-    var weights = in.weights;               
+    let color_0 =  texture_rgb(sample_uv, in.indices[0]);
+    let color_1 =  texture_rgb(sample_uv, in.indices[1]);
+    let color_2 =  texture_rgb(sample_uv, in.indices[2]);
+    var weights = in.weights;
+    // weights *= vec3f(color_0.a,color_1.a,color_2.a);       
 
-    let noise_octave_1 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH, AMPLITUDE);
-    let noise_octave_2 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /2, AMPLITUDE /2);
-    let noise_octave_3 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /4, AMPLITUDE /4);
+    let noise_octave_1 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH, AMPLITUDE, SEED);
+    let noise_octave_2 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /2, AMPLITUDE /2,SEED);
+    let noise_octave_3 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /4, AMPLITUDE /4, SEED);
     // let noise_octave_4 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH /8, AMPLITUDE /8);
     let noise_total = noise_octave_1 + noise_octave_2 + noise_octave_3;
     let noise_mul_w = weights * noise_total;
     let noise_scalar = (noise_mul_w.x + noise_mul_w.y + noise_mul_w.z ) / 3.0;
     weights += noise_total;
-    // // color can be obtained by blur mixing:
+    weights += 0.3;
+
+    // weights /= length(weights);
+    // OPTION 1:
+
     let col_1_2 = mix(
         color_1,
         color_2,
@@ -85,12 +96,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
         color_0,
         smoothstep(BLUR, -BLUR, max(weights.y, weights.z) - weights.x)
     );
-    // let a_weights = accentuate_weights_max(weights);
-    // let color = a_weights[0] * color_0 + a_weights[1] * color_1 + a_weights[2] * color_2;
 
+    // OPTION 2:
 
-    let mod_color = color + noise_scalar;
-    return vec4(vec3(color),1.0) ;
+    // weights = accentuate_weights_exp(weights, 10.0);
+    // let color = weights[0] * color_0 + weights[1] * color_1 + weights[2] * color_2;
+
+    // OPTION 3:
+
+    // weights = accentuate_weights_exp(weights, 10.0);
+    // let color = weights[0] * color_0 + weights[1] * color_1 + weights[2] * color_2;
+
+    let mod_color = mix(vec3f(noise_scalar), color.rgb, color.a);
+    return vec4(mod_color, color.a) ;
 }
 
 fn blend_colors_with_blur(weights: vec3<f32>, color_0: vec3<f32>, color_1: vec3<f32>, color_2: vec3<f32>, blur: f32) -> vec3<f32> {
