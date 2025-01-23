@@ -111,7 +111,11 @@ platform_create :: proc(
 		HDR_SCREEN_TEXTURE_SETTINGS,
 	)
 	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
-	platform.shader_registry = shader_registry_create(platform.device, settings.shaders_dir_path)
+	platform.shader_registry = shader_registry_create(
+		platform.device,
+		settings.shaders_dir_path,
+		settings.hot_reload_shaders,
+	)
 	uniform_buffer_create(&platform.globals, platform.device)
 	platform.tonemapping_pipeline.config = tonemapping_pipeline_config(platform.device)
 	render_pipeline_create_panic(&platform.tonemapping_pipeline, &platform.shader_registry)

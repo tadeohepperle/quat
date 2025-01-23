@@ -39,14 +39,41 @@ font_destroy :: proc(font: ^Font) {
 }
 
 // this function expects to find a file at {path}.json and {path}.png, representing the fonts data and sdf glyphs
-_font_load_from_path :: proc(
+font_load_from_path :: proc(
 	path: string,
 	device: wgpu.Device,
 	queue: wgpu.Queue,
 ) -> (
 	font: Font,
 	font_texture: Texture,
-	error: Error,
+	err: Error,
+) {
+	json_path := fmt.aprintf("{}.sdf_font.json", path, allocator = context.temp_allocator)
+	json_bytes, ok := os.read_entire_file(json_path)
+	if !ok {
+		err = tprint("could not read file", json_path)
+		return
+	}
+	// read image: 
+	png_path := fmt.aprintf("{}.sdf_font.png", path, allocator = context.temp_allocator)
+	sdf_png_img_bytes, img_read_ok := os.read_entire_file(png_path)
+	if !img_read_ok {
+		err = tprint("could not read file", png_path)
+		return
+	}
+	defer {delete(json_bytes);delete(sdf_png_img_bytes)}
+	return font_load_from_img_and_json_bytes(sdf_png_img_bytes, json_bytes, device, queue)
+}
+
+font_load_from_img_and_json_bytes :: proc(
+	sdf_png_img_bytes: []u8,
+	json_bytes: []u8,
+	device: wgpu.Device,
+	queue: wgpu.Queue,
+) -> (
+	font: Font,
+	font_texture: Texture,
+	err: Error,
 ) {
 	// read json:
 	FontWithStringKeys :: struct {
@@ -56,16 +83,9 @@ _font_load_from_path :: proc(
 		glyphs:             map[string]Glyph,
 	}
 	font_with_string_keys: FontWithStringKeys
-	json_path := fmt.aprintf("%s.sdf_font.json", path, allocator = context.temp_allocator)
-	json_bytes, ok := os.read_entire_file(json_path)
-	if !ok {
-		error = "could not read file"
-		return
-	}
-	defer {delete(json_bytes)}
 	json_err := json.unmarshal(json_bytes, &font_with_string_keys)
 	if json_err != nil {
-		error = tprint(json_err)
+		err = tprint(json_err)
 		return
 	}
 	font.rasterization_size = font_with_string_keys.rasterization_size
@@ -75,17 +95,12 @@ _font_load_from_path :: proc(
 		for r, i in s {
 			font.glyphs[r] = v
 			if i != 0 {
-				error = "Only single character strings allowed as glyph keys!"
+				err = "Only single character strings allowed as glyph keys!"
 				return
 			}
 		}
 	}
 	delete(font_with_string_keys.glyphs)
-
-	// read image: 
-	png_path := fmt.aprintf("%s.sdf_font.png", path, allocator = context.temp_allocator)
-	tex_err: png.Error
-
 	TEXTURE_SETTINGS_SDF_FONT :: TextureSettings {
 		label        = "sdf font",
 		format       = wgpu.TextureFormat.RGBA8Unorm,
@@ -94,11 +109,10 @@ _font_load_from_path :: proc(
 		min_filter   = .Nearest,
 		usage        = {.TextureBinding, .CopyDst},
 	}
-	font_texture = texture_from_image_path(
-		device,
-		queue,
-		png_path,
-		TEXTURE_SETTINGS_SDF_FONT,
-	) or_return
+	img, img_load_err := image_load_from_memory(sdf_png_img_bytes)
+	if img_load_err != nil {
+		return {}, {}, img_load_err
+	}
+	font_texture = texture_from_image(device, queue, img, TEXTURE_SETTINGS_SDF_FONT)
 	return font, font_texture, nil
 }

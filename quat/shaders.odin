@@ -12,6 +12,7 @@ ShaderRegistry :: struct {
 	device:                           wgpu.Device,
 	shaders:                          map[string]Shader,
 	registered_pipelines:             [dynamic]^RenderPipeline,
+	hot_reload_shaders:               bool,
 }
 
 ShaderSourceWgsl :: struct {
@@ -57,12 +58,16 @@ shader_registry_destroy :: proc(reg: ^ShaderRegistry) {
 shader_registry_create :: proc(
 	device: wgpu.Device,
 	shaders_dir_path: string = "./shaders",
+	hot_reload_shaders: bool,
 ) -> ShaderRegistry {
-	return ShaderRegistry{device = device, shaders_dir_path = shaders_dir_path}
+	return ShaderRegistry {
+		device = device,
+		shaders_dir_path = shaders_dir_path,
+		hot_reload_shaders = hot_reload_shaders,
+	}
 }
 
 shader_registry_get :: proc(reg: ^ShaderRegistry, shader_name: string) -> wgpu.ShaderModule {
-
 	shader, err := get_or_load_shader(reg, shader_name, true)
 	if err != "" {
 		fmt.panicf("shader_registry_get should not panic (at least not on hot-reload): %s", err)
@@ -174,10 +179,23 @@ load_shader_wgsl :: proc(
 ) -> (
 	err: string,
 ) {
-	print("LOAD", shader_name, shader)
 	shader.src.path = fmt.aprintf("%s/%s.wgsl", reg.shaders_dir_path, shader_name)
 	src_time, src_err := os.last_write_time_by_name(shader.src.path)
 	if src_err != 0 {
+		//try load it from static SHADERS_DIRECTORY included instead
+		if !reg.hot_reload_shaders {
+			for included_file in SHADERS_DIRECTORY {
+				if included_file.name[:len(included_file.name) - 5] == shader_name {
+					shader.src.wgsl_code = strings.clone(transmute(string)included_file.data)
+					if reg.shaders_dir_path != "" {
+						// if was specified as "" we just assume the user wanted no hotrelaod and the static sources in the first place
+						print(shader.src.path, "not found using static wgsl instead.")
+					}
+					shader.src.last_write_time = 0
+					return
+				}
+			}
+		}
 		err = fmt.aprint("file does not exist:", shader.src.path)
 		return
 	}
@@ -212,7 +230,8 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 	for shader_name, &shader in reg.shaders {
 		last_write_time, err := os.last_write_time_by_name(shader.src.path)
 		if err != 0 {
-			fmt.panicf("Shader file at %s got deleted", shader.src.path)
+			continue
+			// fmt.panicf("Shader file at %s got deleted", shader.src.path)
 		}
 		if shader.src.last_write_time >= last_write_time {
 			continue
@@ -233,6 +252,8 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 		fmt.eprintfln("Error loading shader at %s: %s", changed_shader.src.path, load_err)
 		return
 	}
+	delete(old_src.path)
+	delete(old_src.wgsl_code)
 	// print_line("read content:")
 	// print(changed_shader.src.wgsl_code)
 	// set a chain reaction in motion updating this shader and all its dependants:

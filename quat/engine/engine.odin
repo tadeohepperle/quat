@@ -587,7 +587,11 @@ load_texture_array :: proc(
 	return q.assets_load_texture_array(&ENGINE.platform.asset_manager, paths, settings)
 }
 load_font :: proc(path: string) -> q.FontHandle {
-	return q.assets_load_font(&ENGINE.platform.asset_manager, path)
+	handle, err := q.assets_load_font(&ENGINE.platform.asset_manager, path)
+	if err, has_err := err.(string); has_err {
+		panic(err)
+	}
+	return handle
 }
 draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 	append(&ENGINE.scene.sprites, sprite)

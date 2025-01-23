@@ -160,6 +160,7 @@ is_non_negative :: proc "contextless" (size: IVec2) -> bool {
 	return size.x >= 0 && size.y >= 0
 }
 
+// todo: growing without reallocating all the existing allocations! just keep them in one corner
 
 // if atlas was grown, positions of allocations can get remapped, so they are != nil if grown (old_pos -> new_pos)
 // note: atlas_sizes must be in ascending order

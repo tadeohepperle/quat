@@ -975,7 +975,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 		ctx.last_byte_idx = ch_byte_idx
 		g, ok := font.glyphs[ch]
 		if !ok {
-			fmt.panicf("Character %s not rastierized yet!", ch)
+			fmt.panicf("Character '{}' not rastierized yet! {}", ch, u32(ch))
 		}
 		g.advance *= scale
 		g.xmin *= scale

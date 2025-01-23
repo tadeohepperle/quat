@@ -26,6 +26,9 @@ AssetManager :: struct {
 	device:   wgpu.Device,
 	queue:    wgpu.Queue,
 }
+DEFAULT_FONT_SDF_IMG := #load("../assets/marko_one_regular.sdf_font.png")
+DEFAULT_FONT_JSON := #load("../assets/marko_one_regular.sdf_font.json")
+
 asset_manager_create :: proc(
 	assets: ^AssetManager,
 	default_font_path: string,
@@ -39,8 +42,19 @@ asset_manager_create :: proc(
 	default_texture_handle := slotmap_insert(&assets.textures, default_texture)
 	assert(default_texture_handle == 0) // is the first one
 
-	default_font_handle := assets_load_font(assets, default_font_path)
-	assert(default_font_handle == 0) // is the first one
+	font, font_texture, font_err := font_load_from_img_and_json_bytes(
+		DEFAULT_FONT_SDF_IMG,
+		DEFAULT_FONT_JSON,
+		device,
+		queue,
+	)
+	if font_err, has_err := font_err.(string); has_err {
+		panic(font_err)
+	}
+	font_texture_handle := slotmap_insert(&assets.textures, font_texture)
+	font.texture = TextureHandle(font_texture_handle)
+	font_handle := FontHandle(slotmap_insert(&assets.fonts, font))
+
 }
 asset_manager_destroy :: proc(assets: ^AssetManager) {
 	textures := slotmap_to_tmp_slice(assets.textures)
@@ -130,16 +144,12 @@ assets_load_texture_array :: proc(
 	return texture_handle
 }
 
-assets_load_font :: proc(assets: ^AssetManager, path: string) -> FontHandle {
-	font, font_texture, err := _font_load_from_path(path, assets.device, assets.queue)
-	if err != nil {
-		print("error:", err)
-		panic("Panic loading font.")
-	}
+assets_load_font :: proc(assets: ^AssetManager, path: string) -> (handle: FontHandle, err: Error) {
+	font, font_texture := font_load_from_path(path, assets.device, assets.queue) or_return
 	font_texture_handle := slotmap_insert(&assets.textures, font_texture)
 	font.texture = TextureHandle(font_texture_handle)
 	font_handle := FontHandle(slotmap_insert(&assets.fonts, font))
-	return font_handle
+	return font_handle, nil
 }
 
 assets_deregister_texture :: proc(assets: ^AssetManager, handle: TextureHandle) {

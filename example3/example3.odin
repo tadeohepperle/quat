@@ -150,7 +150,7 @@ make_pose :: proc(base_bones: []Bone, bones: []Bone) -> []Affine2 {
 	pose := make([]Affine2, len(bones))
 	for base, i in base_bones {
 		cur := bones[i]
-		pose[i] = q.affine_from_vectors(base.root, base.head, cur.root, cur.head)
+		pose[i] = affine_from_vectors(base.root, base.head, cur.root, cur.head)
 	}
 	return pose
 }
@@ -172,4 +172,40 @@ v :: proc(x: f32, y: f32, weights: enum {
 	pos := Vec2{x, y}
 	uv := pos
 	return Vertex{pos, uv, {0, 1}, w}
+}
+
+// creates a new affine transform from two offsetted vectors, mapping the `from` to the `to` when the 
+// resulting affine transform A is applied, so: 
+// - `to_root === affine_apply(A, from_root)`
+// - `to_head === affine_apply(A, from_head)`
+//
+// solution: M = A^-1 * B  
+affine_from_vectors :: proc(
+	from_root: Vec2,
+	from_head: Vec2,
+	to_root: Vec2,
+	to_head: Vec2,
+) -> (
+	res: Affine2,
+) {
+	a := from_head - from_root
+	b := to_head - to_root
+
+	A := Mat2{a.x, -a.y, a.y, a.x}
+	A_DET := A[0, 0] * A[1, 1] - A[1, 0] * A[0, 1]
+	A_INV := (f32(1.0) / A_DET) * Mat2{A[1, 1], -A[0, 1], -A[1, 0], A[0, 0]}
+
+	// if true, the scaling only applies in the direction of the bone, not sideways to it.
+	// if false, a bone being made longer, makes its hull also thicker.
+	NO_SIDE_SCALING :: true
+	when NO_SIDE_SCALING {
+		a_len := linalg.length(a)
+		b_len := linalg.length(b)
+
+		len_factor := a_len / b_len
+		B := Mat2{b.x * len_factor, -b.y, b.y * len_factor, b.x}
+	} else {
+		B := Mat2{b.x, -b.y, b.y, b.x}
+	}
+	return Affine2{A_INV * B, (res.m * (-from_root)) + to_root}
 }

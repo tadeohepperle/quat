@@ -36,7 +36,7 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 
 fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> vec3f {
-    let offset = pos / wavelength;
+    let offset = (pos + globals.time_secs * 0.05)/ wavelength ;
     let off_a = offset + (f32(indices[0]) + seed);
     let off_b = offset + (f32(indices[1]) + seed);
     let off_c = offset + (f32(indices[2]) + seed);
@@ -66,7 +66,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     // let color_1 = GREEN.rgb;
     // let color_2 = BLUE.rgb;  
 
-    let sample_uv = in.pos * 0.2; 
+    let sample_uv = in.pos * 0.1; 
     let color_0 =  texture_rgb(sample_uv, in.indices[0]);
     let color_1 =  texture_rgb(sample_uv, in.indices[1]);
     let color_2 =  texture_rgb(sample_uv, in.indices[2]);
@@ -86,15 +86,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     // weights /= length(weights);
     // OPTION 1:
 
+    let blur = BLUR;
+
     let col_1_2 = mix(
         color_1,
         color_2,
-        smoothstep(BLUR, -BLUR, weights.y - weights.z)
+        smoothstep(blur, -blur, weights.y - weights.z)
     );
     let color = mix(
         col_1_2,
         color_0,
-        smoothstep(BLUR, -BLUR, max(weights.y, weights.z) - weights.x)
+        smoothstep(blur, -blur, max(weights.y, weights.z) - weights.x)
     );
 
     // OPTION 2:

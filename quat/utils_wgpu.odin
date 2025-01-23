@@ -191,6 +191,8 @@ RenderPipeline :: struct {
 	pipeline: wgpu.RenderPipeline,
 }
 
+
+SHADERS_DIRECTORY: []runtime.Load_Directory_File = #load_directory("../shaders")
 render_pipeline_create_panic :: proc(pipeline: ^RenderPipeline, reg: ^ShaderRegistry) {
 	err := render_pipeline_create(pipeline, reg)
 	if err != nil {

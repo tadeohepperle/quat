@@ -71,6 +71,22 @@ image_load :: proc(path: string) -> (Image, Error) {
 	}
 	return img, nil
 }
+image_load_from_memory :: proc(bytes: []u8) -> (Image, Error) {
+	x, y, c: i32
+	DESIRED_CHANNELS :: 4
+	im_ptr := stbi.load_from_memory(raw_data(bytes), i32(len(bytes)), &x, &y, &c, DESIRED_CHANNELS)
+	if im_ptr == nil {
+		msg := tprint("stbi could not load image from bytes reason:", stbi.failure_reason())
+		return {}, msg
+	}
+	img := Image {
+		size           = IVec2{int(x), int(y)},
+		pixels         = slice.from_ptr(cast(^Rgba)im_ptr, int(x * y)),
+		backed_by_stbi = true,
+	}
+	return img, nil
+
+}
 image_drop :: proc(this: ^Image) {
 	if this.backed_by_stbi {
 		stbi.image_free(raw_data(this.pixels))

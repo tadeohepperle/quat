@@ -221,12 +221,6 @@ lorem :: proc(letters := 300) -> string {
 	return LOREM[0:letters]
 }
 
-
-todo :: proc(loc := #caller_location) -> ! {
-	panic("Todo at", loc)
-}
-
-
 ElementOrNextFreeIdx :: struct($T: typeid) #raw_union {
 	element:       T,
 	next_free_idx: u32,
