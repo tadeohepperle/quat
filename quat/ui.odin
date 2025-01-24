@@ -964,7 +964,7 @@ _ui_get_font :: proc(handle: FontHandle) -> Font {
 _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 	font := _ui_get_font(text.font)
 	font_size := text.font_size
-	scale := font_size / f32(font.rasterization_size)
+	scale := font_size / f32(font.settings.font_size)
 	ctx.current_line.metrics = merge_line_metrics_to_max(
 		ctx.current_line.metrics,
 		scale_line_metrics(font.line_metrics, scale),
@@ -973,8 +973,8 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 	resize(&ctx.byte_advances, len(ctx.byte_advances) + len(text.str))
 	for ch, ch_byte_idx in text.str {
 		ctx.last_byte_idx = ch_byte_idx
-		g, ok := font.glyphs[ch]
-		if !ok {
+		g := get_or_add_glyph(font.sdf_font, ch)
+		if g.kind == .NotContained {
 			fmt.panicf("Character '{}' not rastierized yet! {}", ch, u32(ch))
 		}
 		g.advance *= scale
@@ -991,7 +991,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 			text.line_break != .Never && ctx.current_line.advance + g.advance > ctx.max_width
 		if needs_line_break {
 			break_line(ctx)
-			if g.is_white_space {
+			if g.kind == .Whitespace {
 				// just break, note: the whitespace here is omitted and does not add extra space.
 				// (we do not want to have extra white space at the end of a line or at the start of a line unintentionally.)
 				clear(&ctx.last_non_whitespace_advances)
@@ -1017,7 +1017,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 		}
 
 		// now add the glyph to the current line:
-		if g.is_white_space {
+		if g.kind == .Whitespace {
 			clear(&ctx.last_non_whitespace_advances)
 		} else {
 			x_offset := g.xmin
@@ -1119,7 +1119,6 @@ scale_line_metrics :: proc(line_metrics: LineMetrics, scale: f32) -> LineMetrics
 		ascent = line_metrics.ascent * scale,
 		descent = line_metrics.descent * scale,
 		line_gap = line_metrics.line_gap * scale,
-		new_line_size = line_metrics.new_line_size * scale,
 	}
 }
 
@@ -1127,7 +1126,6 @@ merge_line_metrics_to_max :: proc(a: LineMetrics, b: LineMetrics) -> (res: LineM
 	res.ascent = max(a.ascent, b.ascent)
 	res.descent = min(a.descent, b.descent)
 	res.line_gap = max(a.line_gap, b.line_gap)
-	res.new_line_size = res.ascent - res.descent + res.line_gap
 	return
 }
 

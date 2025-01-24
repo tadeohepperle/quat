@@ -26,8 +26,9 @@ AssetManager :: struct {
 	device:   wgpu.Device,
 	queue:    wgpu.Queue,
 }
-DEFAULT_FONT_SDF_IMG := #load("../assets/marko_one_regular.sdf_font.png")
-DEFAULT_FONT_JSON := #load("../assets/marko_one_regular.sdf_font.json")
+DEFAULT_FONT_TTF := #load("../assets/LuxuriousRoman-Regular.ttf")
+// DEFAULT_FONT_TTF := #load("../assets/MarkoOne-Regular.ttf")
+
 
 asset_manager_create :: proc(
 	assets: ^AssetManager,
@@ -42,19 +43,12 @@ asset_manager_create :: proc(
 	default_texture_handle := slotmap_insert(&assets.textures, default_texture)
 	assert(default_texture_handle == 0) // is the first one
 
-	font, font_texture, font_err := font_load_from_img_and_json_bytes(
-		DEFAULT_FONT_SDF_IMG,
-		DEFAULT_FONT_JSON,
-		device,
-		queue,
-	)
+	font, font_err := font_from_bytes(DEFAULT_FONT_TTF, assets, "LuxuriousRoman-Regular")
 	if font_err, has_err := font_err.(string); has_err {
 		panic(font_err)
 	}
-	font_texture_handle := slotmap_insert(&assets.textures, font_texture)
-	font.texture = TextureHandle(font_texture_handle)
 	font_handle := FontHandle(slotmap_insert(&assets.fonts, font))
-
+	assert(font_handle == 0)
 }
 asset_manager_destroy :: proc(assets: ^AssetManager) {
 	textures := slotmap_to_tmp_slice(assets.textures)
@@ -87,7 +81,7 @@ assets_get_font_texture_bind_group :: proc(
 	handle: FontHandle,
 ) -> wgpu.BindGroup {
 	font := slotmap_get(assets.fonts, u32(handle))
-	texture := slotmap_get(assets.textures, u32(font.texture))
+	texture := slotmap_get(assets.textures, u32(font.texture_handle))
 	return texture.bind_group
 }
 
@@ -144,10 +138,14 @@ assets_load_texture_array :: proc(
 	return texture_handle
 }
 
-assets_load_font :: proc(assets: ^AssetManager, path: string) -> (handle: FontHandle, err: Error) {
-	font, font_texture := font_load_from_path(path, assets.device, assets.queue) or_return
-	font_texture_handle := slotmap_insert(&assets.textures, font_texture)
-	font.texture = TextureHandle(font_texture_handle)
+assets_load_font :: proc(
+	assets: ^AssetManager,
+	ttf_path: string,
+) -> (
+	handle: FontHandle,
+	err: Error,
+) {
+	font := font_from_path(ttf_path, assets) or_return
 	font_handle := FontHandle(slotmap_insert(&assets.fonts, font))
 	return font_handle, nil
 }
@@ -160,7 +158,7 @@ assets_deregister_texture :: proc(assets: ^AssetManager, handle: TextureHandle) 
 assets_deregister_font :: proc(assets: ^AssetManager, handle: FontHandle) {
 	font := slotmap_remove(&assets.fonts, u32(handle))
 	font_destroy(&font)
-	assets_deregister_texture(assets, font.texture)
+	assets_deregister_texture(assets, font.texture_handle)
 }
 
 /*

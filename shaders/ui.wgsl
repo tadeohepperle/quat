@@ -163,14 +163,14 @@ fn fs_glyph(in: VsGlyphOut) -> @location(0) vec4<f32> {
     var sz : vec2<u32> = textureDimensions(t_diffuse, 0);
     var dx : f32 = dpdx(in.uv.x) * f32(sz.x);
     var dy : f32 = dpdy(in.uv.y) * f32(sz.y);
-    var to_pixels : f32 = 32.0 * inverseSqrt(dx * dx + dy * dy);
+    var to_pixels : f32 = 24.0 * inverseSqrt(dx * dx + dy * dy);
     let inside_factor = clamp((sdf - 0.5) * to_pixels + 0.5, 0.0, 1.0);
     
     // smoothstep(0.5 - smoothing, 0.5 + smoothing, sample);
-    let shadow_alpha = (1.0 - (pow(1.0 - sdf, 2.0)) )* in.shadow_intensity * in.color.a;
+    let shadow_alpha = (1.0 - (pow(1.0 - sdf, 2.0)) )* in.shadow_intensity * in.color.a ;
     let shadow_color = vec4(0.0,0.0,0.0, shadow_alpha);
     let color = mix(shadow_color, in.color, inside_factor);
-    return color; // * vec4(1.0,1.0,1.0,5.0);
+    return color; // + vec4(0.2,0.2,0.2,0.2); * vec4(1.0,1.0,1.0,5.0);
 }
 
 fn unit_uv_from_idx(idx: u32) -> vec2<f32> {

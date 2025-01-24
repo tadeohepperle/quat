@@ -5,114 +5,103 @@ import "core:fmt"
 import "core:image"
 import "core:image/png"
 import "core:os"
+import "core:strings"
+import "shared:sdffont"
 import wgpu "vendor:wgpu"
+
+LineMetrics :: sdffont.LineMetrics
+
+get_or_add_glyph :: sdffont.font_get_or_add_glyph
 
 // We only support sdf fonts created with https://github.com/tadeohepperle/assetpacker
 //
 // This type should be equivalent to the SdfFont struct in the assetpacker Rust crate (https://github.com/tadeohepperle/assetpacker/blob/main/src/font.rs).
 Font :: struct {
-	rasterization_size: int,
-	line_metrics:       LineMetrics,
-	name:               string,
-	glyphs:             map[rune]Glyph,
-	texture:            TextureHandle,
-}
-LineMetrics :: struct {
-	ascent:        f32,
-	descent:       f32,
-	line_gap:      f32,
-	new_line_size: f32,
-}
-Glyph :: struct {
-	xmin:           f32,
-	ymin:           f32,
-	width:          f32,
-	height:         f32,
-	advance:        f32,
-	is_white_space: bool,
-	uv_min:         Vec2,
-	uv_max:         Vec2,
+	settings:       sdffont.SdfFontSettings,
+	name:           string,
+	sdf_font:       sdffont.SdfFont,
+	texture_handle: TextureHandle,
+	line_metrics:   LineMetrics,
 }
 font_destroy :: proc(font: ^Font) {
-	delete(font.glyphs)
+	sdffont.font_free(font.sdf_font)
 	delete(font.name)
 }
 
-// this function expects to find a file at {path}.json and {path}.png, representing the fonts data and sdf glyphs
-font_load_from_path :: proc(
-	path: string,
-	device: wgpu.Device,
-	queue: wgpu.Queue,
+font_from_bytes :: proc(
+	ttf_file_bytes: []u8,
+	assets: ^AssetManager,
+	name: string, // static str
+	settings := sdffont.SDF_FONT_SETTINGS_DEFAULT,
 ) -> (
 	font: Font,
-	font_texture: Texture,
 	err: Error,
 ) {
-	json_path := fmt.aprintf("{}.sdf_font.json", path, allocator = context.temp_allocator)
-	json_bytes, ok := os.read_entire_file(json_path)
-	if !ok {
-		err = tprint("could not read file", json_path)
-		return
-	}
-	// read image: 
-	png_path := fmt.aprintf("{}.sdf_font.png", path, allocator = context.temp_allocator)
-	sdf_png_img_bytes, img_read_ok := os.read_entire_file(png_path)
-	if !img_read_ok {
-		err = tprint("could not read file", png_path)
-		return
-	}
-	defer {delete(json_bytes);delete(sdf_png_img_bytes)}
-	return font_load_from_img_and_json_bytes(sdf_png_img_bytes, json_bytes, device, queue)
-}
-
-font_load_from_img_and_json_bytes :: proc(
-	sdf_png_img_bytes: []u8,
-	json_bytes: []u8,
-	device: wgpu.Device,
-	queue: wgpu.Queue,
-) -> (
-	font: Font,
-	font_texture: Texture,
-	err: Error,
-) {
-	// read json:
-	FontWithStringKeys :: struct {
-		rasterization_size: int,
-		line_metrics:       LineMetrics,
-		name:               string,
-		glyphs:             map[string]Glyph,
-	}
-	font_with_string_keys: FontWithStringKeys
-	json_err := json.unmarshal(json_bytes, &font_with_string_keys)
-	if json_err != nil {
-		err = tprint(json_err)
-		return
-	}
-	font.rasterization_size = font_with_string_keys.rasterization_size
-	font.line_metrics = font_with_string_keys.line_metrics
-	font.name = font_with_string_keys.name
-	for s, v in font_with_string_keys.glyphs {
-		for r, i in s {
-			font.glyphs[r] = v
-			if i != 0 {
-				err = "Only single character strings allowed as glyph keys!"
-				return
-			}
+	err_str: string
+	sdf_font := sdffont.font_create(ttf_file_bytes, settings, &err_str)
+	if sdf_font == nil {
+		if err_str == "" {
+			err_str = "Something went wrong loading ttf font from bytes"
 		}
+		return {}, err_str
 	}
-	delete(font_with_string_keys.glyphs)
 	TEXTURE_SETTINGS_SDF_FONT :: TextureSettings {
 		label        = "sdf font",
-		format       = wgpu.TextureFormat.RGBA8Unorm,
-		address_mode = .Repeat,
+		format       = wgpu.TextureFormat.R8Unorm,
+		address_mode = .ClampToEdge,
 		mag_filter   = .Linear,
 		min_filter   = .Nearest,
 		usage        = {.TextureBinding, .CopyDst},
 	}
-	img, img_load_err := image_load_from_memory(sdf_png_img_bytes)
-	if img_load_err != nil {
-		return {}, {}, img_load_err
+	texture := texture_create(assets.device, settings.atlas_size, TEXTURE_SETTINGS_SDF_FONT)
+
+	size := texture.info.size
+	image_copy := wgpu.ImageCopyTexture {
+		texture  = texture.texture,
+		mipLevel = 0,
+		origin   = {0, 0, 0},
+		aspect   = .All,
 	}
-	font_texture = texture_from_image(device, queue, img, TEXTURE_SETTINGS_SDF_FONT)
-	return font, font_texture, nil
+	data_layout := wgpu.TextureDataLayout {
+		offset       = 0,
+		bytesPerRow  = size.x,
+		rowsPerImage = size.y,
+	}
+	atlas_image := sdffont.font_get_atlas_image(sdf_font)
+	wgpu.QueueWriteTexture(
+		assets.queue,
+		&image_copy,
+		raw_data(atlas_image.bytes),
+		uint(len(atlas_image.bytes)),
+		&data_layout,
+		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
+	)
+
+	texture_handle := assets_add_texture(assets, texture)
+	font = Font {
+		settings       = settings,
+		name           = strings.clone(name),
+		sdf_font       = sdf_font,
+		texture_handle = texture_handle,
+		line_metrics   = sdffont.font_get_line_metrics(sdf_font),
+	}
+	return font, nil
+
+
+}
+
+font_from_path :: proc(
+	ttf_file_path: string,
+	assets: ^AssetManager,
+	settings := sdffont.SDF_FONT_SETTINGS_DEFAULT,
+) -> (
+	font: Font,
+	err: Error,
+) {
+	ttf_bytes, success := os.read_entire_file(ttf_file_path)
+	if !success {
+		err = tprint("could not read font tile", ttf_file_path)
+		return
+	}
+	return font_from_bytes(ttf_bytes, assets, ttf_file_path, settings)
 }
