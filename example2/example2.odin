@@ -104,7 +104,7 @@ main :: proc() {
 }
 
 Snake :: struct {
-	triangles: [dynamic]q.IdxTriangle,
+	triangles: [dynamic]q.Triangle,
 	vertices:  [dynamic]q.ColorMeshVertex,
 	points:    [dynamic]Vec2,
 }

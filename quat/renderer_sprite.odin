@@ -208,7 +208,7 @@ _depth_sprite_renderer_create :: proc(
 ) {
 	rend.instance_buffer.usage = {.Vertex}
 	rend.pipeline.config = sprite_depth_pipeline_config(device, globals_layout)
-	render_pipeline_create_panic(&rend.pipeline, shader_registry)
+	render_pipeline_create_or_panic(&rend.pipeline, shader_registry)
 }
 
 // for depth_sprites, normal sprites and shine_on_top_sprites
@@ -355,7 +355,7 @@ _sub_renderer_create :: proc(
 ) {
 	sub.instance_buffer.usage = {.Vertex}
 	sub.pipeline.config = config
-	render_pipeline_create_panic(&sub.pipeline, shader_registry)
+	render_pipeline_create_or_panic(&sub.pipeline, shader_registry)
 }
 
 sprite_renderer_create :: proc(rend: ^SpriteRenderer, platform: ^Platform) {

@@ -29,7 +29,7 @@ gizmos_renderer_create :: proc(rend: ^GizmosRenderer, platform: ^Platform) {
 		rend.vertex_buffers[mode].usage = {.Vertex}
 	}
 	rend.pipeline.config = gizmos_pipeline_config(platform.globals.bind_group_layout)
-	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
 }
 gizmos_renderer_destroy :: proc(rend: ^GizmosRenderer) {
 	for mode in GizmosMode {

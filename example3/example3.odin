@@ -49,7 +49,7 @@ main :: proc() {
 		v(1, 8, .Two),
 		v(-1, 8, .Two),
 	}
-	triangles := []q.IdxTriangle {
+	triangles := []q.Triangle {
 		{0, 1, 2},
 		{1, 3, 4},
 		{1, 4, 2},

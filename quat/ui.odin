@@ -365,6 +365,7 @@ DivFlags :: bit_set[DivFlag]
 DivFlag :: enum u32 {
 	WidthPx,
 	WidthFraction,
+	WidthMaxPx,
 	HeightPx,
 	HeightFraction,
 	AxisX, // as opposed to default = AxisY 
@@ -656,26 +657,9 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 		return
 	}
 
-	width_fixed := false
-	if DivFlag.WidthPx in div.flags {
-		width_fixed = true
-		div.size.x = div.width
-	} else if DivFlag.WidthFraction in div.flags {
-		width_fixed = true
-		div.size.x = div.width * max_size.x
-	}
-	height_fixed := false
-	if DivFlag.HeightPx in div.flags {
-		height_fixed = true
-		div.size.y = div.height
-	} else if DivFlag.HeightFraction in div.flags {
-		height_fixed = true
-		div.size.y = div.height * max_size.y
-	}
+	// compute padding:
 	pad_x := div.padding.left + div.padding.right
 	pad_y := div.padding.top + div.padding.bottom
-
-
 	child_count := len(div.children)
 	if child_count > 1 && div.gap != 0 {
 		if DivFlag.LayoutAsText in div.flags {
@@ -692,6 +676,25 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 		}
 	}
 
+	width_max_flag_set := DivFlag.WidthMaxPx in div.flags
+
+	width_fixed := false
+	if DivFlag.WidthPx in div.flags || width_max_flag_set {
+		width_fixed = true
+		div.size.x = div.width
+	} else if DivFlag.WidthFraction in div.flags {
+		width_fixed = true
+		div.size.x = div.width * max_size.x
+	}
+	height_fixed := false
+	if DivFlag.HeightPx in div.flags {
+		height_fixed = true
+		div.size.y = div.height
+	} else if DivFlag.HeightFraction in div.flags {
+		height_fixed = true
+		div.size.y = div.height * max_size.y
+	}
+
 	if width_fixed {
 		if height_fixed {
 			max_size := div.size - Vec2{pad_x, pad_y}
@@ -700,6 +703,9 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 			max_size := Vec2{div.size.x - pad_x, max_size.y}
 			_set_child_sizes_for_div(div, max_size)
 			div.size.y = div.content_size.y + pad_y
+		}
+		if width_max_flag_set {
+			div.size.x = min(div.content_size.x + pad_x, div.size.x)
 		}
 	} else {
 		if height_fixed {

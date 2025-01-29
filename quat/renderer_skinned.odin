@@ -76,7 +76,7 @@ skinned_mesh_deregister :: proc(rend: ^SkinnedRenderer, handle: SkinnedMeshHandl
 }
 skinned_mesh_register :: proc(
 	rend: ^SkinnedRenderer,
-	triangles: []IdxTriangle,
+	triangles: []Triangle,
 	vertices: []SkinnedVertex,
 	bone_count: int,
 	texture: TextureHandle,
@@ -216,7 +216,7 @@ skinned_renderer_create :: proc(rend: ^SkinnedRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
 	rend.pipeline.config = skinned_pipeline_config(platform.globals.bind_group_layout, rend.device)
-	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
 }
 skinned_renderer_destroy :: proc(rend: ^SkinnedRenderer) {
 	render_pipeline_destroy(&rend.pipeline)

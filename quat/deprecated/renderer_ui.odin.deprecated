@@ -1842,12 +1842,12 @@ ui_renderer_create :: proc(
 		platform.device,
 		platform.globals.bind_group_layout,
 	)
-	render_pipeline_create_panic(&rend.rect_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.rect_pipeline, &platform.shader_registry)
 	rend.glyph_pipeline.config = ui_glyph_pipeline_config(
 		platform.device,
 		platform.globals.bind_group_layout,
 	)
-	render_pipeline_create_panic(&rend.glyph_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.glyph_pipeline, &platform.shader_registry)
 	UI_MEMORY.default_font = 0
 	UI_MEMORY.default_font_color = default_font_color
 	UI_MEMORY.default_font_size = default_font_size

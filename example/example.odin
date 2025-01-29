@@ -77,7 +77,7 @@ main :: proc() {
 		camera.height *= (1.0 - E.get_arrows().y * E.get_delta_secs() * 3.0)
 		E.set_camera(camera)
 		E.draw_gizmos_coords()
-		E.draw_tritex_mesh(&terrain_mesh)
+		E.draw_tritex_mesh(terrain_mesh)
 
 
 		// sprite.rotation = E.get_osc(3, 0.5)

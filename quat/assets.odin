@@ -26,7 +26,9 @@ AssetManager :: struct {
 	device:   wgpu.Device,
 	queue:    wgpu.Queue,
 }
-DEFAULT_FONT_TTF := #load("../assets/LuxuriousRoman-Regular.ttf")
+
+DEFAULT_FONT_TTF := #load("../assets/Lora-Medium.ttf")
+// DEFAULT_FONT_TTF := #load("../assets/LuxuriousRoman-Regular.ttf")
 // DEFAULT_FONT_TTF := #load("../assets/MarkoOne-Regular.ttf")
 
 

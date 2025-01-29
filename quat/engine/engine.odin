@@ -23,6 +23,7 @@ Renderers :: struct {
 	textured_mesh_renderer: q.TexturedMeshRenderer,
 	tritex_renderer:        q.TritexRenderer,
 	skinned_renderer:       q.SkinnedRenderer,
+	mesh_3d_renderer:       q.Mesh3dRenderer,
 }
 
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
@@ -35,6 +36,7 @@ _renderers_create :: proc(ren: ^Renderers, platform: ^q.Platform) {
 	q.textured_mesh_renderer_create(&ren.textured_mesh_renderer, platform)
 	q.tritex_renderer_create(&ren.tritex_renderer, platform)
 	q.skinned_renderer_create(&ren.skinned_renderer, platform)
+	q.mesh_3d_renderer_create(&ren.mesh_3d_renderer, platform)
 }
 _renderers_destroy :: proc(ren: ^Renderers) {
 	q.bloom_renderer_destroy(&ren.bloom_renderer)
@@ -75,12 +77,13 @@ Scene :: struct {
 	top_level_ui_elements:   [dynamic]q.Ui,
 	sprites:                 [dynamic]q.Sprite,
 	depth_sprites:           [dynamic]q.DepthSprite,
-	tritex_meshes:           [dynamic]^q.TritexMesh,
+	tritex_meshes:           [dynamic]q.TritexMesh,
 	tritex_textures:         q.TextureArrayHandle,
 	colliders:               [dynamic]q.Collider,
 	last_frame_colliders:    [dynamic]q.Collider,
 	skinned_render_commands: [dynamic]q.SkinnedRenderCommand,
 	annotations:             [dynamic]Annotation,
+	meshes_3d:               [dynamic]q.Mesh3d,
 }
 
 HitInfo :: struct {
@@ -103,6 +106,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.colliders)
 	delete(scene.skinned_render_commands)
 	delete(scene.annotations)
+	delete(scene.meshes_3d)
 }
 
 _scene_clear :: proc(scene: ^Scene) {
@@ -114,6 +118,7 @@ _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.top_level_ui_elements)
 	clear(&scene.skinned_render_commands)
 	clear(&scene.annotations)
+	clear(&scene.meshes_3d)
 }
 
 ENGINE: Engine
@@ -257,6 +262,13 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.tritex_textures,
 		asset_manager,
 	)
+	q.mesh_3d_renderer_render(
+		&engine.mesh_3d_renderer,
+		hdr_pass,
+		global_bind_group,
+		engine.scene.meshes_3d[:],
+		asset_manager,
+	)
 	q.sprite_renderer_render(&engine.sprite_renderer, hdr_pass, global_bind_group, asset_manager)
 	// todo: this is certainly stupid, because then we render all skinned meshes on top of sprites:
 	q.skinned_renderer_render(
@@ -366,7 +378,7 @@ _engine_debug_collider_gizmos :: proc(engine: ^Engine) {
 			q.gizmos_renderer_add_circle(rend, c.pos, c.radius, color)
 		case q.Aabb:
 			q.gizmos_renderer_add_aabb(rend, c, color, .WORLD)
-		case q.Triangle:
+		case q.Triangle2d:
 			q.gizmos_renderer_add_line(rend, c.a, c.b, color, .WORLD)
 			q.gizmos_renderer_add_line(rend, c.b, c.c, color, .WORLD)
 			q.gizmos_renderer_add_line(rend, c.c, c.a, color, .WORLD)
@@ -408,8 +420,14 @@ get_hit_pos :: proc() -> Vec2 {
 get_delta_secs :: proc() -> f32 {
 	return ENGINE.platform.delta_secs
 }
+get_delta_secs_f64 :: proc() -> f64 {
+	return ENGINE.platform.delta_secs_f64
+}
 get_total_secs :: proc() -> f32 {
 	return ENGINE.platform.total_secs
+}
+get_total_secs_f64 :: proc() -> f64 {
+	return ENGINE.platform.total_secs_f64
 }
 get_osc :: proc(speed: f32 = 1, amplitude: f32 = 1, bias: f32 = 0, phase: f32 = 0) -> f32 {
 	return math.sin_f32(ENGINE.platform.total_secs * speed + phase) * amplitude + bias
@@ -474,8 +492,14 @@ get_clipboard :: proc() -> string {
 maximize_window :: proc() {
 	q.platform_maximize(&ENGINE.platform)
 }
+create_3d_mesh :: proc() -> q.Mesh3d {
+	return q.mesh_3d_create(ENGINE.platform.device, ENGINE.platform.queue, 0)
+}
+draw_3d_mesh :: proc(mesh: q.Mesh3d) {
+	append(&ENGINE.scene.meshes_3d, mesh)
+}
 create_skinned_mesh :: proc(
-	triangles: []q.IdxTriangle,
+	triangles: []q.Triangle,
 	vertices: []q.SkinnedVertex,
 	bone_count: int,
 	texture: q.TextureHandle = q.DEFAULT_TEXTURE,
@@ -599,7 +623,7 @@ draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 draw_depth_sprite :: #force_inline proc(sprite: q.DepthSprite) {
 	append(&ENGINE.scene.depth_sprites, sprite)
 }
-draw_tritex_mesh :: proc(mesh: ^q.TritexMesh) {
+draw_tritex_mesh :: proc(mesh: q.TritexMesh) {
 	append(&ENGINE.scene.tritex_meshes, mesh)
 }
 draw_gizmos_rect :: proc(center: Vec2, size: Vec2, color := GIZMOS_COLOR) {
@@ -638,7 +662,7 @@ draw_gizmos_circle :: proc(
 access_color_mesh_write_buffers :: #force_inline proc(
 ) -> (
 	vertices: ^[dynamic]q.ColorMeshVertex,
-	triangles: ^[dynamic]q.IdxTriangle,
+	triangles: ^[dynamic]q.Triangle,
 	start: u32,
 ) {
 	vertices = &ENGINE.color_mesh_renderer.vertices
@@ -650,7 +674,7 @@ access_color_mesh_write_buffers :: #force_inline proc(
 access_textured_mesh_write_buffers :: #force_inline proc(
 ) -> (
 	vertices: ^[dynamic]q.TexturedVertex,
-	triangles: ^[dynamic]q.IdxTriangle,
+	triangles: ^[dynamic]q.Triangle,
 	start: u32,
 ) {
 	vertices = &ENGINE.textured_mesh_renderer.vertices
@@ -670,12 +694,12 @@ draw_color_mesh :: proc {
 draw_color_mesh_vertices :: proc(vertices: []q.ColorMeshVertex) {
 	q.color_mesh_add_vertices(&ENGINE.color_mesh_renderer, vertices)
 }
-draw_color_mesh_indexed :: proc(vertices: []q.ColorMeshVertex, triangles: []q.IdxTriangle) {
+draw_color_mesh_indexed :: proc(vertices: []q.ColorMeshVertex, triangles: []q.Triangle) {
 	q.color_mesh_add_indexed(&ENGINE.color_mesh_renderer, vertices, triangles)
 }
 draw_color_mesh_indexed_single_color :: proc(
 	positions: []Vec2,
-	triangles: []q.IdxTriangle,
+	triangles: []q.Triangle,
 	color := Color{1, 0, 0, 1},
 ) {
 	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, triangles, color)
@@ -692,7 +716,7 @@ add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetad
 add_rect_collider :: proc(quad: q.RotatedRect, metadata: q.ColliderMetadata, z: int) {
 	append(&ENGINE.scene.colliders, q.Collider{shape = quad, metadata = metadata, z = z})
 }
-add_triangle_collider :: proc(triangle: q.Triangle, metadata: q.ColliderMetadata, z: int) {
+add_triangle_collider :: proc(triangle: q.Triangle2d, metadata: q.ColliderMetadata, z: int) {
 	append(&ENGINE.scene.colliders, q.Collider{shape = triangle, metadata = metadata, z = z})
 }
 set_camera :: proc(camera: q.Camera) {

@@ -177,12 +177,12 @@ ui_renderer_create :: proc(rend: ^UiRenderer, platform: ^Platform) {
 		platform.device,
 		platform.globals.bind_group_layout,
 	)
-	render_pipeline_create_panic(&rend.rect_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.rect_pipeline, &platform.shader_registry)
 	rend.glyph_pipeline.config = ui_glyph_pipeline_config(
 		platform.device,
 		platform.globals.bind_group_layout,
 	)
-	render_pipeline_create_panic(&rend.glyph_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.glyph_pipeline, &platform.shader_registry)
 
 	rend.vertex_buffer.usage = {.Vertex}
 	rend.index_buffer.usage = {.Index}

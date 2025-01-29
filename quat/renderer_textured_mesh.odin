@@ -13,8 +13,8 @@ TexturedMeshRenderer :: struct {
 	pipeline:        RenderPipeline,
 	vertices:        [dynamic]TexturedVertex,
 	vertex_buffer:   DynamicBuffer(TexturedVertex),
-	triangles:       [dynamic]IdxTriangle,
-	index_buffer:    DynamicBuffer(IdxTriangle),
+	triangles:       [dynamic]Triangle,
+	index_buffer:    DynamicBuffer(Triangle),
 	texture_regions: [dynamic]TextureRegion,
 }
 // we don't bother with batching, the API is just: set_texture, add indices + vertices, set next texture, add indices + vertices, ...
@@ -33,7 +33,7 @@ textured_mesh_renderer_create :: proc(rend: ^TexturedMeshRenderer, platform: ^Pl
 		platform.device,
 		platform.globals.bind_group_layout,
 	)
-	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
 }
 
 textured_mesh_renderer_destroy :: proc(rend: ^TexturedMeshRenderer) {

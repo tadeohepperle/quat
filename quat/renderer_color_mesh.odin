@@ -12,8 +12,8 @@ ColorMeshRenderer :: struct {
 	pipeline:      RenderPipeline,
 	vertices:      [dynamic]ColorMeshVertex,
 	vertex_buffer: DynamicBuffer(ColorMeshVertex),
-	triangles:     [dynamic]IdxTriangle, // index buffer
-	index_buffer:  DynamicBuffer(IdxTriangle),
+	triangles:     [dynamic]Triangle, // index buffer
+	index_buffer:  DynamicBuffer(Triangle),
 }
 
 color_mesh_renderer_create :: proc(rend: ^ColorMeshRenderer, platform: ^Platform) {
@@ -22,7 +22,7 @@ color_mesh_renderer_create :: proc(rend: ^ColorMeshRenderer, platform: ^Platform
 	rend.vertex_buffer.usage = {.Vertex}
 	rend.index_buffer.usage = {.Index}
 	rend.pipeline.config = color_mesh_pipeline_config(platform.globals.bind_group_layout)
-	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
 }
 
 color_mesh_renderer_destroy :: proc(rend: ^ColorMeshRenderer) {
@@ -106,14 +106,14 @@ color_mesh_add_vertices :: proc(rend: ^ColorMeshRenderer, vertices: []ColorMeshV
 	append(&rend.vertices, ..vertices)
 	for t_idx in 0 ..< u32(len(vertices) / 3) {
 		i := t_idx * 3 + start_idx
-		append(&rend.triangles, IdxTriangle{i, i + 1, i + 2})
+		append(&rend.triangles, Triangle{i, i + 1, i + 2})
 	}
 }
 
 color_mesh_add_indexed :: proc(
 	rend: ^ColorMeshRenderer,
 	vertices: []ColorMeshVertex,
-	triangles: []IdxTriangle,
+	triangles: []Triangle,
 ) {
 	start_idx := u32(len(rend.vertices))
 	append(&rend.vertices, ..vertices)
@@ -125,7 +125,7 @@ color_mesh_add_indexed :: proc(
 color_mesh_add_indexed_single_color :: proc(
 	rend: ^ColorMeshRenderer,
 	positions: []Vec2,
-	triangles: []IdxTriangle,
+	triangles: []Triangle,
 	color: Color = ColorRed,
 ) {
 	start_idx := u32(len(rend.vertices))

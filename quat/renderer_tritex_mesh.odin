@@ -9,10 +9,14 @@ TritexVertex :: struct {
 }
 
 TritexMesh :: struct {
+	device:        wgpu.Device,
+	queue:         wgpu.Queue,
 	vertices:      []TritexVertex,
 	vertex_buffer: DynamicBuffer(TritexVertex),
 }
-
+tritex_mesh_sync :: proc(mesh: ^TritexMesh) {
+	dynamic_buffer_write(&mesh.vertex_buffer, mesh.vertices[:], mesh.device, mesh.queue)
+}
 tritex_mesh_create :: proc(
 	vertices: []TritexVertex,
 	device: wgpu.Device,
@@ -20,17 +24,17 @@ tritex_mesh_create :: proc(
 ) -> (
 	mesh: TritexMesh,
 ) {
+	mesh.queue = queue
+	mesh.device = device
 	mesh.vertices = vertices
 	mesh.vertex_buffer.usage = {.Vertex}
 	dynamic_buffer_write(&mesh.vertex_buffer, vertices[:], device, queue)
 	return mesh
 }
-
-tritex_mesh_destroy :: proc(tritex_mesh: ^TritexMesh) {
+tritex_mesh_drop :: proc(tritex_mesh: ^TritexMesh) {
 	delete(tritex_mesh.vertices)
 	dynamic_buffer_destroy(&tritex_mesh.vertex_buffer)
 }
-
 TritexRenderer :: struct {
 	device:   wgpu.Device,
 	queue:    wgpu.Queue,
@@ -45,7 +49,7 @@ tritex_renderer_create :: proc(rend: ^TritexRenderer, platform: ^Platform) {
 		platform.globals.bind_group_layout,
 		rgba_texture_array_bind_group_layout_cached(platform.device),
 	)
-	render_pipeline_create_panic(&rend.pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
 }
 
 tritex_renderer_destroy :: proc(rend: ^TritexRenderer) {
@@ -56,7 +60,7 @@ tritex_renderer_render :: proc(
 	rend: ^TritexRenderer,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
-	meshes: []^TritexMesh,
+	meshes: []TritexMesh,
 	textures: TextureArrayHandle,
 	assets: AssetManager,
 ) {

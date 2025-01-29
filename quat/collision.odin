@@ -7,7 +7,7 @@ import "core:math/linalg"
 ColliderMetadata :: [24]u8
 NO_COLLIDER: ColliderMetadata = {}
 
-to_collider_metadata :: proc(
+to_collider_metadata :: proc "contextless" (
 	metadata: $T,
 ) -> (
 	bytes: ColliderMetadata,
@@ -16,7 +16,7 @@ to_collider_metadata :: proc(
 	(cast(^T)(&bytes))^ = metadata
 	return bytes
 }
-from_collider_metadata :: proc(
+from_collider_metadata :: proc "contextless" (
 	bytes: ColliderMetadata,
 	$T: typeid,
 ) -> (
@@ -37,7 +37,7 @@ Collider :: struct {
 ColliderShape :: union {
 	Circle,
 	Aabb,
-	Triangle,
+	Triangle2d,
 	RotatedRect,
 }
 
@@ -47,7 +47,7 @@ collider_roughly_in_aabb :: proc "contextless" (collider: ColliderShape, aabb: A
 		return aabb_contains(aabb, c.pos)
 	case Aabb:
 		return aabb_intersects(aabb, c)
-	case Triangle:
+	case Triangle2d:
 		center := (c.a + c.b + c.c) / 3
 		return aabb_contains(aabb, center)
 	case RotatedRect:
@@ -62,7 +62,7 @@ collider_overlaps_point :: proc "contextless" (collider: ^ColliderShape, pt: Vec
 		return linalg.length2(c.pos - pt) < c.radius * c.radius
 	case Aabb:
 		return pt.x >= c.min.x && pt.x <= c.max.x && pt.y >= c.min.y && pt.y <= c.max.y
-	case Triangle:
+	case Triangle2d:
 		return point_in_triangle(pt, c.a, c.b, c.c)
 	case RotatedRect:
 		if linalg.length2(c.center - pt) > c.radius_sq {
@@ -74,7 +74,7 @@ collider_overlaps_point :: proc "contextless" (collider: ^ColliderShape, pt: Vec
 }
 
 
-Triangle :: struct {
+Triangle2d :: struct {
 	a: Vec2,
 	b: Vec2,
 	c: Vec2,

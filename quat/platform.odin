@@ -22,7 +22,7 @@ PlatformSettings :: struct {
 }
 
 PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
-	title              = "Dplatform",
+	title              = "Quat App",
 	initial_size       = {800, 600},
 	clear_color        = ColorBlack,
 	shaders_dir_path   = "./shaders",
@@ -62,7 +62,9 @@ Platform :: struct {
 	asset_manager:               AssetManager,
 
 	// input related fields:
+	total_secs_f64:              f64,
 	total_secs:                  f32,
+	delta_secs_f64:              f64,
 	delta_secs:                  f32,
 	screen_size:                 UVec2,
 	screen_size_f32:             Vec2,
@@ -118,7 +120,7 @@ platform_create :: proc(
 	)
 	uniform_buffer_create(&platform.globals, platform.device)
 	platform.tonemapping_pipeline.config = tonemapping_pipeline_config(platform.device)
-	render_pipeline_create_panic(&platform.tonemapping_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&platform.tonemapping_pipeline, &platform.shader_registry)
 	asset_manager_create(
 		&platform.asset_manager,
 		settings.default_font_path,
@@ -165,9 +167,11 @@ platform_start_frame :: proc(platform: ^Platform) -> bool {
 	time := glfw.GetTime()
 	glfw.PollEvents()
 
-	total_secs_before := platform.total_secs
+	total_secs_before_f64 := platform.total_secs_f64
+	platform.total_secs_f64 = time
 	platform.total_secs = f32(time)
-	platform.delta_secs = platform.total_secs - total_secs_before
+	platform.delta_secs_f64 = platform.total_secs_f64 - total_secs_before_f64
+	platform.delta_secs = f32(platform.delta_secs_f64)
 
 	if glfw.WindowShouldClose(platform.window) || .JustPressed in platform.keys[.ESCAPE] {
 		return false
@@ -502,10 +506,6 @@ _init_wgpu :: proc(platform: ^Platform) {
 	}
 	assert(adapter_res.adapter != nil)
 	platform.adapter = adapter_res.adapter
-
-	print("Created adapter successfully")
-
-
 	DeviceRes :: struct {
 		status:  wgpu.RequestDeviceStatus,
 		device:  wgpu.Device,
@@ -541,7 +541,9 @@ _init_wgpu :: proc(platform: ^Platform) {
 			userdata: rawptr,
 		) {
 			context = runtime.default_context()
-			print("Err: ", message)
+			if status != .Success {
+				print("AdapterRequestDevice Error: ", message)
+			}
 			device_res: ^DeviceRes = auto_cast userdata
 			device_res.status = status
 			device_res.device = device
@@ -554,7 +556,6 @@ _init_wgpu :: proc(platform: ^Platform) {
 	}
 	assert(device_res.device != nil)
 	platform.device = device_res.device
-	print("Created device successfully")
 
 	platform.queue = wgpu.DeviceGetQueue(platform.device)
 	assert(platform.queue != nil)

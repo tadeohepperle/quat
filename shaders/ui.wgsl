@@ -87,11 +87,11 @@ fn fs_rect(in: VsRectOut) -> @location(0) vec4<f32> {
 	let not_ext_factor = smoothstep(softness,-softness, external_distance);  //  //select(1.0 - step(0.0, border_distance), antialias(border_distance), external_distance < internal_distance);
 	let in_factor = smoothstep(softness, -softness, internal_distance);
 
-	let color  = mix(in.border_color, in.color, in_factor);
-	let t_color = select(color, color * texture_color, enabled(in.flags, TEXTURED));
-		
-	return vec4(t_color.rgb, saturate(color.a * not_ext_factor));
-	// return in.color;
+	var color  = mix(in.border_color, in.color, in_factor);
+    color.a = saturate(color.a * not_ext_factor);
+    let final_color = select(color, color * textureSample(t_diffuse, s_diffuse, in.uv), enabled(in.flags, TEXTURED));
+
+	return final_color;
     
 }
 

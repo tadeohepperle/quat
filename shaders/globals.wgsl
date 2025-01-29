@@ -15,7 +15,6 @@ fn world_pos_to_ndc(world_pos: vec2<f32>) -> vec4<f32> {
 	return vec4<f32>(ndc.x, ndc.y, 0.0,1.0);
 }
 
-
 fn world_pos_to_ndc_with_z(world_pos: vec2<f32>, z: f32) -> vec4<f32> {
     let world_pos_3 = vec3<f32>(world_pos, 1.0);
 	let ndc = globals.camera_proj * world_pos_3;

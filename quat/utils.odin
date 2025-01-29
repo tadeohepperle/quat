@@ -23,14 +23,14 @@ tmp_arr :: proc($T: typeid, cap: int = 8) -> [dynamic]T {
 tmp_slice :: proc($T: typeid, len: int) -> []T {
 	return make([]T, len, context.temp_allocator)
 }
-triangles_to_u32s :: proc(tris: []IdxTriangle) -> []u32 {
+triangles_to_u32s :: proc(tris: []Triangle) -> []u32 {
 	return slice.from_ptr(cast(^u32)raw_data(tris), len(tris) * 3)
 }
 tmp_cstr :: proc(str: string) -> cstring {
 	return strings.clone_to_cstring(str, allocator = context.temp_allocator)
 }
 
-IdxTriangle :: [3]u32
+Triangle :: [3]u32
 Aabb :: struct {
 	min: Vec2,
 	max: Vec2,
@@ -93,6 +93,12 @@ UVec2 :: [2]u32
 UVec3 :: [3]u32
 ivec2_to_vec2 :: proc "contextless" (i: IVec2) -> Vec2 {
 	return Vec2{f32(i.x), f32(i.y)}
+}
+
+rotation_mat_2d :: proc(angle: f32) -> Mat2 {
+	co := math.cos(angle)
+	si := math.sin(angle)
+	return Mat2{co, -si, si, co}
 }
 
 @(test)
@@ -296,7 +302,6 @@ bind_group_layouts :: proc(args: ..wgpu.BindGroupLayout) -> []wgpu.BindGroupLayo
 push_const_ranges :: proc(args: ..wgpu.PushConstantRange) -> []wgpu.PushConstantRange {
 	return slice.clone(args)
 }
-
 
 // Range :: struct {
 // 	start: int,

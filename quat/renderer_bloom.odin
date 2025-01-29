@@ -122,10 +122,10 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 	rend.upsample_pipeline.config = upsample_config
 	rend.final_upsample_pipeline.config = final_upsample_config
 
-	render_pipeline_create_panic(&rend.first_downsample_pipeline, &platform.shader_registry)
-	render_pipeline_create_panic(&rend.downsample_pipeline, &platform.shader_registry)
-	render_pipeline_create_panic(&rend.upsample_pipeline, &platform.shader_registry)
-	render_pipeline_create_panic(&rend.final_upsample_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.first_downsample_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.downsample_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.upsample_pipeline, &platform.shader_registry)
+	render_pipeline_create_or_panic(&rend.final_upsample_pipeline, &platform.shader_registry)
 
 }
 
