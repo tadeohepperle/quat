@@ -43,40 +43,40 @@ UiWithInteraction :: struct {
 	res: Interaction,
 }
 InteractionState :: struct($ID: typeid) {
-	hovered_id:        ID,
-	pressed_id:        ID,
-	focused_id:        ID,
-	just_pressed_id:   ID,
-	just_released_id:  ID,
-	just_unfocused_id: ID,
+	hovered:        ID,
+	pressed:        ID,
+	focused:        ID,
+	just_pressed:   ID,
+	just_released:  ID,
+	just_unfocused: ID,
 }
 update_interaction_state :: proc(
 	using state: ^InteractionState($T),
-	new_hovered_id: T,
+	new_hovered: T,
 	press: PressFlags,
 ) {
 	// todo! just_hovered, just_unhovered...
-	hovered_id = new_hovered_id
-	state.just_pressed_id = {}
-	state.just_released_id = {}
-	state.just_unfocused_id = {}
+	hovered = new_hovered
+	state.just_pressed = {}
+	state.just_released = {}
+	state.just_unfocused = {}
 
-	if pressed_id != {} && .JustReleased in press {
-		if hovered_id == pressed_id {
-			focused_id = pressed_id
-			just_released_id = pressed_id
+	if pressed != {} && .JustReleased in press {
+		if hovered == pressed {
+			focused = pressed
+			just_released = pressed
 		}
-		pressed_id = {}
+		pressed = {}
 	}
 
-	if focused_id != {} && .JustPressed in press && hovered_id != focused_id {
-		just_unfocused_id = focused_id
-		focused_id = {}
+	if focused != {} && .JustPressed in press && hovered != focused {
+		just_unfocused = focused
+		focused = {}
 	}
 
-	if hovered_id != {} && .JustPressed in press {
-		just_pressed_id = hovered_id
-		pressed_id = hovered_id
+	if hovered != {} && .JustPressed in press {
+		just_pressed = hovered
+		pressed = hovered
 	}
 }
 Interaction :: struct {
@@ -89,12 +89,12 @@ Interaction :: struct {
 }
 interaction :: proc(id: $T, state: ^InteractionState(T)) -> Interaction {
 	return Interaction {
-		hovered = state.hovered_id == id,
-		pressed = state.pressed_id == id,
-		focused = state.focused_id == id,
-		just_pressed = state.just_pressed_id == id,
-		just_released = state.just_released_id == id,
-		just_unfocused = state.just_unfocused_id == id,
+		hovered = state.hovered == id,
+		pressed = state.pressed == id,
+		focused = state.focused == id,
+		just_pressed = state.just_pressed == id,
+		just_released = state.just_released == id,
+		just_unfocused = state.just_unfocused == id,
 	}
 }
 
@@ -133,7 +133,7 @@ ui_layout_extent :: proc() -> Vec2 {
 }
 ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	for id in ids {
-		if UI_CTX_PTR.cache.state.pressed_id == id || UI_CTX_PTR.cache.state.focused_id == id {
+		if UI_CTX_PTR.cache.state.pressed == id || UI_CTX_PTR.cache.state.focused == id {
 			return true
 		}
 	}
@@ -382,6 +382,10 @@ DivFlag :: enum u32 {
 	ClipContent,
 	PointerPassThrough, // divs with this are not considered when determinin which div is hovered. useful for divs that need ids to do animation but are on top of other divs that we want to interact with.
 	ZeroSizeButInfiniteSizeForChildren,
+	// reinterprets the gap value as a rotation value and rotates the div around its center by this many radians.
+	// why gap?? Currently the div can only rotate itself, we don't pass transformation matrices to the children. 
+	// so rotated divs do not have children an we can reuse the gap value.
+	RotateByGap,
 }
 
 Ui :: union {
@@ -520,7 +524,7 @@ ui_ctx_start_frame :: proc(platform: ^Platform) {
 	// todo: this could probably also be done, by using the div tree as a space partitioning structure 
 	// (assuming non-overlapping divs for the most part!)
 	// figure out if any ui element with an id is hovered. If many, select the one with highest z value
-	hovered_id: UiId = 0
+	hovered: UiId = 0
 	highest_z := ZInfo{}
 	for id, cached in cache.cached {
 		if cached.pointer_pass_through {
@@ -540,16 +544,16 @@ ui_ctx_start_frame :: proc(platform: ^Platform) {
 
 			if cursor_in_bounds {
 				highest_z = cached.z_info
-				hovered_id = id
+				hovered = id
 			}
 		}
 	}
 
 	// determine the rest of ids, i.e. 
-	update_interaction_state(&cache.state, hovered_id, cache.platform.mouse_buttons[.Left])
+	update_interaction_state(&cache.state, hovered, cache.platform.mouse_buttons[.Left])
 
-	if cache.state.just_pressed_id != 0 {
-		// print("just_pressed_id", cache.state.just_pressed_id)
+	if cache.state.just_pressed != 0 {
+		// print("just_pressed", cache.state.just_pressed)
 		cache.cursor_pos_start_press = cache.cursor_pos
 	}
 }
@@ -583,7 +587,12 @@ ui_end_frame :: proc(
 // /////////////////////////////////////////////////////////////////////////////
 layout :: proc(ui: Ui, max_size: Vec2) {
 	initial_pos := Vec2{0, 0}
-	_set_size(ui, max_size)
+	used_size := _set_size(ui, max_size)
+
+	// this allows top level divs to be absolute-positioned, relative to screen size
+	if div, ok := ui.(^DivElement); ok && DivFlag.Absolute in div.flags {
+		initial_pos = (max_size - used_size) * div.absolute_unit_pos
+	}
 	_set_position(ui, initial_pos)
 }
 
@@ -1478,6 +1487,10 @@ _add_div_rect :: #force_inline proc(
 		e.border_radius.bottom_left = max_border_radius
 	}
 
+	rotation: f32 = 0
+	if .RotateByGap in e.flags {
+		rotation = e.gap
+	}
 	add_rect(
 		vertices,
 		indices,
@@ -1488,6 +1501,7 @@ _add_div_rect :: #force_inline proc(
 		e.border_width,
 		e.border_radius,
 		e.texture,
+		rotation,
 	)
 }
 
@@ -1501,6 +1515,7 @@ add_rect :: #force_inline proc(
 	border_width: BorderWidth,
 	border_radius: BorderRadius,
 	texture: TextureTile,
+	rotation: f32 = 0,
 ) {
 	start_v := u32(len(vertices))
 
@@ -1533,12 +1548,15 @@ add_rect :: #force_inline proc(
 	vertex.uv = {texture.uv.max.x, texture.uv.min.y}
 	append(vertices, vertex)
 
-	append(indices, start_v)
-	append(indices, start_v + 1)
-	append(indices, start_v + 2)
-	append(indices, start_v)
-	append(indices, start_v + 2)
-	append(indices, start_v + 3)
+	if rotation != 0 {
+		mat := rotation_mat_2d(rotation)
+		center := pos + size / 2
+		for &v in vertices[start_v:] {
+			v.pos = mat * (v.pos - center) + center
+		}
+	}
+
+	append(indices, start_v, start_v + 1, start_v + 2, start_v, start_v + 2, start_v + 3)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

@@ -96,13 +96,13 @@ main :: proc() {
 
 DraggableSprites :: struct {
 	sprites:      [dynamic]q.DepthSprite,
-	hovered_idx:  int,
+	hoveredx:     int,
 	dragging_idx: int,
 	drag_offset:  Vec2,
 }
 draggable_sprites_create :: proc() -> (res: DraggableSprites) {
 	res.dragging_idx = -1
-	res.hovered_idx = -1
+	res.hoveredx = -1
 	ball := E.load_depth_sprite("./assets/ball_d_16.png", "./assets/t_2.png")
 	wall := E.load_depth_sprite("./assets/wall_d_16.png")
 	tower := E.load_depth_sprite("./assets/tower_d_16.png")
@@ -131,7 +131,7 @@ draggable_sprites_update :: proc(using draggables: ^DraggableSprites) {
 	for &s, i in sprites {
 		is_hovered := q.from_collider_metadata(E.get_hit().hit_collider, ^q.DepthSprite) == &s
 		if is_hovered {
-			hovered_idx = i
+			hoveredx = i
 		}
 		if is_hovered && dragging_idx == -1 && E.is_left_pressed() {
 			// start drag:

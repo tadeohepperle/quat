@@ -188,7 +188,7 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 			}
 		}
 	}
-	is_on_ui := engine.ui_ctx.cache.state.hovered_id != 0
+	is_on_ui := engine.ui_ctx.cache.state.hovered != 0
 	engine.hit = HitInfo{hit_pos, hit_collider, hit_collider_idx, is_on_ui}
 }
 
@@ -325,27 +325,27 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 
 	@(static) last_state: q.InteractionState(q.UiId)
 
-	if state.hovered_id != last_state.hovered_id {
-		print("  hovered_id:", last_state.hovered_id, "->", state.hovered_id)
+	if state.hovered != last_state.hovered {
+		print("  hovered:", last_state.hovered, "->", state.hovered)
 	}
-	if state.pressed_id != last_state.pressed_id {
-		print("  pressed_id:", last_state.pressed_id, "->", state.pressed_id)
+	if state.pressed != last_state.pressed {
+		print("  pressed:", last_state.pressed, "->", state.pressed)
 	}
-	if state.focused_id != last_state.focused_id {
-		print("  focused_id:", last_state.focused_id, "->", state.focused_id)
+	if state.focused != last_state.focused {
+		print("  focused:", last_state.focused, "->", state.focused)
 	}
 	last_state = state^
 
 
 	for k, v in cache.cached {
 		color := q.ColorSoftSkyBlue
-		if state.hovered_id == k {
+		if state.hovered == k {
 			color = q.ColorYellow
 		}
-		if state.focused_id == k {
+		if state.focused == k {
 			color = q.ColorSoftPink
 		}
-		if state.pressed_id == k {
+		if state.pressed == k {
 			color = q.ColorRed
 		}
 		q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)

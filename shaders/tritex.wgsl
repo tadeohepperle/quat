@@ -36,7 +36,8 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 
 fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> vec3f {
-    let offset = (pos + globals.time_secs * 0.05)/ wavelength ;
+    let offset = pos / wavelength ;
+    // let offset = (pos + globals.time_secs * 0.05)/ wavelength ;
     let off_a = offset + (f32(indices[0]) + seed);
     let off_b = offset + (f32(indices[1]) + seed);
     let off_c = offset + (f32(indices[2]) + seed);
@@ -59,6 +60,8 @@ fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
     return select(textureSample(t_diffuse, s_diffuse, sample_uv, idx-1).rgba, vec4f(0.0), idx == 0);
 }
 
+
+const DEBUG_HEX_BORDERS : bool = false;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     let n = perlinNoise2(in.pos *0.7);
@@ -71,6 +74,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     let color_1 =  texture_rgb(sample_uv, in.indices[1]);
     let color_2 =  texture_rgb(sample_uv, in.indices[2]);
     var weights = in.weights;
+  
     // weights *= vec3f(color_0.a,color_1.a,color_2.a);       
 
     let noise_octave_1 = noise_based_on_indices(in.pos, in.indices, WAVELENGTH, AMPLITUDE, SEED);
@@ -108,8 +112,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
 
     // weights = accentuate_weights_exp(weights, 10.0);
     // let color = weights[0] * color_0 + weights[1] * color_1 + weights[2] * color_2;
+ 
+    var mod_color = mix(vec3f(noise_scalar), color.rgb, color.a);
+    if DEBUG_HEX_BORDERS{
+  let val : f32 = max(in.weights.x, max(in.weights.z, in.weights.y)) + min(in.weights.x, min(in.weights.z, in.weights.y));
+   if val < 0.6 {
+        mod_color = vec3f(0.0);
+   }
+    }
+ 
 
-    let mod_color = mix(vec3f(noise_scalar), color.rgb, color.a);
     return vec4(mod_color, color.a) ;
 }
 

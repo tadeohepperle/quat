@@ -68,6 +68,30 @@ main :: proc() {
 				left_slider_id,
 			),
 		)
+
+		// we have limited support for div rotations by setting a RotateByGap flag and 
+		// using the gap value for rotation.
+		// children are not rotated! Only good for wiggly icons or something...
+		d := div(
+			Div {
+				width = 100,
+				height = 80,
+				texture = {TESTING_TEXTURE, {{0, 0}, {1, 0.8}}},
+				color = q.ColorSoftOrange,
+				absolute_unit_pos = {0.5, 0.5},
+				gap = engine.get_osc(),
+				flags = {
+					.WidthPx,
+					.HeightPx,
+					.Absolute,
+					.RotateByGap,
+					.MainAlignCenter,
+					.CrossAlignCenter,
+				},
+			},
+		)
+		child_text(d, Text{font_size = 24, str = "Hello", color = {1, 1, 1, 1}})
+		add_ui(d)
 	}
 }
 TESTING_TEXTURE: q.TextureHandle

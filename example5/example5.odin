@@ -152,6 +152,6 @@ main :: proc() {
 	for engine.next_frame() {
 		engine.camera_controller_update(&cam)
 		engine.draw_gizmos_coords()
-		engine.draw_tritex_mesh(&terrain_mesh)
+		engine.draw_tritex_mesh(terrain_mesh)
 	}
 }
