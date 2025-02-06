@@ -10,7 +10,7 @@ struct GlyphInstance {
 	@location(1) size:   vec2<f32>,
 	@location(2) uv:     vec4<f32>, // aabb
 	@location(3) color:  vec4<f32>,
-	@location(4) shadow: f32,
+	@location(4) shadow_and_bias: vec2<f32>,
 }
 
 struct Vertex {
@@ -146,7 +146,7 @@ fn vs_glyph(@builtin(vertex_index) vertex_index: u32, instance: GlyphInstance) -
 	out.clip_position = ui_layout_pos_to_ndc(v_pos);
 	out.color = instance.color;
 	out.uv = uv;
-	out.shadow_intensity = instance.shadow; 
+	out.shadow_and_bias = instance.shadow_and_bias; 
 	return out;
 }
 
@@ -154,8 +154,10 @@ struct VsGlyphOut {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec4<f32>,
     @location(1) uv: vec2<f32>,
-    @location(2) shadow_intensity: f32,
+    @location(2) shadow_and_bias: vec2<f32>,
 }
+
+const SHARPNESS : f32 = 24.0;
 
 @fragment
 fn fs_glyph(in: VsGlyphOut) -> @location(0) vec4<f32> {
@@ -163,12 +165,12 @@ fn fs_glyph(in: VsGlyphOut) -> @location(0) vec4<f32> {
     var sz : vec2<u32> = textureDimensions(t_diffuse, 0);
     var dx : f32 = dpdx(in.uv.x) * f32(sz.x);
     var dy : f32 = dpdy(in.uv.y) * f32(sz.y);
-    var to_pixels : f32 = 24.0 * inverseSqrt(dx * dx + dy * dy);
-    let inside_factor = clamp((sdf - 0.5) * to_pixels + 0.5, 0.0, 1.0);
+    var to_pixels : f32 = SHARPNESS * inverseSqrt(dx * dx + dy * dy);
+    let inside_factor = clamp((sdf - 0.5) * to_pixels + 0.5 + in.shadow_and_bias.y, 0.0, 1.0);
     
     // smoothstep(0.5 - smoothing, 0.5 + smoothing, sample);
-    let shadow_alpha = (1.0 - (pow(1.0 - sdf, 2.0)) )* in.shadow_intensity * in.color.a ;
-    let shadow_color = vec4(0.0,0.0,0.0, shadow_alpha);
+    let shadow_alpha = (1.0 - (pow(1.0 - sdf, 2.0)) )* in.shadow_and_bias.x * in.color.a ;
+    let shadow_color = vec4(0.0,0.0,0.0,shadow_alpha);
     let color = mix(shadow_color, in.color, inside_factor);
     return color; // + vec4(0.2,0.2,0.2,0.2); * vec4(1.0,1.0,1.0,5.0);
 }

@@ -45,11 +45,18 @@ asset_manager_create :: proc(
 	default_texture_handle := slotmap_insert(&assets.textures, default_texture)
 	assert(default_texture_handle == 0) // is the first one
 
-	font, font_err := font_from_bytes(DEFAULT_FONT_TTF, assets, "LuxuriousRoman-Regular")
+	default_font: Font
+	font_err: Error
+	if default_font_path == "" {
+		default_font, font_err = font_from_bytes(DEFAULT_FONT_TTF, assets, "LuxuriousRoman")
+
+	} else {
+		default_font, font_err = font_from_path(default_font_path, assets)
+	}
 	if font_err, has_err := font_err.(string); has_err {
 		panic(font_err)
 	}
-	font_handle := FontHandle(slotmap_insert(&assets.fonts, font))
+	font_handle := FontHandle(slotmap_insert(&assets.fonts, default_font))
 	assert(font_handle == 0)
 }
 asset_manager_destroy :: proc(assets: ^AssetManager) {

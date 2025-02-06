@@ -246,7 +246,7 @@ ui_glyph_pipeline_config :: proc(
 				{format = .Float32x2, offset = offset_of(UiGlyphInstance, size)},
 				{format = .Float32x4, offset = offset_of(UiGlyphInstance, uv)},
 				{format = .Float32x4, offset = offset_of(UiGlyphInstance, color)},
-				{format = .Float32, offset = offset_of(UiGlyphInstance, shadow)},
+				{format = .Float32x2, offset = offset_of(UiGlyphInstance, shadow_and_bias)},
 			),
 		},
 		bind_group_layouts = bind_group_layouts(

@@ -220,11 +220,11 @@ UiVertex :: struct {
 	flags:         u32,
 }
 UiGlyphInstance :: struct {
-	pos:    Vec2,
-	size:   Vec2,
-	uv:     Aabb,
-	color:  Color,
-	shadow: f32,
+	pos:             Vec2,
+	size:            Vec2,
+	uv:              Aabb,
+	color:           Color,
+	shadow_and_bias: Vec2, //x: shadow intensity, y: outline bias, positive bias values result in fatter letters
 }
 
 UiElementBase :: struct {
@@ -345,6 +345,8 @@ Text :: struct {
 	color:                Color,
 	font_size:            f32,
 	shadow:               f32,
+	// positive bias e.g. 0.5 -> fatter letters
+	sdf_bias:             f32,
 	offset:               Vec2,
 	line_break:           LineBreak,
 	align:                TextAlign,
@@ -427,7 +429,7 @@ UiCtx :: struct {
 DIVS_MAX_COUNT :: 2024
 TEXTS_MAX_COUNT :: 4096
 CUSTOM_UIS_MAX_COUNT :: 512
-GLYPHS_MAX_COUNT :: 8192
+GLYPHS_MAX_COUNT :: 4096 * 16
 
 // Idea: Global ctx could be outsourced to engine package instead of living in quat.
 // but then we need all functions like `div`, `text`, etc. to pass the ctx around constantly
@@ -1394,7 +1396,7 @@ build_ui_batches_and_attach_z_info :: proc(
 						size = g.size,
 						uv = g.uv,
 						color = e.color,
-						shadow = e.shadow,
+						shadow_and_bias = {e.shadow, e.sdf_bias},
 					},
 				)
 			}
