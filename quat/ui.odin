@@ -189,12 +189,12 @@ UiBatches :: struct {
 
 Primitives :: struct {
 	vertices:         [dynamic]UiVertex,
-	indices:          [dynamic]u32,
+	triangles:        [dynamic]Triangle,
 	glyphs_instances: [dynamic]UiGlyphInstance,
 }
 
 UiBatch :: struct {
-	start_idx:  int,
+	start_idx:  int, // either triangle idx (take *3 to get index for pipeline!) or glyph idx
 	end_idx:    int,
 	kind:       BatchKind,
 	handle:     TextureOrFontHandle,
@@ -258,9 +258,9 @@ Children :: struct {
 }
 
 CustomUiMesh :: struct {
-	vertices: []UiVertex,
-	indices:  []u32,
-	texture:  TextureHandle,
+	vertices:  []UiVertex,
+	triangles: []Triangle,
+	texture:   TextureHandle,
 }
 
 
@@ -327,10 +327,18 @@ Padding :: struct {
 }
 BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED :: BorderWidth{-10, -10, -10, -10} // apply this to your vertices in custom meshes, it fixes otherwise translucent colors, because then the corner flags are not set 
 BorderWidth :: struct {
-	top:    f32,
 	left:   f32,
-	bottom: f32,
+	top:    f32,
 	right:  f32,
+	bottom: f32,
+}
+// is stored in div.borderwidth
+NineSliceValues :: struct {
+	inset_px:     Vec2,
+	tile_size_px: Vec2,
+}
+nine_slice_values :: proc(inset_px: Vec2, tile_size_px: Vec2) -> BorderWidth {
+	return BorderWidth{inset_px.x, inset_px.y, tile_size_px.x, tile_size_px.y}
 }
 BorderRadius :: struct {
 	top_left:     f32,
@@ -363,7 +371,7 @@ LineBreak :: enum {
 	Never       = 2,
 }
 
-DivFlags :: bit_set[DivFlag]
+DivFlags :: bit_set[DivFlag;u32]
 DivFlag :: enum u32 {
 	WidthPx,
 	WidthFraction,
@@ -388,6 +396,12 @@ DivFlag :: enum u32 {
 	// why gap?? Currently the div can only rotate itself, we don't pass transformation matrices to the children. 
 	// so rotated divs do not have children an we can reuse the gap value.
 	RotateByGap,
+	// textures the div as a NineSlice, see https://en.wikipedia.org/wiki/9-slice_scaling
+	// - border inset in px is specified by Vec2{border_width.left, border_width.top} (x,y symmetric on all sides)
+	// - px size of the texture tile is specified by Vec2{border_width.right, border_width.bottom}
+	// stretches the inside. If a mamimum stretching 0.66 - 1.5 is wanted and repeating beyond that, set the .NineSliceRepeat flag
+	NineSliceUsingBorderWidth,
+	NineSliceRepeat,
 }
 
 Ui :: union {
@@ -992,7 +1006,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 		ctx.last_byte_idx = ch_byte_idx
 		g := get_or_add_glyph(font.sdf_font, ch)
 		if g.kind == .NotContained {
-			fmt.panicf("Character '{}' not rastierized yet! {}", ch, u32(ch))
+			fmt.panicf("Character '{}' not rastierized yet! {}", ch, u32(ch), text)
 		}
 		g.advance *= scale
 		g.xmin *= scale
@@ -1318,7 +1332,7 @@ build_ui_batches_and_attach_z_info :: proc(
 	// super rarely that there are any rects over text
 	_clear_batches :: proc(batches: ^UiBatches) {
 		clear(&batches.primitives.vertices)
-		clear(&batches.primitives.indices)
+		clear(&batches.primitives.triangles)
 		clear(&batches.primitives.glyphs_instances)
 		clear(&batches.batches)
 	}
@@ -1337,7 +1351,7 @@ build_ui_batches_and_attach_z_info :: proc(
 		case ^DivElement:
 			if e.color != 0 && e.size.x > 0 && e.size.y > 0 {
 				_flush_if_mismatch(b, .Rect, TextureOrFontHandle(e.texture.handle))
-				_add_div_rect(e, &write.vertices, &write.indices)
+				_add_div_rect(e, &write.vertices, &write.triangles)
 			}
 
 			prev_clip: Maybe(Aabb) = --- // stored in stack frame only for clipping rects to restore this value after children are done
@@ -1411,8 +1425,8 @@ build_ui_batches_and_attach_z_info :: proc(
 					for v in kind.vertices {
 						append(&write.vertices, v)
 					}
-					for i in kind.indices {
-						append(&write.indices, i + start_idx)
+					for i in kind.triangles {
+						append(&write.triangles, i + start_idx)
 					}
 				case CustomGlyphs:
 					_flush_if_mismatch(b, .Glyph, TextureOrFontHandle(kind.font))
@@ -1459,7 +1473,7 @@ build_ui_batches_and_attach_z_info :: proc(
 	_idx_for_batch_kind :: proc(primitives: ^Primitives, kind: BatchKind) -> int {
 		switch kind {
 		case .Rect:
-			return len(primitives.indices)
+			return len(primitives.triangles)
 		case .Glyph:
 			return len(primitives.glyphs_instances)
 		}
@@ -1468,48 +1482,59 @@ build_ui_batches_and_attach_z_info :: proc(
 }
 
 
-_add_div_rect :: #force_inline proc(
-	e: ^DivElement,
-	vertices: ^[dynamic]UiVertex,
-	indices: ^[dynamic]u32,
-) {
-	start_v := u32(len(vertices))
+_add_div_rect :: proc(e: ^DivElement, vertices: ^[dynamic]UiVertex, tris: ^[dynamic]Triangle) {
+	if e.texture.handle != 0 && .NineSliceUsingBorderWidth in e.flags {
+		repeat := .NineSliceRepeat in e.flags
+		_add_nine_slice_rects(
+			vertices,
+			tris,
+			e.pos,
+			e.size,
+			e.color,
+			e.texture.uv,
+			transmute(NineSliceValues)e.border_width,
+			repeat,
+		)
+		return
+	} else {
+		start_v := u32(len(vertices))
 
-	max_border_radius := min(e.size.x, e.size.y) / 2.0
-	if e.border_radius.top_left > max_border_radius {
-		e.border_radius.top_left = max_border_radius
-	}
-	if e.border_radius.top_right > max_border_radius {
-		e.border_radius.top_right = max_border_radius
-	}
-	if e.border_radius.bottom_right > max_border_radius {
-		e.border_radius.bottom_right = max_border_radius
-	}
-	if e.border_radius.bottom_left > max_border_radius {
-		e.border_radius.bottom_left = max_border_radius
-	}
+		max_border_radius := min(e.size.x, e.size.y) / 2.0
+		if e.border_radius.top_left > max_border_radius {
+			e.border_radius.top_left = max_border_radius
+		}
+		if e.border_radius.top_right > max_border_radius {
+			e.border_radius.top_right = max_border_radius
+		}
+		if e.border_radius.bottom_right > max_border_radius {
+			e.border_radius.bottom_right = max_border_radius
+		}
+		if e.border_radius.bottom_left > max_border_radius {
+			e.border_radius.bottom_left = max_border_radius
+		}
 
-	rotation: f32 = 0
-	if .RotateByGap in e.flags {
-		rotation = e.gap
+		rotation: f32 = 0
+		if .RotateByGap in e.flags {
+			rotation = e.gap
+		}
+		add_rect(
+			vertices,
+			tris,
+			e.pos,
+			e.size,
+			e.color,
+			e.border_color,
+			e.border_width,
+			e.border_radius,
+			e.texture,
+			rotation,
+		)
 	}
-	add_rect(
-		vertices,
-		indices,
-		e.pos,
-		e.size,
-		e.color,
-		e.border_color,
-		e.border_width,
-		e.border_radius,
-		e.texture,
-		rotation,
-	)
 }
 
 add_rect :: #force_inline proc(
 	vertices: ^[dynamic]UiVertex,
-	indices: ^[dynamic]u32,
+	tris: ^[dynamic]Triangle,
 	pos: Vec2,
 	size: Vec2,
 	color: Color,
@@ -1558,9 +1583,185 @@ add_rect :: #force_inline proc(
 		}
 	}
 
-	append(indices, start_v, start_v + 1, start_v + 2, start_v, start_v + 2, start_v + 3)
+	append(tris, Triangle{start_v, start_v + 1, start_v + 2})
+	append(tris, Triangle{start_v, start_v + 2, start_v + 3})
 }
 
-// /////////////////////////////////////////////////////////////////////////////
-// SECTION: Renderer
-// /////////////////////////////////////////////////////////////////////////////
+_add_nine_slice_rects :: proc(
+	vertices: ^[dynamic]UiVertex,
+	tris: ^[dynamic]Triangle,
+	pos: Vec2,
+	size: Vec2,
+	color: Color,
+	uv: Aabb,
+	using vals: NineSliceValues,
+	repeat: bool,
+) {
+	if repeat {
+		_add_nine_slice_rects_repeating(vertices, tris, pos, size, color, uv, vals)
+	} else {
+		_add_nine_slice_rects_stretching(vertices, tris, pos, size, color, uv, vals)
+	}
+}
+
+_add_nine_slice_rects_stretching :: proc(
+	vertices: ^[dynamic]UiVertex,
+	tris: ^[dynamic]Triangle,
+	pos: Vec2,
+	size: Vec2,
+	color: Color,
+	uv: Aabb,
+	using vals: NineSliceValues,
+) {
+	ps := [4]Vec2{pos, pos + inset_px, pos + size - inset_px, pos + size}
+	uv_inset := (uv.max - uv.min) * inset_px / tile_size_px
+	uvs := [4]Vec2{uv.min, uv.min + uv_inset, uv.max - uv_inset, uv.max}
+
+	start_v := u32(len(vertices))
+	// now add 16 vertices and 
+	#no_bounds_check {
+		for y in 0 ..< 4 {
+			p_y := ps[y].y
+			uv_y := uvs[y].y
+			for x in 0 ..< 4 {
+				p_x := ps[x].x
+				uv_x := uvs[x].x
+				append(
+					vertices,
+					UiVertex {
+						pos = {p_x, p_y},
+						size = size,
+						uv = {uv_x, uv_y},
+						color = color,
+						border_width = BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+						flags = UI_VERTEX_FLAG_TEXTURED,
+					},
+				)
+			}
+		}
+		for y in 0 ..< 3 {
+			for x in 0 ..< 3 {
+				idx_a := u32(x + y * 4)
+				idx_b := idx_a + 1
+				idx_c := idx_a + 4
+				idx_d := idx_a + 5
+				append(tris, Triangle{idx_a, idx_c, idx_d} + start_v)
+				append(tris, Triangle{idx_a, idx_d, idx_b} + start_v)
+			}
+		}
+	}
+}
+
+_add_nine_slice_rects_repeating :: proc(
+	vertices: ^[dynamic]UiVertex,
+	tris: ^[dynamic]Triangle,
+	pos: Vec2,
+	size: Vec2,
+	color: Color,
+	uv: Aabb,
+	using vals: NineSliceValues,
+) {
+
+
+	// determine number of segment repetitions in x and y direction.
+	/*
+	example: if the tile inner size is 100px * 50px and the 
+	size of the ui inner size is 200px * 150px, 
+	of course we need to repeat the inner patch 2x3 times
+	-> but what if the inner size is 190px * 150px  or 240px * 140px?
+	we should still repeat 2x3 times and stretch the tile a bit.
+	-> but if we get to like 280px * 180 px?
+	then we can squeeze it in 3x4 times.
+	*/
+	tile_inner := tile_size_px - inset_px - inset_px
+	ui_inner := size - inset_px - inset_px
+
+	rep_f32 := ui_inner / tile_inner
+	rep_x := max(int(math.round(rep_f32.x)), 1)
+	rep_y := max(int(math.round(rep_f32.y)), 1)
+	// if rep_x == 1 && rep_y == 1 {
+	// 	_add_nine_slice_rects_stretching(vertices, tris, pos, size, color, uv, vals)
+	// 	return
+	// }
+	start_v := u32(len(vertices))
+	// reserve enough space in the vertices and triangles arrays already:
+	num_quads := (rep_y + 2) * (rep_x + 2)
+	reserve(vertices, len(vertices) + num_quads * 4)
+	reserve(tris, len(tris) + num_quads * 2)
+
+	// compute corner uvs of inner patches
+	uv_inset := (uv.max - uv.min) * inset_px / tile_size_px
+	uv_min_in := uv.min + uv_inset
+	uv_max_in := uv.max - uv_inset
+	pos_max := pos + size
+	pos_in := pos + inset_px
+
+	patch_size := ui_inner / Vec2{f32(rep_x), f32(rep_y)}
+
+	// now add rep_x+2 * rep_y+2 quads, no sharing of vertices between quads, even though theoretically possible at the borders. but would be more complicated
+	last_x := rep_x + 1
+	last_y := rep_y + 1
+	for y in 0 ..< rep_y + 2 {
+		uv_y_min, uv_y_max: f32 = ---, ---
+		switch y {
+		case 0:
+			uv_y_min = uv.min.y
+			uv_y_max = uv_min_in.y
+		case last_y:
+			uv_y_min = uv_max_in.y
+			uv_y_max = uv.max.y
+		case:
+			uv_y_min = uv_min_in.y
+			uv_y_max = uv_max_in.y
+		}
+
+		p_y_min: f32 = pos.y if y == 0 else pos_in.y + patch_size.y * f32(y - 1)
+		p_y_max: f32 = pos_max.y if y == last_y else pos_in.y + patch_size.y * f32(y)
+
+		for x in 0 ..< rep_x + 2 {
+			// if x > 0 && x < last_x || y > 0 && y < last_y {
+			// 	continue
+			// }
+			uv_x_min, uv_x_max: f32 = ---, ---
+			switch x {
+			case 0:
+				uv_x_min = uv.min.x
+				uv_x_max = uv_min_in.x
+			case last_x:
+				uv_x_min = uv_max_in.x
+				uv_x_max = uv.max.x
+			case:
+				uv_x_min = uv_min_in.x
+				uv_x_max = uv_max_in.x
+			}
+
+			p_x_min: f32 = pos.x if x == 0 else pos_in.x + patch_size.x * f32(x - 1)
+			p_x_max: f32 = pos_max.x if x == last_x else pos_in.x + patch_size.x * f32(x)
+
+			// add a quad here (4 vertices, 2 triangles)
+			v := UiVertex {
+				pos          = Vec2{p_x_min, p_y_min},
+				size         = size,
+				uv           = Vec2{uv_x_min, uv_y_min},
+				color        = color,
+				border_width = BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+				flags        = UI_VERTEX_FLAG_TEXTURED,
+			}
+			append(vertices, v)
+			v.pos = Vec2{p_x_max, p_y_min}
+			v.uv = Vec2{uv_x_max, uv_y_min}
+			append(vertices, v)
+			v.pos = Vec2{p_x_min, p_y_max}
+			v.uv = Vec2{uv_x_min, uv_y_max}
+			append(vertices, v)
+			v.pos = Vec2{p_x_max, p_y_max}
+			v.uv = Vec2{uv_x_max, uv_y_max}
+			append(vertices, v)
+
+
+			append(tris, Triangle{0, 2, 3} + start_v)
+			append(tris, Triangle{0, 3, 1} + start_v)
+			start_v += 4
+		}
+	}
+}

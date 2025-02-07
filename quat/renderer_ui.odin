@@ -17,7 +17,7 @@ UiRenderer :: struct {
 	glyph_pipeline:        RenderPipeline,
 	batches:               UiBatches,
 	vertex_buffer:         DynamicBuffer(UiVertex),
-	index_buffer:          DynamicBuffer(u32),
+	index_buffer:          DynamicBuffer(Triangle),
 	glyph_instance_buffer: DynamicBuffer(UiGlyphInstance),
 }
 
@@ -110,15 +110,10 @@ ui_renderer_render :: proc(
 				TextureHandle(batch.handle),
 			)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
-			index_count := u32(batch.end_idx - batch.start_idx)
-			wgpu.RenderPassEncoderDrawIndexed(
-				render_pass,
-				index_count,
-				1,
-				u32(batch.start_idx),
-				0,
-				0,
-			)
+			// important: take *3 here to get from triangle_idx to index_idx
+			start_idx := u32(batch.start_idx) * 3
+			index_count := u32(batch.end_idx - batch.start_idx) * 3
+			wgpu.RenderPassEncoderDrawIndexed(render_pass, index_count, 1, start_idx, 0, 0)
 		case .Glyph:
 			font_texture_bind_group := assets_get_font_texture_bind_group(
 				assets,
@@ -158,7 +153,7 @@ ui_renderer_end_frame_and_prepare_buffers :: proc(
 	)
 	dynamic_buffer_write(
 		&rend.index_buffer,
-		rend.batches.primitives.indices[:],
+		rend.batches.primitives.triangles[:],
 		rend.device,
 		rend.queue,
 	)
@@ -271,7 +266,7 @@ ui_renderer_destroy :: proc(rend: ^UiRenderer) {
 
 ui_batches_destroy :: proc(batches: ^UiBatches) {
 	delete(batches.primitives.vertices)
-	delete(batches.primitives.indices)
+	delete(batches.primitives.triangles)
 	delete(batches.primitives.glyphs_instances)
 	delete(batches.batches)
 }

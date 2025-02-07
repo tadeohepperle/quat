@@ -92,6 +92,7 @@ fn fs_rect(in: VsRectOut) -> @location(0) vec4<f32> {
     let final_color = select(color, color * textureSample(t_diffuse, s_diffuse, in.uv), enabled(in.flags, TEXTURED));
 
 	return final_color;
+    // return in.color * textureSample(t_diffuse, s_diffuse, in.uv);
     
 }
 

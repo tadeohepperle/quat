@@ -26,7 +26,7 @@ PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
 	initial_size       = {800, 600},
 	clear_color        = ColorBlack,
 	shaders_dir_path   = "./shaders",
-	default_font_path  = "./assets/marko_one_regular",
+	default_font_path  = "",
 	power_preference   = .LowPower,
 	present_mode       = .Fifo,
 	tonemapping        = .Disabled,

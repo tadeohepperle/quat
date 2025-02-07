@@ -858,7 +858,7 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 		border_width := q.BorderWidth{-10.0, -10.0, -10.0, -10.0}
 
 		verts := make([dynamic]q.UiVertex, allocator = context.temp_allocator)
-		indices := make([dynamic]u32, allocator = context.temp_allocator)
+		tris := make([dynamic]q.Triangle, allocator = context.temp_allocator)
 		// add vertices:
 		for y in 0 ..< n_y {
 			for x in 0 ..< n_x {
@@ -887,19 +887,15 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 				idx_1 := idx_0 + u32(n_x)
 				idx_2 := idx_0 + u32(n_x) + 1
 				idx_3 := idx_0 + 1
-				append(&indices, idx_0)
-				append(&indices, idx_1)
-				append(&indices, idx_2)
-				append(&indices, idx_0)
-				append(&indices, idx_2)
-				append(&indices, idx_3)
+				append(&tris, q.Triangle{idx_0, idx_1, idx_2})
+				append(&tris, q.Triangle{idx_0, idx_2, idx_3})
 			}
 		}
 		tmp_slice := make([]q.CustomPrimitives, 1, allocator = context.temp_allocator)
 		tmp_slice[0] = q.CustomUiMesh {
-			vertices = verts[:],
-			indices  = indices[:],
-			texture  = 0,
+			vertices  = verts[:],
+			triangles = tris[:],
+			texture   = 0,
 		}
 		return tmp_slice
 	}
@@ -932,12 +928,10 @@ colored_triangle :: proc() -> Ui {
 		verts[0] = v({0, 0}, q.ColorSoftBlue)
 		verts[1] = v({100, 150}, q.ColorSoftGreen)
 		verts[2] = v({200, 0}, q.ColorSoftPink)
-		inds := make([]u32, 3, context.temp_allocator)
-		inds[0] = 0
-		inds[1] = 1
-		inds[2] = 2
+		tris := make([]q.Triangle, 1, context.temp_allocator)
+		tris[0] = {0, 1, 2}
 		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-		res[0] = q.CustomUiMesh{verts, inds, 0}
+		res[0] = q.CustomUiMesh{verts, tris, 0}
 		return res
 	}
 	Empty :: struct {}
@@ -1139,7 +1133,7 @@ text_edit :: proc(
 		size: Vec2,
 	) -> []q.CustomPrimitives {
 		vertices: [dynamic]q.UiVertex = make([dynamic]q.UiVertex, context.temp_allocator)
-		indices: [dynamic]u32 = make([dynamic]u32, context.temp_allocator)
+		tris: [dynamic]q.Triangle = make([dynamic]q.Triangle, context.temp_allocator)
 
 
 		// really hacky:
@@ -1234,7 +1228,7 @@ text_edit :: proc(
 
 				q.add_rect(
 					&vertices,
-					&indices,
+					&tris,
 					rect_pos,
 					rect_size,
 					data.selection_color,
@@ -1274,7 +1268,7 @@ text_edit :: proc(
 			}
 			q.add_rect(
 				&vertices,
-				&indices,
+				&tris,
 				pipe_pos,
 				pipe_size,
 				data.caret_color,
@@ -1286,7 +1280,7 @@ text_edit :: proc(
 		}
 
 		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-		res[0] = q.CustomUiMesh{vertices[:], indices[:], 0}
+		res[0] = q.CustomUiMesh{vertices[:], tris[:], 0}
 		return res
 	}
 
@@ -1472,13 +1466,78 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 		verts[0] = v(a, data.color)
 		verts[1] = v(b, data.color)
 		verts[2] = v(c, data.color)
-		inds := make([]u32, 3, context.temp_allocator)
-		inds[0] = 0
-		inds[1] = 1
-		inds[2] = 2
+		tris := make([]q.Triangle, 3, context.temp_allocator)
+		tris[0] = {0, 1, 2}
 		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-		res[0] = q.CustomUiMesh{verts, inds, 0}
+		res[0] = q.CustomUiMesh{verts, tris, 0}
 		return res
 	}
 	return q.ui_custom(widget_data, set_size, add_primitives)
 }
+
+NineSlice :: struct {
+	tile:            TextureTile,
+	tile_px_size:    Vec2,
+	tile_inset_size: Vec2,
+}
+NineSliceMode :: enum {
+	Stretch,
+	Repeat,
+}
+
+// // Note: always fills its container completely, so pack it into a bounded thing
+// nine_slice :: proc(_: NineSlice) -> NineSlice {
+// 	RoundedEquilateralTriangle :: struct {
+// 		side_length:  f32,
+// 		color:        Color,
+// 		border_color: Color,
+// 	}
+// 	widget_data := RoundedEquilateralTriangle {
+// 		side_length  = side_length,
+// 		color        = color,
+// 		border_color = q.ColorDarkTeal,
+// 	}
+// 	v :: proc(pos: Vec2, color: q.Color) -> q.UiVertex {
+// 		return q.UiVertex {
+// 			pos = pos,
+// 			color = color,
+// 			border_radius = {0, 0, 0, 0},
+// 			border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+// 		}
+// 	}
+// 	set_size :: proc(data: ^RoundedEquilateralTriangle, max_size: Vec2) -> Vec2 {
+// 		return max_size
+// 	}
+// 	add_primitives :: proc(
+// 		data: ^RoundedEquilateralTriangle,
+// 		pos: Vec2,
+// 		size: Vec2,
+// 	) -> []q.CustomPrimitives {
+// 		// triangle:
+// 		//      
+// 		//      ^ c
+// 		//     / \
+// 		//    /   \
+// 		//   /     \
+// 		//  ---------
+// 		// a        b
+// 		//
+// 		//	
+// 		context.allocator = context.temp_allocator
+// 		a := pos + Vec2{0, size.y}
+// 		b := pos + size
+// 		c := pos + Vec2{size.x / 2, 0}
+// 		verts := make([]q.UiVertex, 3, allocator = context.temp_allocator)
+// 		verts[0] = v(a, data.color)
+// 		verts[1] = v(b, data.color)
+// 		verts[2] = v(c, data.color)
+// 		inds := make([]u32, 3, context.temp_allocator)
+// 		inds[0] = 0
+// 		inds[1] = 1
+// 		inds[2] = 2
+// 		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
+// 		res[0] = q.CustomUiMesh{verts, inds, 0}
+// 		return res
+// 	}
+// 	return q.ui_custom(widget_data, set_size, add_primitives)
+// }

@@ -37,7 +37,17 @@ main :: proc() {
 	defer {engine.deinit()}
 	engine.set_bloom_enabled(false)
 	engine.set_tonemapping_mode(.Disabled)
-	engine.set_clear_color({0.02, 0.02, 0.04, 1.0})
+	engine.set_clear_color({0.2, 0.2, 0.3, 1.0})
+
+
+	ta := engine.texture_allocator_create(
+		{max_size = {512, 512}, max_n_atlases = 1, auto_grow_shrink = false},
+	)
+
+	panel_bg_img := q.image_load("./assets/nineslice3.png") or_else panic(" not found")
+	panel_bg := engine.texture_allocator_add_img(&ta, panel_bg_img).tile
+	q.image_drop(&panel_bg_img)
+
 	TESTING_TEXTURE = engine.load_texture("./assets/testing_texture_bw.png")
 
 	FIELD_SIZE :: Vec2{1200, 1000}
@@ -72,6 +82,43 @@ main :: proc() {
 		// we have limited support for div rotations by setting a RotateByGap flag and 
 		// using the gap value for rotation.
 		// children are not rotated! Only good for wiggly icons or something...
+
+
+		@(thread_local)
+		panel_w: int = 192
+		@(thread_local)
+		panel_h: int = 192
+		@(thread_local)
+		use_nine_slice: bool
+		@(thread_local)
+		nince_slice_repeat: bool
+
+		panel := div(
+			Div {
+				width = f32(panel_w),
+				height = f32(panel_h),
+				color = q.ColorWhite,
+				texture = panel_bg,
+				flags = {.WidthPx, .HeightPx},
+			},
+		)
+		if use_nine_slice {
+			panel.border_width = q.nine_slice_values(Vec2{32, 32}, Vec2{192, 192})
+			panel.flags += {.NineSliceUsingBorderWidth}
+			if nince_slice_repeat {
+				panel.flags += {.NineSliceRepeat}
+			}
+		}
+		engine.add_window(
+			"Nine slice",
+			{
+				engine.slider_int(&panel_w, 10, 1400),
+				engine.slider_int(&panel_h, 10, 1000),
+				engine.check_box(&use_nine_slice, "Nine Slice"),
+				engine.check_box(&nince_slice_repeat, "Repeat"),
+			},
+		)
+
 		d := div(
 			Div {
 				width = 100,
@@ -80,17 +127,11 @@ main :: proc() {
 				color = q.ColorSoftOrange,
 				absolute_unit_pos = {0.5, 0.5},
 				gap = engine.get_osc(),
-				flags = {
-					.WidthPx,
-					.HeightPx,
-					.Absolute,
-					.RotateByGap,
-					.MainAlignCenter,
-					.CrossAlignCenter,
-				},
+				flags = {.WidthPx, .HeightPx, .Absolute, .MainAlignCenter, .CrossAlignCenter},
 			},
 		)
-		child_text(d, Text{font_size = 24, str = "Hello", color = {1, 1, 1, 1}})
+		child(d, panel)
+		// child_text(d, Text{font_size = 24, str = "Hello", color = {1, 1, 1, 1}})
 		add_ui(d)
 	}
 }

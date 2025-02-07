@@ -19,6 +19,15 @@ pow3 :: #force_inline proc "contextless" (t: f32) -> f32 {
 	return t * t * t
 }
 
+// maps:
+// 0 -> 0
+// 0.5 -> 1
+// 1 -> 0
+ease_quad_010 :: proc "contextless" (x: f32) -> f32 {
+	e := 2.0 * x - 1.0
+	return 1.0 - (e * e)
+}
+
 // https://easings.net/#easeInBack
 ease_back_in :: proc "contextless" (t: f32) -> f32 {
 	return C3 * t * t * t - C1 * t * t
@@ -82,4 +91,18 @@ ease_cubic_in_out :: proc "contextless" (t: f32) -> f32 {
 	} else {
 		return 1.0 - pow3(-2.0 * t + 2.0) / 2.0
 	}
+}
+
+// calculates the position on a cubic spline between p0 and p1
+// with tangents m0 and m1.
+// set m_i to p_(i+1) - p_(i-1) to get a catmull-rum spline
+cubic_spline_2d :: proc "contextless" (t: f32, p0: Vec2, m0: Vec2, p1: Vec2, m1: Vec2) -> Vec2 {
+	t2 := t * t
+	t3 := t2 * t
+	return(
+		(2 * t3 - 3 * t2 + 1) * p0 +
+		(t3 - 2 * t2 + t) * m0 +
+		(-2 * t3 + 3 * t2) * p1 +
+		(t3 - t2) * m1 \
+	)
 }
