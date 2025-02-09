@@ -225,7 +225,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 		&engine.sprite_renderer,
 		engine.scene.depth_sprites[:],
 		engine.scene.sprites[:],
-		engine.scene.sprites[:], // todo!
+		engine.scene.sprites[:], // todo! should only be the actual shine sprites, not e.g. random grass blades
 	)
 	q.ui_end_frame(
 		engine.scene.top_level_ui_elements[:],
@@ -468,11 +468,17 @@ is_key_pressed :: #force_inline proc(key: q.Key) -> bool {
 is_key_just_pressed :: #force_inline proc(key: q.Key) -> bool {
 	return .JustPressed in ENGINE.platform.keys[key]
 }
+is_key_just_released :: #force_inline proc(key: q.Key) -> bool {
+	return .JustReleased in ENGINE.platform.keys[key]
+}
 is_key_just_repeated :: #force_inline proc(key: q.Key) -> bool {
 	return .JustRepeated in ENGINE.platform.keys[key]
 }
 is_key_just_pressed_or_repeated :: #force_inline proc(key: q.Key) -> bool {
 	return q.PressFlags{.JustPressed, .JustRepeated} & ENGINE.platform.keys[key] != q.PressFlags{}
+}
+get_key :: proc(key: q.Key) -> q.PressFlags {
+	return ENGINE.platform.keys[key]
 }
 is_shift_pressed :: #force_inline proc() -> bool {
 	return .Pressed in ENGINE.platform.keys[.LEFT_SHIFT]

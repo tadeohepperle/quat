@@ -31,14 +31,22 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     return out;
 }
 
-const LIGHT_DIR : vec3f = vec3f(0.0,0.5,1.3);
+const LIGHT_DIR : v3 = v3(0.0,0.5,1.3);
+const TERRAIN_NORMAL : v3 = v3(0.0,0.0,1.0);
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
     
-    let light: f32 = max(dot(in.normal,normalize(LIGHT_DIR)),0.05);
-    return vec4f( in.color.rgb * light, 1.0);
-    // return in.color;
-    // return vec4f(in.normal * 0.5 + 0.5, 1.0);
+
+
+    let blend_rev = smoothstep(1.5,0.0, in.pos.z);
+    let blend : f32 = 1.0 - (blend_rev * blend_rev * blend_rev *blend_rev);
+    
+    let normal = mix(TERRAIN_NORMAL, in.normal, blend);
+    let light: f32 = max(dot(normal,normalize(LIGHT_DIR)),0.05);
+    var color_w_light = in.color.rgb * light;
+
+    // return vec4f(vec3f(in.pos.z), 1.0);
+    return v4(color_w_light, blend);
 }
 
 // same right handed coordinate system as in blender, x and y on the plane, z for height of e.g. walls

@@ -92,6 +92,23 @@ ease_cubic_in_out :: proc "contextless" (t: f32) -> f32 {
 		return 1.0 - pow3(-2.0 * t + 2.0) / 2.0
 	}
 }
+// https://easings.net/#easeInQuad
+ease_quad_in :: proc "contextless" (t: f32) -> f32 {
+	return t * t
+}
+// https://easings.net/#easeOutQuad
+ease_quad_out :: proc "contextless" (t: f32) -> f32 {
+	return 1.0 - pow2(1.0 - t)
+}
+// https://easings.net/#easeInOutQuad
+ease_quad_in_out :: proc "contextless" (t: f32) -> f32 {
+	if t < 0.5 {
+		return 2.0 * t * t
+	} else {
+		return 1.0 - pow2(-2.0 * t + 2.0) / 2.0
+	}
+}
+
 
 // calculates the position on a cubic spline between p0 and p1
 // with tangents m0 and m1.

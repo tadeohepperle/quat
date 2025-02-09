@@ -9,6 +9,10 @@ struct Globals{
 @group(0) @binding(0)
 var<uniform> globals: Globals;
 
+alias v4 = vec4<f32>;
+alias v3 = vec3<f32>;
+alias v2 = vec2<f32>;
+
 fn world_pos_to_ndc(world_pos: vec2<f32>) -> vec4<f32> {
     let world_pos_3 = vec3<f32>(world_pos, 1.0);
 	let ndc = globals.camera_proj * world_pos_3;
