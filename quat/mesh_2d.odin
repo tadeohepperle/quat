@@ -7,7 +7,7 @@ Mesh2dVertex :: struct {
 	color: Color,
 }
 
-TexturedMeshRenderer :: struct {
+Mesh2dRenderer :: struct {
 	device:          wgpu.Device,
 	queue:           wgpu.Queue,
 	pipeline:        ^RenderPipeline,

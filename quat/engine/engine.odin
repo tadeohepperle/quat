@@ -30,7 +30,6 @@ DEFAULT_ENGINE_SETTINGS := EngineSettings {
 	debug_collider_gizmos = true,
 }
 
-
 Pipeline :: ^q.RenderPipeline
 Engine :: struct {
 	settings:               EngineSettings,
@@ -118,7 +117,6 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	engine.ui_ctx = q.ui_ctx_create(platform)
 	q.set_global_ui_ctx_ptr(&engine.ui_ctx)
 	_scene_create(&engine.scene)
-
 
 	q.bloom_renderer_create(&engine.bloom_renderer, platform)
 	q.gizmos_renderer_create(&engine.gizmos_renderer, platform)
