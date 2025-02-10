@@ -1,5 +1,6 @@
 package quat
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:slice"
@@ -11,7 +12,7 @@ ShaderRegistry :: struct {
 	changed_shaders_since_last_watch: [dynamic]string,
 	device:                           wgpu.Device,
 	shaders:                          map[string]Shader,
-	registered_pipelines:             [dynamic]^RenderPipeline,
+	pipelines:                        [dynamic]^RenderPipeline, // owned by the shader registry!!!
 	hot_reload_shaders:               bool,
 }
 
@@ -52,7 +53,13 @@ StringAndCString :: struct {
 // }
 
 shader_registry_destroy :: proc(reg: ^ShaderRegistry) {
-	delete(reg.registered_pipelines) // todo: likely more to delete here, but should not matter much, because only happens at end of program
+	for pipeline in reg.pipelines {
+		assert(pipeline.layout != nil)
+		assert(pipeline.pipeline != nil)
+		wgpu.PipelineLayoutRelease(pipeline.layout)
+	}
+	delete(reg.pipelines)
+	// todo: likely more to delete here, but should not matter much, because only happens at end of program
 }
 
 shader_registry_create :: proc(
@@ -75,13 +82,156 @@ shader_registry_get :: proc(reg: ^ShaderRegistry, shader_name: string) -> wgpu.S
 	return shader.shader_module
 }
 
-shader_registry_register_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^RenderPipeline) {
-	for ptr in reg.registered_pipelines {
-		if rawptr(ptr) == rawptr(pipeline) {
-			return
+make_render_pipeline :: proc(
+	reg: ^ShaderRegistry,
+	config: RenderPipelineConfig,
+) -> ^RenderPipeline {
+	pipeline := new(RenderPipeline)
+	pipeline.config = config
+	err := _create_or_reload_render_pipeline(reg, pipeline)
+	if err != nil {
+		fmt.panicf(
+			"Failed to create Render Pipeline \"{}\": {}",
+			pipeline.config.debug_name,
+			err.(WgpuError).message,
+		)
+	}
+	assert(pipeline.layout != nil)
+	assert(pipeline.pipeline != nil)
+	append(&reg.pipelines, pipeline)
+	return pipeline
+}
+
+
+SHADERS_DIRECTORY: []runtime.Load_Directory_File = #load_directory("../shaders")
+_create_or_reload_render_pipeline :: proc(
+	reg: ^ShaderRegistry,
+	pipeline: ^RenderPipeline,
+) -> MaybeWgpuError {
+	config := &pipeline.config
+	wgpu.DevicePushErrorScope(reg.device, .Validation)
+	if pipeline.layout == nil {
+		push_consts := config.push_constant_ranges
+		extras := wgpu.PipelineLayoutExtras {
+			chain = {sType = .PipelineLayoutExtras},
+			pushConstantRangeCount = uint(len(push_consts)),
+			pushConstantRanges = nil if len(push_consts) == 0 else &push_consts[0],
+		}
+		bindGroupLayouts :=
+			nil if len(config.bind_group_layouts) == 0 else &config.bind_group_layouts[0]
+		layout_desc := wgpu.PipelineLayoutDescriptor {
+			nextInChain          = &extras.chain,
+			bindGroupLayoutCount = uint(len(config.bind_group_layouts)),
+			bindGroupLayouts     = bindGroupLayouts,
+		}
+
+		pipeline.layout = wgpu.DeviceCreatePipelineLayout(reg.device, &layout_desc)
+	}
+
+	vs_shader_module := shader_registry_get(reg, config.vs_shader)
+	fs_shader_module := shader_registry_get(reg, config.fs_shader)
+
+	vert_attibutes := make([dynamic]wgpu.VertexAttribute, context.temp_allocator)
+	vert_layouts := make([dynamic]wgpu.VertexBufferLayout, context.temp_allocator)
+	if config.vertex.ty_id != nil && len(config.vertex.attributes) != 0 {
+		start_idx := len(vert_attibutes)
+		for a in config.vertex.attributes {
+			attr := wgpu.VertexAttribute {
+				format         = a.format,
+				offset         = u64(a.offset),
+				shaderLocation = u32(len(vert_attibutes)),
+			}
+			append(&vert_attibutes, attr)
+		}
+		ty_info := type_info_of(config.vertex.ty_id)
+		layout := wgpu.VertexBufferLayout {
+			arrayStride    = u64(ty_info.size),
+			stepMode       = .Vertex,
+			attributeCount = uint(len(config.vertex.attributes)),
+			attributes     = &vert_attibutes[start_idx],
+		}
+		append(&vert_layouts, layout)
+	}
+	if config.instance.ty_id != nil && len(config.instance.attributes) != 0 {
+		start_idx := len(vert_attibutes)
+		for a in config.instance.attributes {
+			attr := wgpu.VertexAttribute {
+				format         = a.format,
+				offset         = u64(a.offset),
+				shaderLocation = u32(len(vert_attibutes)),
+			}
+			append(&vert_attibutes, attr)
+		}
+		ty_info := type_info_of(config.instance.ty_id)
+		layout := wgpu.VertexBufferLayout {
+			arrayStride    = u64(ty_info.size),
+			stepMode       = .Instance,
+			attributeCount = uint(len(config.instance.attributes)),
+			attributes     = &vert_attibutes[start_idx],
+		}
+		append(&vert_layouts, layout)
+	}
+
+	blend: ^wgpu.BlendState
+	switch &b in config.blend {
+	case wgpu.BlendState:
+		blend = &b
+	case:
+		blend = nil
+	}
+
+	STENCIL_IGNORE :: wgpu.StencilFaceState {
+		compare     = wgpu.CompareFunction.Always,
+		failOp      = wgpu.StencilOperation.Keep,
+		depthFailOp = wgpu.StencilOperation.Keep,
+		passOp      = wgpu.StencilOperation.Keep,
+	}
+	depth_stencil: ^wgpu.DepthStencilState = nil
+	if depth_config, ok := config.depth.(DepthConfig); ok {
+		depth_stencil =
+		&wgpu.DepthStencilState {
+			format = DEPTH_TEXTURE_FORMAT,
+			depthWriteEnabled = b32(depth_config.depth_write_enabled),
+			depthCompare = depth_config.depth_compare,
+			stencilFront = STENCIL_IGNORE,
+			stencilBack = STENCIL_IGNORE,
 		}
 	}
-	append(&reg.registered_pipelines, pipeline)
+
+	pipeline_descriptor := wgpu.RenderPipelineDescriptor {
+		label = strings.clone_to_cstring(config.debug_name),
+		layout = pipeline.layout,
+		vertex = wgpu.VertexState {
+			module = vs_shader_module,
+			entryPoint = config.vs_entry_point,
+			bufferCount = uint(len(vert_layouts)),
+			buffers = nil if len(vert_layouts) == 0 else &vert_layouts[0],
+		},
+		fragment = &wgpu.FragmentState {
+			module      = fs_shader_module,
+			entryPoint  = config.fs_entry_point,
+			targetCount = 1,
+			targets     = &wgpu.ColorTargetState {
+				format    = config.format,
+				writeMask = wgpu.ColorWriteMaskFlags_All,
+				blend     = blend, // todo! alpha blending
+			},
+		},
+		depthStencil = depth_stencil,
+		primitive = wgpu.PrimitiveState{topology = config.topology, cullMode = .None},
+		multisample = {count = 1, mask = 0xFFFFFFFF},
+	}
+	pipeline_handle := wgpu.DeviceCreateRenderPipeline(reg.device, &pipeline_descriptor)
+	err := wgpu_pop_error_scope(reg.device)
+	if err == nil {
+		old_pipeline := pipeline.pipeline
+		pipeline.pipeline = pipeline_handle
+		if old_pipeline != nil {
+			wgpu.RenderPipelineRelease(old_pipeline)
+		}
+	}
+
+	return err
 }
 
 // Note: does not create shader module
@@ -221,7 +371,7 @@ load_shader_wgsl :: proc(
 // Warning: There are a couple of memory leaks regarding strings, import dynamic arrays, etc. in here: I don't care at the moment
 // Hot reloading is only meant for development anyway, so fuck it - Tadeo Hepperle, 2024-07-13
 shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
-	if len(reg.registered_pipelines) == 0 {
+	if len(reg.pipelines) == 0 {
 		return
 	}
 	// try to find a shader file that has changed:
@@ -296,12 +446,12 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 		}
 	}
 	// if we get until here, no error has occurred, we can recreate pipelines using any o
-	for &pipeline in reg.registered_pipelines {
+	for pipeline in reg.pipelines {
 		should_recreate_pipeline :=
 			pipeline.config.vs_shader in shaders_with_changed_modules ||
 			pipeline.config.fs_shader in shaders_with_changed_modules
 		if should_recreate_pipeline {
-			err := render_pipeline_create(pipeline, reg)
+			err := _create_or_reload_render_pipeline(reg, pipeline)
 			switch e in err {
 			case WgpuError:
 				fmt.eprintfln("Error creating pipeline %s: %s", pipeline.config.debug_name, err)

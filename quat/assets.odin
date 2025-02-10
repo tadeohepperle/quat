@@ -21,10 +21,12 @@ TextureSlot :: struct #raw_union {
 #assert(size_of(Texture) == size_of(TextureSlot))
 
 AssetManager :: struct {
-	textures: SlotMap(Texture), // also contains texture arrays!
-	fonts:    SlotMap(Font),
-	device:   wgpu.Device,
-	queue:    wgpu.Queue,
+	textures:           SlotMap(Texture), // also contains texture arrays!
+	fonts:              SlotMap(Font),
+	skinned_geometries: SlotMap(SkinnedGeometry),
+	skinned_meshes:     SlotMap(SkinnedMesh),
+	device:             wgpu.Device,
+	queue:              wgpu.Queue,
 }
 
 DEFAULT_FONT_TTF := #load("../assets/Lora-Medium.ttf")
@@ -68,8 +70,16 @@ asset_manager_destroy :: proc(assets: ^AssetManager) {
 	for &font in fonts {
 		font_destroy(&font)
 	}
-}
 
+	geometries := slotmap_to_tmp_slice(assets.skinned_geometries)
+	for &geom in geometries {
+		_geometry_drop(&geom)
+	}
+	meshes := slotmap_to_tmp_slice(assets.skinned_meshes)
+	for &mesh in meshes {
+		_skinned_mesh_drop(&mesh)
+	}
+}
 assets_get_texture_array_bind_group :: proc(
 	assets: AssetManager,
 	handle: TextureArrayHandle,

@@ -58,7 +58,7 @@ Platform :: struct {
 	shader_registry:             ShaderRegistry,
 	hdr_screen_texture:          Texture,
 	depth_screen_texture:        DepthTexture,
-	tonemapping_pipeline:        RenderPipeline,
+	tonemapping_pipeline:        ^RenderPipeline, // owned by ShaderRegistry
 	asset_manager:               AssetManager,
 
 	// input related fields:
@@ -118,9 +118,16 @@ platform_create :: proc(
 		settings.shaders_dir_path,
 		settings.hot_reload_shaders,
 	)
-	uniform_buffer_create(&platform.globals, platform.device)
-	platform.tonemapping_pipeline.config = tonemapping_pipeline_config(platform.device)
-	render_pipeline_create_or_panic(&platform.tonemapping_pipeline, &platform.shader_registry)
+	uniform_buffer_create_from_bind_group_layout(
+		&platform.globals,
+		platform.device,
+		globals_bind_group_layout_cached(platform.device),
+	)
+
+	platform.tonemapping_pipeline = make_render_pipeline(
+		&platform.shader_registry,
+		tonemapping_pipeline_config(platform.device),
+	)
 	asset_manager_create(
 		&platform.asset_manager,
 		settings.default_font_path,
@@ -128,6 +135,14 @@ platform_create :: proc(
 		platform.queue,
 	)
 }
+globals_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+	@(static) layout: wgpu.BindGroupLayout
+	if layout == nil {
+		layout = uniform_bind_group_layout(device, size_of(ShaderGlobals))
+	}
+	return layout
+}
+
 
 platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 	screen_size := platform.screen_size_f32
@@ -147,7 +162,6 @@ platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 
 platform_destroy :: proc(platform: ^Platform) {
 	uniform_buffer_destroy(&platform.globals)
-	render_pipeline_destroy(&platform.tonemapping_pipeline)
 	asset_manager_destroy(&platform.asset_manager)
 	shader_registry_destroy(&platform.shader_registry)
 	texture_destroy(&platform.hdr_screen_texture)
@@ -512,7 +526,6 @@ _init_wgpu :: proc(platform: ^Platform) {
 		message: cstring,
 	}
 	device_res: DeviceRes
-
 
 	required_features := [?]wgpu.FeatureName {
 		.PushConstants,

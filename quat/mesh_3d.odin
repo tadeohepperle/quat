@@ -15,8 +15,6 @@ Mesh3dVertex :: struct {
 
 Mesh3d :: struct {
 	diffuse_texture: TextureHandle,
-	device:          wgpu.Device,
-	queue:           wgpu.Queue,
 	vertices:        [dynamic]Mesh3dVertex,
 	triangles:       [dynamic]Triangle,
 	vertex_buffer:   DynamicBuffer(Mesh3dVertex),
@@ -30,18 +28,14 @@ mesh_3d_create :: proc(
 ) -> (
 	this: Mesh3d,
 ) {
-	this.device = device
-	this.queue = queue
 	this.diffuse_texture = diffuse_texture
-	this.vertex_buffer.usage = {.Vertex}
-	this.index_buffer.usage = {.Index}
+	dynamic_buffer_init(&this.vertex_buffer, {.Vertex}, device, queue)
+	dynamic_buffer_init(&this.index_buffer, {.Index}, device, queue)
 	return this
 }
 mesh_3d_clone :: proc(this: Mesh3d) -> Mesh3d {
 	return Mesh3d {
 		diffuse_texture = this.diffuse_texture,
-		device = this.device,
-		queue = this.queue,
 		vertices = slice.clone_to_dynamic(this.vertices[:]),
 		triangles = slice.clone_to_dynamic(this.triangles[:]),
 		vertex_buffer = {},
@@ -55,8 +49,8 @@ mesh_3d_drop :: proc(this: ^Mesh3d) {
 	delete(this.triangles)
 }
 mesh_3d_sync :: proc(this: ^Mesh3d) {
-	dynamic_buffer_write(&this.vertex_buffer, this.vertices[:], this.device, this.queue)
-	dynamic_buffer_write(&this.index_buffer, this.triangles[:], this.device, this.queue)
+	dynamic_buffer_write(&this.vertex_buffer, this.vertices[:])
+	dynamic_buffer_write(&this.index_buffer, this.triangles[:])
 }
 
 mesh_3d_unshare_vertices :: proc(this: ^Mesh3d) {
@@ -87,11 +81,6 @@ mesh_3d_unshare_vertices :: proc(this: ^Mesh3d) {
 	this.vertices = new_vertices
 	delete(old_vertices)
 }
-// mesh_recalculate_normals :: proc(this: ^Mesh3d) {
-
-
-// }
-
 
 mesh_3d_clear :: proc(this: ^Mesh3d) {
 	clear(&this.vertices)
@@ -114,28 +103,8 @@ mesh_3d_rotate_around_z_axis :: proc(this: ^Mesh3d, angle: f32, center: Vec2) {
 	}
 }
 
-Mesh3dRenderer :: struct {
-	device:   wgpu.Device,
-	queue:    wgpu.Queue,
-	pipeline: RenderPipeline,
-}
-
-mesh_3d_renderer_create :: proc(rend: ^Mesh3dRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
-	rend.pipeline.config = mesh_3d_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-	)
-	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
-}
-
-mesh_3d_renderer_destroy :: proc(rend: ^Mesh3dRenderer) {
-	render_pipeline_destroy(&rend.pipeline)
-}
-
 mesh_3d_renderer_render :: proc(
-	rend: ^Mesh3dRenderer,
+	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
 	meshes: []Mesh3d,
@@ -144,7 +113,7 @@ mesh_3d_renderer_render :: proc(
 	if len(meshes) == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
 	last_texture_handle := TextureHandle(max(u32))
 	for mesh in meshes {
@@ -178,10 +147,7 @@ mesh_3d_renderer_render :: proc(
 	}
 }
 
-mesh_3d_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+mesh_3d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_3d",
 		vs_shader = "mesh_3d",
@@ -200,7 +166,7 @@ mesh_3d_pipeline_config :: proc(
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_layout,
+			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
 		),
 		push_constant_ranges = {},

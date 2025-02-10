@@ -2,6 +2,7 @@ package quat
 
 import wgpu "vendor:wgpu"
 
+// a mesh where each triangle merges 3 textures
 TritexVertex :: struct {
 	pos:     Vec2, // per vertex
 	indices: UVec3, // per triangle (same for all vertices in each triangle)
@@ -15,7 +16,7 @@ TritexMesh :: struct {
 	vertex_buffer: DynamicBuffer(TritexVertex),
 }
 tritex_mesh_sync :: proc(mesh: ^TritexMesh) {
-	dynamic_buffer_write(&mesh.vertex_buffer, mesh.vertices[:], mesh.device, mesh.queue)
+	dynamic_buffer_write(&mesh.vertex_buffer, mesh.vertices[:])
 }
 tritex_mesh_create :: proc(
 	vertices: []TritexVertex,
@@ -27,37 +28,17 @@ tritex_mesh_create :: proc(
 	mesh.queue = queue
 	mesh.device = device
 	mesh.vertices = vertices
-	mesh.vertex_buffer.usage = {.Vertex}
-	dynamic_buffer_write(&mesh.vertex_buffer, vertices[:], device, queue)
+	dynamic_buffer_init(&mesh.vertex_buffer, {.Vertex}, device, queue)
+	dynamic_buffer_write(&mesh.vertex_buffer, vertices[:])
 	return mesh
 }
 tritex_mesh_drop :: proc(tritex_mesh: ^TritexMesh) {
 	delete(tritex_mesh.vertices)
 	dynamic_buffer_destroy(&tritex_mesh.vertex_buffer)
 }
-TritexRenderer :: struct {
-	device:   wgpu.Device,
-	queue:    wgpu.Queue,
-	pipeline: RenderPipeline,
-}
 
-tritex_renderer_create :: proc(rend: ^TritexRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
-	rend.pipeline.config = tritex_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-		rgba_texture_array_bind_group_layout_cached(platform.device),
-	)
-	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
-}
-
-tritex_renderer_destroy :: proc(rend: ^TritexRenderer) {
-	render_pipeline_destroy(&rend.pipeline)
-}
-
-tritex_renderer_render :: proc(
-	rend: ^TritexRenderer,
+tritex_mesh_render :: proc(
+	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
 	meshes: []TritexMesh,
@@ -71,7 +52,7 @@ tritex_renderer_render :: proc(
 		print("warning! wants to draw tritex meshes, but TextureArrayHandle is 0!")
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
 
 	texture_array_bindgroup := assets_get_texture_array_bind_group(assets, textures)
@@ -88,11 +69,7 @@ tritex_renderer_render :: proc(
 	}
 }
 
-tritex_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-	tritex_textures_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+tritex_mesh_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "tritex",
 		vs_shader = "tritex",
@@ -109,14 +86,16 @@ tritex_pipeline_config :: proc(
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_layout, tritex_textures_layout),
+		bind_group_layouts = bind_group_layouts(
+			globals_bind_group_layout_cached(device),
+			tritex_textures_bind_group_layout_cached(device),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
 	}
 }
-
 
 tritex_textures_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout

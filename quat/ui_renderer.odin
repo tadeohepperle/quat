@@ -13,8 +13,8 @@ import wgpu "vendor:wgpu"
 UiRenderer :: struct {
 	device:                wgpu.Device,
 	queue:                 wgpu.Queue,
-	rect_pipeline:         RenderPipeline,
-	glyph_pipeline:        RenderPipeline,
+	rect_pipeline:         ^RenderPipeline,
+	glyph_pipeline:        ^RenderPipeline,
 	batches:               UiBatches,
 	vertex_buffer:         DynamicBuffer(UiVertex),
 	index_buffer:          DynamicBuffer(Triangle),
@@ -68,9 +68,9 @@ ui_renderer_render :: proc(
 			last_kind = batch.kind
 			switch batch.kind {
 			case .Rect:
-				pipeline = &rend.rect_pipeline
+				pipeline = rend.rect_pipeline
 			case .Glyph:
-				pipeline = &rend.glyph_pipeline
+				pipeline = rend.glyph_pipeline
 			}
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline.pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_bind_group)
@@ -145,51 +145,27 @@ ui_renderer_end_frame_and_prepare_buffers :: proc(
 	delta_secs: f32,
 	asset_manager: AssetManager,
 ) {
-	dynamic_buffer_write(
-		&rend.vertex_buffer,
-		rend.batches.primitives.vertices[:],
-		rend.device,
-		rend.queue,
-	)
-	dynamic_buffer_write(
-		&rend.index_buffer,
-		rend.batches.primitives.triangles[:],
-		rend.device,
-		rend.queue,
-	)
-	dynamic_buffer_write(
-		&rend.glyph_instance_buffer,
-		rend.batches.primitives.glyphs_instances[:],
-		rend.device,
-		rend.queue,
-	)
+	dynamic_buffer_write(&rend.vertex_buffer, rend.batches.primitives.vertices[:])
+	dynamic_buffer_write(&rend.index_buffer, rend.batches.primitives.triangles[:])
+	dynamic_buffer_write(&rend.glyph_instance_buffer, rend.batches.primitives.glyphs_instances[:])
 }
 
 ui_renderer_create :: proc(rend: ^UiRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
-	rend.rect_pipeline.config = ui_rect_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-	)
-	render_pipeline_create_or_panic(&rend.rect_pipeline, &platform.shader_registry)
-	rend.glyph_pipeline.config = ui_glyph_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-	)
-	render_pipeline_create_or_panic(&rend.glyph_pipeline, &platform.shader_registry)
 
-	rend.vertex_buffer.usage = {.Vertex}
-	rend.index_buffer.usage = {.Index}
-	rend.glyph_instance_buffer.usage = {.Vertex}
+	reg := &platform.shader_registry
+	rend.rect_pipeline = make_render_pipeline(reg, ui_rect_pipeline_config(platform.device))
+	rend.glyph_pipeline = make_render_pipeline(reg, ui_glyph_pipeline_config(platform.device))
+
+	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
+	dynamic_buffer_init(&rend.index_buffer, {.Index}, rend.device, rend.queue)
+	dynamic_buffer_init(&rend.glyph_instance_buffer, {.Vertex}, rend.device, rend.queue)
 
 	return
 }
 
-ui_rect_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+ui_rect_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_rect",
 		vs_shader = "ui",
@@ -212,7 +188,7 @@ ui_rect_pipeline_config :: proc(
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_layout,
+			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
 		),
 		push_constant_ranges = {},
@@ -222,10 +198,7 @@ ui_rect_pipeline_config :: proc(
 	}
 }
 
-ui_glyph_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+ui_glyph_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
 		vs_shader = "ui",
@@ -245,7 +218,7 @@ ui_glyph_pipeline_config :: proc(
 			),
 		},
 		bind_group_layouts = bind_group_layouts(
-			globals_layout,
+			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
 		),
 		push_constant_ranges = {},
@@ -257,8 +230,6 @@ ui_glyph_pipeline_config :: proc(
 
 ui_renderer_destroy :: proc(rend: ^UiRenderer) {
 	ui_batches_destroy(&rend.batches)
-	render_pipeline_destroy(&rend.rect_pipeline)
-	render_pipeline_destroy(&rend.glyph_pipeline)
 	dynamic_buffer_destroy(&rend.vertex_buffer)
 	dynamic_buffer_destroy(&rend.index_buffer)
 	dynamic_buffer_destroy(&rend.glyph_instance_buffer)

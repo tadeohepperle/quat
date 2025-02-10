@@ -6,6 +6,8 @@ import "core:strings"
 import wgpu "vendor:wgpu"
 
 DynamicBuffer :: struct($T: typeid) {
+	device:   wgpu.Device,
+	queue:    wgpu.Queue,
 	buffer:   wgpu.Buffer,
 	usage:    wgpu.BufferUsageFlags,
 	size:     u64,
@@ -14,39 +16,41 @@ DynamicBuffer :: struct($T: typeid) {
 }
 
 MIN_BUFFER_CAPACITY :: 1024
-dynamic_buffer_write :: proc(
-	buffer: ^DynamicBuffer($T),
-	elements: []T,
+dynamic_buffer_init :: proc(
+	this: ^DynamicBuffer($T),
+	usage: wgpu.BufferUsageFlags,
 	device: wgpu.Device,
 	queue: wgpu.Queue,
 ) {
-	buffer.usage |= {.CopyDst}
-	buffer.length = len(elements)
-	if buffer.length == 0 {
+	this.usage = {.CopyDst} | usage
+	this.device = device
+	this.queue = queue
+}
+
+dynamic_buffer_write :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #caller_location) {
+	assert(this.queue != nil, tprint(loc))
+	this.length = len(elements)
+	if this.length == 0 {
 		return
 	}
 
-	target_capacity := max(next_pow2_number(buffer.length), MIN_BUFFER_CAPACITY)
+	target_capacity := max(next_pow2_number(this.length), MIN_BUFFER_CAPACITY)
 	element_size := size_of(T)
 	// if not enough space or unallocated, allocate  new buffer:
-	if buffer.capacity < target_capacity {
+	if this.capacity < target_capacity {
 		// throw old buffer away if already allocated
-		if buffer.capacity != 0 {
-			dynamic_buffer_destroy(buffer)
+		if this.capacity != 0 {
+			dynamic_buffer_destroy(this)
 		}
-		buffer.capacity = target_capacity
-		buffer.size = u64(buffer.capacity * element_size)
-		buffer.buffer = wgpu.DeviceCreateBuffer(
-			device,
-			&wgpu.BufferDescriptor {
-				usage = buffer.usage,
-				size = buffer.size,
-				mappedAtCreation = false,
-			},
+		this.capacity = target_capacity
+		this.size = u64(this.capacity * element_size)
+		this.buffer = wgpu.DeviceCreateBuffer(
+			this.device,
+			&wgpu.BufferDescriptor{usage = this.usage, size = this.size, mappedAtCreation = false},
 		)
 	}
-	used_size := uint(buffer.length * element_size)
-	wgpu.QueueWriteBuffer(queue, buffer.buffer, 0, raw_data(elements), used_size)
+	used_size := uint(this.length * element_size)
+	wgpu.QueueWriteBuffer(this.queue, this.buffer, 0, raw_data(elements), used_size)
 }
 
 dynamic_buffer_write_many :: proc(
@@ -55,7 +59,7 @@ dynamic_buffer_write_many :: proc(
 	device: wgpu.Device,
 	queue: wgpu.Queue,
 ) {
-	panic("todo! not implmeneted")
+	unimplemented()
 }
 
 dynamic_buffer_destroy :: proc(buffer: ^DynamicBuffer($T)) {
@@ -63,7 +67,6 @@ dynamic_buffer_destroy :: proc(buffer: ^DynamicBuffer($T)) {
 		wgpu.BufferDestroy(buffer.buffer)
 		buffer.buffer = nil
 	}
-
 }
 
 UniformBuffer :: struct($T: typeid) {
@@ -72,36 +75,23 @@ UniformBuffer :: struct($T: typeid) {
 	bind_group:        wgpu.BindGroup,
 	usage:             wgpu.BufferUsageFlags,
 }
-
-
 uniform_buffer_destroy :: proc(buffer: ^UniformBuffer($T)) {
 	wgpu.BindGroupRelease(buffer.bind_group)
 	wgpu.BindGroupLayoutRelease(buffer.bind_group_layout)
 	wgpu.BufferRelease(buffer.buffer) // TODO: What is the difference between BufferDestroy and BufferRelease
 }
-
-uniform_buffer_create :: proc(buffer: ^UniformBuffer($T), device: wgpu.Device) {
+uniform_buffer_create_from_bind_group_layout :: proc(
+	buffer: ^UniformBuffer($T),
+	device: wgpu.Device,
+	bind_group_layout: wgpu.BindGroupLayout,
+) {
 	buffer.usage |= {.CopyDst, .Uniform}
 	buffer.buffer = wgpu.DeviceCreateBuffer(
 		device,
 		&wgpu.BufferDescriptor{usage = buffer.usage, size = size_of(T), mappedAtCreation = false},
 	)
 	print(size_of(T))
-	buffer.bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
-		device,
-		&wgpu.BindGroupLayoutDescriptor {
-			entryCount = 1,
-			entries = &wgpu.BindGroupLayoutEntry {
-				binding = 0,
-				visibility = {.Vertex, .Fragment},
-				buffer = wgpu.BufferBindingLayout {
-					type = .Uniform,
-					hasDynamicOffset = false,
-					minBindingSize = size_of(T),
-				},
-			},
-		},
-	)
+	buffer.bind_group_layout = bind_group_layout
 	bind_group_entries := [?]wgpu.BindGroupEntry {
 		wgpu.BindGroupEntry {
 			binding = 0,
@@ -118,6 +108,27 @@ uniform_buffer_create :: proc(buffer: ^UniformBuffer($T), device: wgpu.Device) {
 			entries = raw_data(bind_group_entries[:]),
 		},
 	)
+}
+uniform_bind_group_layout :: proc(device: wgpu.Device, size_of_t: u64) -> wgpu.BindGroupLayout {
+	return wgpu.DeviceCreateBindGroupLayout(
+		device,
+		&wgpu.BindGroupLayoutDescriptor {
+			entryCount = 1,
+			entries = &wgpu.BindGroupLayoutEntry {
+				binding = 0,
+				visibility = {.Vertex, .Fragment},
+				buffer = wgpu.BufferBindingLayout {
+					type = .Uniform,
+					hasDynamicOffset = false,
+					minBindingSize = size_of_t,
+				},
+			},
+		},
+	)
+}
+uniform_buffer_create :: proc(buffer: ^UniformBuffer($T), device: wgpu.Device) {
+	layout := uniform_bind_group_layout(device, size_of(T))
+	uniform_buffer_create_from_bind_group_layout(buffer, device, layout)
 }
 
 uniform_buffer_write :: proc(queue: wgpu.Queue, buffer: ^UniformBuffer($T), data: ^T) {
@@ -189,147 +200,6 @@ RenderPipeline :: struct {
 	config:   RenderPipelineConfig,
 	layout:   wgpu.PipelineLayout,
 	pipeline: wgpu.RenderPipeline,
-}
-
-
-SHADERS_DIRECTORY: []runtime.Load_Directory_File = #load_directory("../shaders")
-render_pipeline_create_or_panic :: proc(pipeline: ^RenderPipeline, reg: ^ShaderRegistry) {
-	err := render_pipeline_create(pipeline, reg)
-	if err != nil {
-		fmt.panicf(
-			"Failed to create Render Pipeline \"%s\": %s",
-			pipeline.config.debug_name,
-			err.(WgpuError).message,
-		)
-	}
-}
-
-render_pipeline_create :: proc(pipeline: ^RenderPipeline, reg: ^ShaderRegistry) -> MaybeWgpuError {
-	config := &pipeline.config
-	wgpu.DevicePushErrorScope(reg.device, .Validation)
-	if pipeline.layout == nil {
-		push_consts := config.push_constant_ranges
-		extras := wgpu.PipelineLayoutExtras {
-			chain = {sType = .PipelineLayoutExtras},
-			pushConstantRangeCount = uint(len(push_consts)),
-			pushConstantRanges = nil if len(push_consts) == 0 else &push_consts[0],
-		}
-		bindGroupLayouts :=
-			nil if len(config.bind_group_layouts) == 0 else &config.bind_group_layouts[0]
-		layout_desc := wgpu.PipelineLayoutDescriptor {
-			nextInChain          = &extras.chain,
-			bindGroupLayoutCount = uint(len(config.bind_group_layouts)),
-			bindGroupLayouts     = bindGroupLayouts,
-		}
-
-		pipeline.layout = wgpu.DeviceCreatePipelineLayout(reg.device, &layout_desc)
-	}
-
-	vs_shader_module := shader_registry_get(reg, config.vs_shader)
-	fs_shader_module := shader_registry_get(reg, config.fs_shader)
-
-	vert_attibutes := make([dynamic]wgpu.VertexAttribute, context.temp_allocator)
-	vert_layouts := make([dynamic]wgpu.VertexBufferLayout, context.temp_allocator)
-	if config.vertex.ty_id != nil && len(config.vertex.attributes) != 0 {
-		start_idx := len(vert_attibutes)
-		for a in config.vertex.attributes {
-			attr := wgpu.VertexAttribute {
-				format         = a.format,
-				offset         = u64(a.offset),
-				shaderLocation = u32(len(vert_attibutes)),
-			}
-			append(&vert_attibutes, attr)
-		}
-		ty_info := type_info_of(config.vertex.ty_id)
-		layout := wgpu.VertexBufferLayout {
-			arrayStride    = u64(ty_info.size),
-			stepMode       = .Vertex,
-			attributeCount = uint(len(config.vertex.attributes)),
-			attributes     = &vert_attibutes[start_idx],
-		}
-		append(&vert_layouts, layout)
-	}
-	if config.instance.ty_id != nil && len(config.instance.attributes) != 0 {
-		start_idx := len(vert_attibutes)
-		for a in config.instance.attributes {
-			attr := wgpu.VertexAttribute {
-				format         = a.format,
-				offset         = u64(a.offset),
-				shaderLocation = u32(len(vert_attibutes)),
-			}
-			append(&vert_attibutes, attr)
-		}
-		ty_info := type_info_of(config.instance.ty_id)
-		layout := wgpu.VertexBufferLayout {
-			arrayStride    = u64(ty_info.size),
-			stepMode       = .Instance,
-			attributeCount = uint(len(config.instance.attributes)),
-			attributes     = &vert_attibutes[start_idx],
-		}
-		append(&vert_layouts, layout)
-	}
-
-	blend: ^wgpu.BlendState
-	switch &b in config.blend {
-	case wgpu.BlendState:
-		blend = &b
-	case:
-		blend = nil
-	}
-
-	STENCIL_IGNORE :: wgpu.StencilFaceState {
-		compare     = wgpu.CompareFunction.Always,
-		failOp      = wgpu.StencilOperation.Keep,
-		depthFailOp = wgpu.StencilOperation.Keep,
-		passOp      = wgpu.StencilOperation.Keep,
-	}
-	depth_stencil: ^wgpu.DepthStencilState = nil
-	if depth_config, ok := config.depth.(DepthConfig); ok {
-		depth_stencil =
-		&wgpu.DepthStencilState {
-			format = DEPTH_TEXTURE_FORMAT,
-			depthWriteEnabled = b32(depth_config.depth_write_enabled),
-			depthCompare = depth_config.depth_compare,
-			stencilFront = STENCIL_IGNORE,
-			stencilBack = STENCIL_IGNORE,
-		}
-	}
-
-	pipeline_descriptor := wgpu.RenderPipelineDescriptor {
-		label = strings.clone_to_cstring(config.debug_name),
-		layout = pipeline.layout,
-		vertex = wgpu.VertexState {
-			module = vs_shader_module,
-			entryPoint = config.vs_entry_point,
-			bufferCount = uint(len(vert_layouts)),
-			buffers = nil if len(vert_layouts) == 0 else &vert_layouts[0],
-		},
-		fragment = &wgpu.FragmentState {
-			module      = fs_shader_module,
-			entryPoint  = config.fs_entry_point,
-			targetCount = 1,
-			targets     = &wgpu.ColorTargetState {
-				format    = config.format,
-				writeMask = wgpu.ColorWriteMaskFlags_All,
-				blend     = blend, // todo! alpha blending
-			},
-		},
-		depthStencil = depth_stencil,
-		primitive = wgpu.PrimitiveState{topology = config.topology, cullMode = .None},
-		multisample = {count = 1, mask = 0xFFFFFFFF},
-	}
-	pipeline_handle := wgpu.DeviceCreateRenderPipeline(reg.device, &pipeline_descriptor)
-	err := wgpu_pop_error_scope(reg.device)
-	if err == nil {
-		old_pipeline := pipeline.pipeline
-		pipeline.pipeline = pipeline_handle
-		if old_pipeline != nil {
-			wgpu.RenderPipelineRelease(old_pipeline)
-		}
-		shader_registry_register_pipeline(reg, pipeline)
-	}
-
-	return err
 }
 
 render_pipeline_destroy :: proc(pipeline: ^RenderPipeline) {

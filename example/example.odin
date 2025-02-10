@@ -95,7 +95,7 @@ main :: proc() {
 }
 
 DraggableSprites :: struct {
-	sprites:      [dynamic]q.DepthSprite,
+	sprites:      [dynamic]q.Sprite,
 	hoveredx:     int,
 	dragging_idx: int,
 	drag_offset:  Vec2,
@@ -103,9 +103,9 @@ DraggableSprites :: struct {
 draggable_sprites_create :: proc() -> (res: DraggableSprites) {
 	res.dragging_idx = -1
 	res.hoveredx = -1
-	ball := E.load_depth_sprite("./assets/ball_d_16.png", "./assets/t_2.png")
-	wall := E.load_depth_sprite("./assets/wall_d_16.png")
-	tower := E.load_depth_sprite("./assets/tower_d_16.png")
+	ball := E.load_texture_as_sprite("./assets/ball_d_16.png")
+	wall := E.load_texture_as_sprite("./assets/wall_d_16.png")
+	tower := E.load_texture_as_sprite("./assets/tower_d_16.png")
 	wall.color = q.ColorDarkTeal
 	// tower.color = q.Color_Dark_Goldenrod
 	ball.color = q.ColorSoftBlue
@@ -129,7 +129,7 @@ draggable_sprites_update :: proc(using draggables: ^DraggableSprites) {
 
 	// drawing:
 	for &s, i in sprites {
-		is_hovered := q.from_collider_metadata(E.get_hit().hit_collider, ^q.DepthSprite) == &s
+		is_hovered := q.from_collider_metadata(E.get_hit().hit_collider, ^q.Sprite) == &s
 		if is_hovered {
 			hoveredx = i
 		}
@@ -151,7 +151,7 @@ draggable_sprites_update :: proc(using draggables: ^DraggableSprites) {
 		// s.color = {2, 2, 2, 1} if is_hovered else {1, 1, 1, 1}
 		collider_meta := q.to_collider_metadata(&s)
 		E.add_rect_collider(q.rect(s.pos, s.size), collider_meta, int(s.z))
-		E.draw_depth_sprite(s)
+		E.draw_sprite(s)
 		// if i != draggables.dragging_idx {
 
 		// } else {

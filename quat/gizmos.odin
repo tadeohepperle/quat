@@ -11,7 +11,7 @@ GizmosVertex :: struct {
 GizmosRenderer :: struct {
 	device:         wgpu.Device,
 	queue:          wgpu.Queue,
-	pipeline:       RenderPipeline,
+	pipeline:       ^RenderPipeline,
 	vertices:       [GizmosMode][dynamic]GizmosVertex,
 	vertex_buffers: [GizmosMode]DynamicBuffer(GizmosVertex),
 }
@@ -26,26 +26,22 @@ gizmos_renderer_create :: proc(rend: ^GizmosRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
 	for mode in GizmosMode {
-		rend.vertex_buffers[mode].usage = {.Vertex}
+		dynamic_buffer_init(&rend.vertex_buffers[mode], {.Vertex}, rend.device, rend.queue)
 	}
-	rend.pipeline.config = gizmos_pipeline_config(platform.globals.bind_group_layout)
-	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
+	rend.pipeline = make_render_pipeline(
+		&platform.shader_registry,
+		gizmos_pipeline_config(platform.device),
+	)
 }
 gizmos_renderer_destroy :: proc(rend: ^GizmosRenderer) {
 	for mode in GizmosMode {
 		delete(rend.vertices[mode])
 		dynamic_buffer_destroy(&rend.vertex_buffers[mode])
 	}
-	render_pipeline_destroy(&rend.pipeline)
 }
 gizmos_renderer_prepare :: proc(rend: ^GizmosRenderer) {
 	for mode in GizmosMode {
-		dynamic_buffer_write(
-			&rend.vertex_buffers[mode],
-			rend.vertices[mode][:],
-			rend.device,
-			rend.queue,
-		)
+		dynamic_buffer_write(&rend.vertex_buffers[mode], rend.vertices[mode][:])
 		clear(&rend.vertices[mode])
 	}
 }
@@ -194,7 +190,7 @@ gizmos_renderer_add_rect :: proc(
 	gizmos_renderer_add_line(rend, d, a, color, mode)
 }
 
-gizmos_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> RenderPipelineConfig {
+gizmos_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "gizmos",
 		vs_shader = "gizmos",
@@ -210,7 +206,7 @@ gizmos_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> RenderPi
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_layout),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(device)),
 		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(GizmosMode)},
 		),

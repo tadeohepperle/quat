@@ -1,7 +1,7 @@
 package quat
 import wgpu "vendor:wgpu"
 
-TexturedVertex :: struct {
+Mesh2dVertex :: struct {
 	pos:   Vec2,
 	uv:    Vec2,
 	color: Color,
@@ -10,9 +10,9 @@ TexturedVertex :: struct {
 TexturedMeshRenderer :: struct {
 	device:          wgpu.Device,
 	queue:           wgpu.Queue,
-	pipeline:        RenderPipeline,
-	vertices:        [dynamic]TexturedVertex,
-	vertex_buffer:   DynamicBuffer(TexturedVertex),
+	pipeline:        ^RenderPipeline,
+	vertices:        [dynamic]Mesh2dVertex,
+	vertex_buffer:   DynamicBuffer(Mesh2dVertex),
 	triangles:       [dynamic]Triangle,
 	index_buffer:    DynamicBuffer(Triangle),
 	texture_regions: [dynamic]TextureRegion,
@@ -24,35 +24,31 @@ TextureRegion :: struct {
 	texture:       TextureHandle,
 }
 
-textured_mesh_renderer_create :: proc(rend: ^TexturedMeshRenderer, platform: ^Platform) {
+mesh_2d_renderer_create :: proc(rend: ^TexturedMeshRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
-	rend.vertex_buffer.usage = {.Vertex}
-	rend.index_buffer.usage = {.Index}
-	rend.pipeline.config = textured_mesh_pipeline_config(
-		platform.device,
-		platform.globals.bind_group_layout,
-	)
-	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
+	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
+	dynamic_buffer_init(&rend.index_buffer, {.Index}, rend.device, rend.queue)
+	pipeline_config := mesh_2d_pipeline_config(platform.device)
+	rend.pipeline = make_render_pipeline(&platform.shader_registry, pipeline_config)
 }
 
-textured_mesh_renderer_destroy :: proc(rend: ^TexturedMeshRenderer) {
+mesh_2d_renderer_destroy :: proc(rend: ^TexturedMeshRenderer) {
 	delete(rend.vertices)
 	delete(rend.triangles)
 	delete(rend.texture_regions)
 	dynamic_buffer_destroy(&rend.vertex_buffer)
 	dynamic_buffer_destroy(&rend.index_buffer)
-	render_pipeline_destroy(&rend.pipeline)
 }
 
-textured_mesh_renderer_prepare :: proc(rend: ^TexturedMeshRenderer) {
-	dynamic_buffer_write(&rend.vertex_buffer, rend.vertices[:], rend.device, rend.queue)
-	dynamic_buffer_write(&rend.index_buffer, rend.triangles[:], rend.device, rend.queue)
+mesh_2d_renderer_prepare :: proc(rend: ^TexturedMeshRenderer) {
+	dynamic_buffer_write(&rend.vertex_buffer, rend.vertices[:])
+	dynamic_buffer_write(&rend.index_buffer, rend.triangles[:])
 	clear(&rend.vertices)
 	clear(&rend.triangles)
 }
 
-textured_mesh_renderer_set_texture :: proc(rend: ^TexturedMeshRenderer, texture: TextureHandle) {
+mesh_2d_renderer_set_texture :: proc(rend: ^TexturedMeshRenderer, texture: TextureHandle) {
 	reg_count := len(rend.texture_regions)
 	tri_count := u32(len(rend.triangles))
 	if reg_count > 0 {
@@ -65,7 +61,7 @@ textured_mesh_renderer_set_texture :: proc(rend: ^TexturedMeshRenderer, texture:
 	append(&rend.texture_regions, TextureRegion{start_tri_idx = tri_count, texture = texture})
 }
 
-textured_mesh_renderer_render :: proc(
+mesh_2d_renderer_render :: proc(
 	rend: ^TexturedMeshRenderer,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
@@ -116,28 +112,25 @@ textured_mesh_renderer_render :: proc(
 	clear(&rend.texture_regions)
 }
 
-textured_mesh_pipeline_config :: proc(
-	device: wgpu.Device,
-	globals_layout: wgpu.BindGroupLayout,
-) -> RenderPipelineConfig {
+mesh_2d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
-		debug_name = "textured_mesh",
-		vs_shader = "textured_mesh",
+		debug_name = "mesh_2d",
+		vs_shader = "mesh_2d",
 		vs_entry_point = "vs_main",
-		fs_shader = "textured_mesh",
+		fs_shader = "mesh_2d",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {
-			ty_id = TexturedVertex,
+			ty_id = Mesh2dVertex,
 			attributes = vert_attributes(
-				{format = .Float32x2, offset = offset_of(TexturedVertex, pos)},
-				{format = .Float32x2, offset = offset_of(TexturedVertex, uv)},
-				{format = .Float32x4, offset = offset_of(TexturedVertex, color)},
+				{format = .Float32x2, offset = offset_of(Mesh2dVertex, pos)},
+				{format = .Float32x2, offset = offset_of(Mesh2dVertex, uv)},
+				{format = .Float32x4, offset = offset_of(Mesh2dVertex, color)},
 			),
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_layout,
+			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
 		),
 		push_constant_ranges = {},

@@ -9,7 +9,7 @@ ColorMeshVertex :: struct {
 ColorMeshRenderer :: struct {
 	device:        wgpu.Device,
 	queue:         wgpu.Queue,
-	pipeline:      RenderPipeline,
+	pipeline:      ^RenderPipeline,
 	vertices:      [dynamic]ColorMeshVertex,
 	vertex_buffer: DynamicBuffer(ColorMeshVertex),
 	triangles:     [dynamic]Triangle, // index buffer
@@ -19,10 +19,12 @@ ColorMeshRenderer :: struct {
 color_mesh_renderer_create :: proc(rend: ^ColorMeshRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
-	rend.vertex_buffer.usage = {.Vertex}
-	rend.index_buffer.usage = {.Index}
-	rend.pipeline.config = color_mesh_pipeline_config(platform.globals.bind_group_layout)
-	render_pipeline_create_or_panic(&rend.pipeline, &platform.shader_registry)
+	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
+	dynamic_buffer_init(&rend.index_buffer, {.Index}, rend.device, rend.queue)
+	rend.pipeline = make_render_pipeline(
+		&platform.shader_registry,
+		color_mesh_pipeline_config(platform.device),
+	)
 }
 
 color_mesh_renderer_destroy :: proc(rend: ^ColorMeshRenderer) {
@@ -30,12 +32,11 @@ color_mesh_renderer_destroy :: proc(rend: ^ColorMeshRenderer) {
 	delete(rend.triangles)
 	dynamic_buffer_destroy(&rend.vertex_buffer)
 	dynamic_buffer_destroy(&rend.index_buffer)
-	render_pipeline_destroy(&rend.pipeline)
 }
 
 color_mesh_renderer_prepare :: proc(rend: ^ColorMeshRenderer) {
-	dynamic_buffer_write(&rend.vertex_buffer, rend.vertices[:], rend.device, rend.queue)
-	dynamic_buffer_write(&rend.index_buffer, rend.triangles[:], rend.device, rend.queue)
+	dynamic_buffer_write(&rend.vertex_buffer, rend.vertices[:])
+	dynamic_buffer_write(&rend.index_buffer, rend.triangles[:])
 	clear(&rend.vertices)
 	clear(&rend.triangles)
 }
@@ -69,7 +70,7 @@ color_mesh_renderer_render :: proc(
 	wgpu.RenderPassEncoderDrawIndexed(render_pass, u32(rend.index_buffer.length) * 3, 1, 0, 0, 0)
 }
 
-color_mesh_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> RenderPipelineConfig {
+color_mesh_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "color_mesh",
 		vs_shader = "color_mesh",
@@ -85,7 +86,7 @@ color_mesh_pipeline_config :: proc(globals_layout: wgpu.BindGroupLayout) -> Rend
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_layout),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(device)),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

@@ -23,18 +23,14 @@ BLOOM_SETTINGS_DEFAULT :: BloomSettings {
 BloomRenderer :: struct {
 	device:                    wgpu.Device,
 	queue:                     wgpu.Queue,
-	first_downsample_pipeline: RenderPipeline,
-	downsample_pipeline:       RenderPipeline,
-	upsample_pipeline:         RenderPipeline,
-	final_upsample_pipeline:   RenderPipeline,
+	first_downsample_pipeline: ^RenderPipeline,
+	downsample_pipeline:       ^RenderPipeline,
+	upsample_pipeline:         ^RenderPipeline,
+	final_upsample_pipeline:   ^RenderPipeline,
 	textures:                  [N_BLOOM_TEXTURES]Maybe(Texture), // is none, if it would be too small to matter, that means, once one is nil all textures after it also nil
 }
 
 bloom_renderer_destroy :: proc(rend: ^BloomRenderer) {
-	render_pipeline_destroy(&rend.first_downsample_pipeline)
-	render_pipeline_destroy(&rend.downsample_pipeline)
-	render_pipeline_destroy(&rend.upsample_pipeline)
-	render_pipeline_destroy(&rend.final_upsample_pipeline)
 	for &e in rend.textures {
 		switch &tex in e {
 		case Texture:
@@ -117,16 +113,11 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 		},
 		format = HDR_FORMAT,
 	}
-	rend.first_downsample_pipeline.config = first_downsample_config
-	rend.downsample_pipeline.config = downsample_config
-	rend.upsample_pipeline.config = upsample_config
-	rend.final_upsample_pipeline.config = final_upsample_config
-
-	render_pipeline_create_or_panic(&rend.first_downsample_pipeline, &platform.shader_registry)
-	render_pipeline_create_or_panic(&rend.downsample_pipeline, &platform.shader_registry)
-	render_pipeline_create_or_panic(&rend.upsample_pipeline, &platform.shader_registry)
-	render_pipeline_create_or_panic(&rend.final_upsample_pipeline, &platform.shader_registry)
-
+	reg := &platform.shader_registry
+	rend.first_downsample_pipeline = make_render_pipeline(reg, first_downsample_config)
+	rend.downsample_pipeline = make_render_pipeline(reg, downsample_config)
+	rend.upsample_pipeline = make_render_pipeline(reg, upsample_config)
+	rend.final_upsample_pipeline = make_render_pipeline(reg, final_upsample_config)
 }
 
 render_bloom :: proc(
