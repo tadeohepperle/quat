@@ -10,7 +10,7 @@ DynamicBuffer :: struct($T: typeid) {
 	queue:    wgpu.Queue,
 	buffer:   wgpu.Buffer,
 	usage:    wgpu.BufferUsageFlags,
-	size:     u64,
+	size:     u64, // in bytes
 	length:   int,
 	capacity: int,
 }
@@ -90,7 +90,6 @@ uniform_buffer_create_from_bind_group_layout :: proc(
 		device,
 		&wgpu.BufferDescriptor{usage = buffer.usage, size = size_of(T), mappedAtCreation = false},
 	)
-	print(size_of(T))
 	buffer.bind_group_layout = bind_group_layout
 	bind_group_entries := [?]wgpu.BindGroupEntry {
 		wgpu.BindGroupEntry {

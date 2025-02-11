@@ -12,6 +12,13 @@ Sprite :: struct {
 	z:        f32,
 }
 
+SpriteGroup :: struct {
+	texture:         Texture,
+	y_for_sorting:   f32, // compared to pos.y of other sprites
+	instances:       [dynamic]SpriteInstance,
+	instance_buffer: DynamicBuffer(SpriteInstance),
+}
+
 SpriteInstance :: struct {
 	pos:      Vec2,
 	size:     Vec2,
@@ -28,7 +35,7 @@ SpriteBatch :: struct {
 	key:       u32,
 }
 
-sort_and_batch_sprites :: proc(
+sprites_sort_and_batch :: proc(
 	sprites: []Sprite,
 	batches: ^[dynamic]SpriteBatch,
 	instances: ^[dynamic]SpriteInstance,
@@ -127,6 +134,23 @@ sprite_batches_render :: proc(
 
 }
 
+SpriteKind :: enum {
+	Cutout,
+	Transparent,
+	Shine,
+}
+@(rodata)
+SPRITE_KIND_DEPTH := [SpriteKind]DepthConfig {
+	.Cutout = {depth_write_enabled = true, depth_compare = .GreaterEqual},
+	.Transparent = {depth_write_enabled = false, depth_compare = .GreaterEqual},
+	.Shine = {depth_write_enabled = false, depth_compare = .Less},
+}
+@(rodata)
+SPRITE_KIND_FS_NAMES := [SpriteKind]cstring {
+	.Cutout      = "fs_cutout",
+	.Transparent = "fs_transparent",
+	.Shine       = "fs_shine",
+}
 SPRITE_VERTEX_ATTRIBUTES := []VertAttibute {
 	{format = .Float32x2, offset = offset_of(SpriteInstance, pos)},
 	{format = .Float32x2, offset = offset_of(SpriteInstance, size)},
@@ -135,14 +159,13 @@ SPRITE_VERTEX_ATTRIBUTES := []VertAttibute {
 	{format = .Float32, offset = offset_of(SpriteInstance, rotation)},
 	{format = .Float32, offset = offset_of(SpriteInstance, z)},
 }
-
-sprite_default_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+sprite_pipeline_config :: proc(device: wgpu.Device, kind: SpriteKind) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "sprite_default",
 		vs_shader = "sprite",
 		vs_entry_point = "vs_all",
 		fs_shader = "sprite",
-		fs_entry_point = "fs_default",
+		fs_entry_point = SPRITE_KIND_FS_NAMES[kind],
 		topology = .TriangleStrip,
 		vertex = {},
 		instance = {ty_id = SpriteInstance, attributes = SPRITE_VERTEX_ATTRIBUTES},
@@ -153,27 +176,6 @@ sprite_default_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineCon
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
-		depth = DepthConfig{depth_write_enabled = false, depth_compare = .GreaterEqual},
-	}
-}
-
-sprite_shine_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
-	return RenderPipelineConfig {
-		debug_name = "sprite_shine",
-		vs_shader = "sprite",
-		vs_entry_point = "vs_all",
-		fs_shader = "sprite",
-		fs_entry_point = "fs_shine",
-		topology = .TriangleStrip,
-		vertex = {},
-		instance = {ty_id = SpriteInstance, attributes = SPRITE_VERTEX_ATTRIBUTES},
-		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			rgba_bind_group_layout_cached(device),
-		),
-		push_constant_ranges = {},
-		blend = ALPHA_BLENDING,
-		format = HDR_FORMAT,
-		depth = DepthConfig{depth_write_enabled = false, depth_compare = .Less},
+		depth = SPRITE_KIND_DEPTH[kind],
 	}
 }

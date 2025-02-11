@@ -16,7 +16,7 @@ struct SkinnedPushConstants {
 var<push_constant> push: SkinnedPushConstants;
 
 struct Affine2 {
-    m: mat2x2<f32>,
+      m: mat2x2<f32>,
     offset: vec2<f32>,
     _pad: vec2<f32>, // because in Odin {m: Mat2, offeset: Vec2} has size 32 and align 16.
     // we could get around that though later, optimizing the Odin side to not use Mat2 there anymore 
@@ -43,8 +43,11 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     // let pos1: vec2<f32> = apply(bones_buffer[vertex.indices[0]], vertex.pos) * vertex.weights[0];
     // let pos2: vec2<f32> = apply(bones_buffer[vertex.indices[1]], vertex.pos) * vertex.weights[1];
     // let pos = pos1 + pos2 + push.pos;
-    let pos = apply(bones_buffer[vertex.indices[0]], vertex.pos) * vertex.weights[0] + apply(bones_buffer[vertex.indices[1]], vertex.pos) * vertex.weights[1];
-    let z: f32 = 1.0; // placeholder, add depth logic later
+
+    let bone_0 = bones_buffer[vertex.indices[0]];
+    let bone_1 = bones_buffer[vertex.indices[1]];
+    let pos = apply(bone_0, vertex.pos) * vertex.weights[0] + apply(bone_1, vertex.pos) * vertex.weights[1];
+    let z: f32 = 0.5; // placeholder, add depth logic later
     var out: VertexOutput;
     out.clip_position = world_pos_to_ndc_with_z(pos, z);
     out.uv = vertex.uv;

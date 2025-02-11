@@ -24,7 +24,7 @@ TextureRegion :: struct {
 	texture:       TextureHandle,
 }
 
-mesh_2d_renderer_create :: proc(rend: ^TexturedMeshRenderer, platform: ^Platform) {
+mesh_2d_renderer_create :: proc(rend: ^Mesh2dRenderer, platform: ^Platform) {
 	rend.device = platform.device
 	rend.queue = platform.queue
 	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
@@ -33,7 +33,7 @@ mesh_2d_renderer_create :: proc(rend: ^TexturedMeshRenderer, platform: ^Platform
 	rend.pipeline = make_render_pipeline(&platform.shader_registry, pipeline_config)
 }
 
-mesh_2d_renderer_destroy :: proc(rend: ^TexturedMeshRenderer) {
+mesh_2d_renderer_destroy :: proc(rend: ^Mesh2dRenderer) {
 	delete(rend.vertices)
 	delete(rend.triangles)
 	delete(rend.texture_regions)
@@ -41,14 +41,14 @@ mesh_2d_renderer_destroy :: proc(rend: ^TexturedMeshRenderer) {
 	dynamic_buffer_destroy(&rend.index_buffer)
 }
 
-mesh_2d_renderer_prepare :: proc(rend: ^TexturedMeshRenderer) {
+mesh_2d_renderer_prepare :: proc(rend: ^Mesh2dRenderer) {
 	dynamic_buffer_write(&rend.vertex_buffer, rend.vertices[:])
 	dynamic_buffer_write(&rend.index_buffer, rend.triangles[:])
 	clear(&rend.vertices)
 	clear(&rend.triangles)
 }
 
-mesh_2d_renderer_set_texture :: proc(rend: ^TexturedMeshRenderer, texture: TextureHandle) {
+mesh_2d_renderer_set_texture :: proc(rend: ^Mesh2dRenderer, texture: TextureHandle) {
 	reg_count := len(rend.texture_regions)
 	tri_count := u32(len(rend.triangles))
 	if reg_count > 0 {
@@ -62,7 +62,7 @@ mesh_2d_renderer_set_texture :: proc(rend: ^TexturedMeshRenderer, texture: Textu
 }
 
 mesh_2d_renderer_render :: proc(
-	rend: ^TexturedMeshRenderer,
+	rend: ^Mesh2dRenderer,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
 	assets: AssetManager,

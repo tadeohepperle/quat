@@ -186,6 +186,13 @@ UiBatches :: struct {
 	primitives: Primitives,
 	batches:    [dynamic]UiBatch,
 }
+ui_batches_drop :: proc(batches: ^UiBatches) {
+	delete(batches.primitives.vertices)
+	delete(batches.primitives.triangles)
+	delete(batches.primitives.glyphs_instances)
+	delete(batches.batches)
+}
+
 
 Primitives :: struct {
 	vertices:         [dynamic]UiVertex,
@@ -580,23 +587,34 @@ _ui_ctx_clear :: proc(ctx: ^UiCtx) {
 	ctx.glyphs_len = 0
 }
 
-ui_end_frame :: proc(
-	top_level_elements: []Ui,
-	max_size: Vec2,
-	delta_secs: f32,
-	out_batches: ^UiBatches,
-) {
+ui_layout_top_level_elements :: proc(top_level_elements: []Ui) {
 	assert(
 		UI_CTX_PTR.cache.platform != nil,
 		"platform ptr must be set on UI_CTX_PTR.cache, because it contains the asset manager that we need for resolving fonts!",
 	)
+	max_size := UI_CTX_PTR.cache.layout_extent
 	for ui in top_level_elements {
 		layout(ui, max_size) // warning! uses the global context at the moment
 	}
-	update_ui_cache(delta_secs)
-	build_ui_batches_and_attach_z_info(top_level_elements, out_batches, &UI_CTX_PTR.cache.cached)
-	return
 }
+
+// ui_end_frame :: proc(
+// 	top_level_elements: []Ui,
+// 	max_size: Vec2,
+// 	delta_secs: f32,
+// 	out_batches: ^UiBatches,
+// ) {
+// 	assert(
+// 		UI_CTX_PTR.cache.platform != nil,
+// 		"platform ptr must be set on UI_CTX_PTR.cache, because it contains the asset manager that we need for resolving fonts!",
+// 	)
+// 	for ui in top_level_elements {
+// 		layout(ui, max_size) // warning! uses the global context at the moment
+// 	}
+// 	update_ui_cache(delta_secs)
+// 	build_ui_batches_and_attach_z_info(top_level_elements, out_batches)
+// 	return
+// }
 
 // /////////////////////////////////////////////////////////////////////////////
 // SECTION: Layout algorithm
@@ -1167,7 +1185,7 @@ merge_line_metrics_to_max :: proc(a: LineMetrics, b: LineMetrics) -> (res: LineM
 // Note: also modifies the Ui-Elements in the UI_Memory to achieve lerping from the last frame.
 // Does NOT attach z-info, this is done later during batching. But update_ui_cache needs to be called
 // before batching, because during batching primitives are created, so color lerping has to happen before.
-update_ui_cache :: proc(delta_secs: f32) {
+ui_update_ui_cache_end_of_frame_after_layout_before_batching :: proc(delta_secs: f32) {
 	@(thread_local)
 	generation: int
 
@@ -1259,12 +1277,11 @@ PreBatch :: struct {
 	kind:    BatchKind,
 	handle:  TextureOrFontHandle,
 }
+
+// WARNING: calls this at the end of the frame AFTER update_ui_cache!
 // writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
-build_ui_batches_and_attach_z_info :: proc(
-	top_level_elements: []Ui,
-	out_batches: ^UiBatches,
-	cached: ^map[UiId]CachedElement,
-) {
+build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches: ^UiBatches) {
+	cached: ^map[UiId]CachedElement = &UI_CTX_PTR.cache.cached
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {

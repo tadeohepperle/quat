@@ -10,32 +10,57 @@ import "core:os"
 
 import wgpu "vendor:wgpu"
 
-UiRenderer :: struct {
-	device:                wgpu.Device,
-	queue:                 wgpu.Queue,
-	rect_pipeline:         ^RenderPipeline,
-	glyph_pipeline:        ^RenderPipeline,
-	batches:               UiBatches,
+UiRenderBuffers :: struct {
+	using _:               UiBatches,
 	vertex_buffer:         DynamicBuffer(UiVertex),
 	index_buffer:          DynamicBuffer(Triangle),
 	glyph_instance_buffer: DynamicBuffer(UiGlyphInstance),
 }
+ui_render_buffers_create :: proc(
+	device: wgpu.Device,
+	queue: wgpu.Queue,
+) -> (
+	this: UiRenderBuffers,
+) {
+	dynamic_buffer_init(&this.vertex_buffer, {.Vertex}, device, queue)
+	dynamic_buffer_init(&this.index_buffer, {.Index}, device, queue)
+	dynamic_buffer_init(&this.glyph_instance_buffer, {.Vertex}, device, queue)
+	return this
+}
+ui_render_buffers_destroy :: proc(this: ^UiRenderBuffers) {
+	ui_batches_drop(this)
+	dynamic_buffer_destroy(&this.vertex_buffer)
+	dynamic_buffer_destroy(&this.index_buffer)
+	dynamic_buffer_destroy(&this.glyph_instance_buffer)
+}
 
-ui_renderer_render :: proc(
-	rend: ^UiRenderer,
+ui_render_buffers_batch_and_prepare :: proc(
+	this: ^UiRenderBuffers,
+	top_level_elements: []Ui,
+) {
+	build_ui_batches_and_attach_z_info(top_level_elements, this)
+	dynamic_buffer_write(&this.vertex_buffer, this.primitives.vertices[:])
+	dynamic_buffer_write(&this.index_buffer, this.primitives.triangles[:])
+	dynamic_buffer_write(&this.glyph_instance_buffer, this.primitives.glyphs_instances[:])
+}
+
+ui_render :: proc(
+	buffers: UiRenderBuffers,
+	rect_pipeline: wgpu.RenderPipeline,
+	glyph_pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_bind_group: wgpu.BindGroup,
 	screen_size: UVec2,
 	assets: AssetManager,
 ) {
 	screen_size_f32 := Vec2{f32(screen_size.x), f32(screen_size.y)}
-	if len(rend.batches.batches) == 0 {
+	if len(buffers.batches) == 0 {
 		return
 	}
-	last_kind := rend.batches.batches[0].kind
+	last_kind := buffers.batches[0].kind
 	last_clipped_to: Maybe(Aabb) = Aabb{} // no batch will have this, so the first batch already fulfills batch.clipped_to != last_clipped_to
-	pipeline: ^RenderPipeline = nil
-	for &batch in rend.batches.batches {
+	pipeline: wgpu.RenderPipeline = nil
+	for &batch in buffers.batches {
 		if batch.clipped_to != last_clipped_to {
 			if clipped_to, ok := batch.clipped_to.(Aabb); ok {
 				// convert clipping rect from layout to screen space and then set it:
@@ -68,41 +93,39 @@ ui_renderer_render :: proc(
 			last_kind = batch.kind
 			switch batch.kind {
 			case .Rect:
-				pipeline = rend.rect_pipeline
+				pipeline = rect_pipeline
 			case .Glyph:
-				pipeline = rend.glyph_pipeline
+				pipeline = glyph_pipeline
 			}
-			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline.pipeline)
+			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_bind_group)
 			switch batch.kind {
 			case .Rect:
 				wgpu.RenderPassEncoderSetVertexBuffer(
 					render_pass,
 					0,
-					rend.vertex_buffer.buffer,
+					buffers.vertex_buffer.buffer,
 					0,
-					u64(rend.vertex_buffer.size),
+					u64(buffers.vertex_buffer.size),
 				)
 
 				wgpu.RenderPassEncoderSetIndexBuffer(
 					render_pass,
-					rend.index_buffer.buffer,
+					buffers.index_buffer.buffer,
 					.Uint32,
 					0,
-					u64(rend.index_buffer.size),
+					u64(buffers.index_buffer.size),
 				)
 			case .Glyph:
 				wgpu.RenderPassEncoderSetVertexBuffer(
 					render_pass,
 					0,
-					rend.glyph_instance_buffer.buffer,
+					buffers.glyph_instance_buffer.buffer,
 					0,
-					u64(rend.glyph_instance_buffer.size),
+					u64(buffers.glyph_instance_buffer.size),
 				)
 			}
 		}
-
-
 		switch batch.kind {
 		case .Rect:
 			texture_bind_group := assets_get_texture_bind_group(
@@ -138,31 +161,6 @@ screen_to_layout_space :: proc(pt: Vec2, screen_size: Vec2) -> Vec2 {
 
 layout_to_screen_space :: proc(pt: Vec2, screen_size: Vec2) -> Vec2 {
 	return pt * (screen_size.y / f32(SCREEN_REFERENCE_SIZE.y))
-}
-
-ui_renderer_end_frame_and_prepare_buffers :: proc(
-	rend: ^UiRenderer,
-	delta_secs: f32,
-	asset_manager: AssetManager,
-) {
-	dynamic_buffer_write(&rend.vertex_buffer, rend.batches.primitives.vertices[:])
-	dynamic_buffer_write(&rend.index_buffer, rend.batches.primitives.triangles[:])
-	dynamic_buffer_write(&rend.glyph_instance_buffer, rend.batches.primitives.glyphs_instances[:])
-}
-
-ui_renderer_create :: proc(rend: ^UiRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
-
-	reg := &platform.shader_registry
-	rend.rect_pipeline = make_render_pipeline(reg, ui_rect_pipeline_config(platform.device))
-	rend.glyph_pipeline = make_render_pipeline(reg, ui_glyph_pipeline_config(platform.device))
-
-	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
-	dynamic_buffer_init(&rend.index_buffer, {.Index}, rend.device, rend.queue)
-	dynamic_buffer_init(&rend.glyph_instance_buffer, {.Vertex}, rend.device, rend.queue)
-
-	return
 }
 
 ui_rect_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
@@ -226,18 +224,4 @@ ui_glyph_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
 	}
-}
-
-ui_renderer_destroy :: proc(rend: ^UiRenderer) {
-	ui_batches_destroy(&rend.batches)
-	dynamic_buffer_destroy(&rend.vertex_buffer)
-	dynamic_buffer_destroy(&rend.index_buffer)
-	dynamic_buffer_destroy(&rend.glyph_instance_buffer)
-}
-
-ui_batches_destroy :: proc(batches: ^UiBatches) {
-	delete(batches.primitives.vertices)
-	delete(batches.primitives.triangles)
-	delete(batches.primitives.glyphs_instances)
-	delete(batches.batches)
 }

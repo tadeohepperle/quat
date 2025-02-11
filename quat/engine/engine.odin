@@ -32,46 +32,86 @@ DEFAULT_ENGINE_SETTINGS := EngineSettings {
 
 Pipeline :: ^q.RenderPipeline
 Engine :: struct {
-	settings:               EngineSettings,
-	platform:               q.Platform,
-	hit:                    HitInfo,
-	scene:                  Scene,
-	ui_ctx:                 q.UiCtx,
-	bloom_renderer:         q.BloomRenderer,
-	gizmos_renderer:        q.GizmosRenderer,
-	ui_renderer:            q.UiRenderer,
-	color_mesh_renderer:    q.ColorMeshRenderer,
-	mesh_2d_renderer:       q.TexturedMeshRenderer,
-	pipelines:              [PipelineType]^q.RenderPipeline,
-	sprite_batches:         [dynamic]q.SpriteBatch,
-	sprite_instances:       [dynamic]q.SpriteInstance,
-	sprite_instance_buffer: q.DynamicBuffer(q.SpriteInstance),
+	settings:                 EngineSettings,
+	platform:                 q.Platform,
+	hit:                      HitInfo,
+	scene:                    Scene,
+	ui_ctx:                   q.UiCtx,
+	bloom_renderer:           q.BloomRenderer,
+	gizmos_renderer:          q.GizmosRenderer,
+	color_mesh_renderer:      q.ColorMeshRenderer,
+	mesh_2d_renderer:         q.Mesh2dRenderer,
+	pipelines:                [PipelineType]^q.RenderPipeline,
+	cutout_sprites:           SpriteBuffers,
+	shine_sprites:            SpriteBuffers,
+	transparent_sprites_low:  SpriteBuffers,
+	transparent_sprites_high: SpriteBuffers,
+	ui_world_layer_buffers:   q.UiRenderBuffers,
+	ui_top_layer_buffers:     q.UiRenderBuffers,
+
+
 	// sprite_pipeline:     Pipeline,
 	// tritex_pipeline:     Pipeline,
 	// skinned_pipeline:    Pipeline,
 	// mesh_3d_pipeline:    Pipeline,
 }
 
+SpriteBuffers :: struct {
+	batches:         [dynamic]q.SpriteBatch,
+	instances:       [dynamic]q.SpriteInstance,
+	instance_buffer: q.DynamicBuffer(q.SpriteInstance),
+}
+sprite_buffers_create :: proc(device: wgpu.Device, queue: wgpu.Queue) -> (this: SpriteBuffers) {
+	q.dynamic_buffer_init(&this.instance_buffer, {.Vertex}, device, queue)
+	return this
+}
+sprite_buffers_destroy :: proc(this: ^SpriteBuffers) {
+	delete(this.batches)
+	delete(this.instances)
+	q.dynamic_buffer_destroy(&this.instance_buffer)
+}
+sprite_buffers_batch_and_prepare :: proc(this: ^SpriteBuffers, sprites: []q.Sprite) {
+	q.sprites_sort_and_batch(sprites[:], &this.batches, &this.instances)
+	q.dynamic_buffer_write(&this.instance_buffer, this.instances[:])
+}
+
 PipelineType :: enum {
-	SpriteDefault,
+	HexChunk,
+	SpriteCutout,
 	SpriteShine,
-	SkinnedDefault,
+	SpriteTransparent,
+	SkinnedCutout,
+	// SkinnedTransparent,
+	// SkinnedShine,
 	// SkinnedShine,
 	Mesh3d,
 	Tritex,
+	UiGlyph,
+	UiRect,
 }
 
+// roughly in render order
 Scene :: struct {
-	camera:                  q.Camera,
-	top_level_ui_elements:   [dynamic]q.Ui,
-	sprites:                 [dynamic]q.Sprite,
-	tritex_meshes:           [dynamic]q.TritexMesh,
-	tritex_textures:         q.TextureArrayHandle,
-	colliders:               [dynamic]q.Collider,
-	last_frame_colliders:    [dynamic]q.Collider,
-	skinned_render_commands: [dynamic]q.SkinnedRenderCommand,
-	annotations:             [dynamic]Annotation,
-	meshes_3d:               [dynamic]q.Mesh3d,
+	camera:                   q.Camera,
+	// geometry:
+	tritex_meshes:            [dynamic]q.TritexMesh,
+	tritex_textures:          q.TextureArrayHandle, // not owned! just set by the user.
+	meshes_3d:                [dynamic]q.Mesh3d,
+	// cutout discard shader depth rendering:
+	cutout_sprites:           [dynamic]q.Sprite,
+	// transparency layer 1:
+	transparent_sprites_low:  [dynamic]q.Sprite,
+	ui_world_layer:           [dynamic]q.Ui, // ui elements that are rendered below transparent sprites and shine sprites
+	// transparency layer 2:
+	transparent_sprites_high: [dynamic]q.Sprite,
+	shine_sprites:            [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
+	ui_top_layer:             [dynamic]q.Ui,
+	// other stuff
+	colliders:                [dynamic]q.Collider,
+	last_frame_colliders:     [dynamic]q.Collider,
+	skinned_render_commands:  [dynamic]q.SkinnedRenderCommand,
+	annotations:              [dynamic]Annotation, // put into ui_world_layer
+	hex_chunks:               [dynamic]q.HexChunkUniform,
 }
 
 HitInfo :: struct {
@@ -86,27 +126,45 @@ _scene_create :: proc(scene: ^Scene) {
 }
 
 _scene_destroy :: proc(scene: ^Scene) {
-	delete(scene.sprites)
 	delete(scene.tritex_meshes)
-	delete(scene.top_level_ui_elements)
+	delete(scene.meshes_3d)
+
+	delete(scene.cutout_sprites)
+	delete(scene.transparent_sprites_low)
+
+	delete(scene.ui_world_layer)
+	delete(scene.transparent_sprites_high)
+	delete(scene.shine_sprites)
+	delete(scene.ui_top_layer)
+
 	delete(scene.last_frame_colliders)
 	delete(scene.colliders)
 	delete(scene.skinned_render_commands)
 	delete(scene.annotations)
-	delete(scene.meshes_3d)
+	delete(scene.hex_chunks)
 }
 
 _scene_clear :: proc(scene: ^Scene) {
-	clear(&scene.sprites)
 	clear(&scene.tritex_meshes)
+	clear(&scene.meshes_3d)
+
+	clear(&scene.cutout_sprites)
+	clear(&scene.transparent_sprites_low)
+
+	clear(&scene.ui_world_layer)
+	clear(&scene.transparent_sprites_high)
+	clear(&scene.shine_sprites)
+	clear(&scene.ui_top_layer)
+
+	// swap with last frame to still raycast against them:
 	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
 	clear(&scene.colliders)
-	clear(&scene.top_level_ui_elements)
 	clear(&scene.skinned_render_commands)
 	clear(&scene.annotations)
-	clear(&scene.meshes_3d)
+	clear(&scene.hex_chunks)
 }
 
+// global singleton
 ENGINE: Engine
 
 // after creating the engine, let it be pinned, don't move it in memory!!
@@ -120,36 +178,53 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 
 	q.bloom_renderer_create(&engine.bloom_renderer, platform)
 	q.gizmos_renderer_create(&engine.gizmos_renderer, platform)
-	q.ui_renderer_create(&engine.ui_renderer, platform)
 	q.color_mesh_renderer_create(&engine.color_mesh_renderer, platform)
 	q.mesh_2d_renderer_create(&engine.mesh_2d_renderer, platform)
+
 
 	reg := &platform.shader_registry
 	device := platform.device
 	queue := platform.queue
 	p := &engine.pipelines
-	p[.SpriteDefault] = q.make_render_pipeline(reg, q.sprite_default_pipeline_config(device))
-	p[.SpriteShine] = q.make_render_pipeline(reg, q.sprite_shine_pipeline_config(device))
+	p[.HexChunk] = q.make_render_pipeline(reg, q.hex_chunk_pipeline_config(device))
+	p[.SpriteCutout] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Cutout))
+	p[.SpriteShine] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Shine))
+	p[.SpriteTransparent] = q.make_render_pipeline(
+		reg,
+		q.sprite_pipeline_config(device, .Transparent),
+	)
 	p[.Mesh3d] = q.make_render_pipeline(reg, q.mesh_3d_pipeline_config(device))
-	p[.SkinnedDefault] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
+	p[.SkinnedCutout] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
 	p[.Tritex] = q.make_render_pipeline(reg, q.tritex_mesh_pipeline_config(device))
+	p[.UiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device))
+	p[.UiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device))
 
-	q.dynamic_buffer_init(&engine.sprite_instance_buffer, {.Vertex}, device, queue)
+
+	engine.cutout_sprites = sprite_buffers_create(device, queue)
+	engine.shine_sprites = sprite_buffers_create(device, queue)
+	engine.transparent_sprites_low = sprite_buffers_create(device, queue)
+	engine.transparent_sprites_high = sprite_buffers_create(device, queue)
+
+	engine.ui_world_layer_buffers = q.ui_render_buffers_create(device, queue)
+	engine.ui_top_layer_buffers = q.ui_render_buffers_create(device, queue)
 }
 _engine_destroy :: proc(engine: ^Engine) {
 	q.platform_destroy(&engine.platform)
 	q.bloom_renderer_destroy(&engine.bloom_renderer)
 	q.gizmos_renderer_destroy(&engine.gizmos_renderer)
-	q.ui_renderer_destroy(&engine.ui_renderer)
 	q.color_mesh_renderer_destroy(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_destroy(&engine.mesh_2d_renderer)
 	_scene_destroy(&engine.scene)
 	q.set_global_ui_ctx_ptr(nil)
 	q.ui_ctx_drop(&engine.ui_ctx)
 
-	delete(engine.sprite_batches)
-	delete(engine.sprite_instances)
-	q.dynamic_buffer_destroy(&engine.sprite_instance_buffer)
+	sprite_buffers_destroy(&engine.cutout_sprites)
+	sprite_buffers_destroy(&engine.shine_sprites)
+	sprite_buffers_destroy(&engine.transparent_sprites_low)
+	sprite_buffers_destroy(&engine.transparent_sprites_high)
+
+	q.ui_render_buffers_destroy(&engine.ui_world_layer_buffers)
+	q.ui_render_buffers_destroy(&engine.ui_top_layer_buffers)
 }
 
 
@@ -232,30 +307,27 @@ _engine_end_frame :: proc(engine: ^Engine) {
 }
 
 _engine_prepare :: proc(engine: ^Engine) {
-	q.platform_prepare(&engine.platform, engine.scene.camera)
-	q.ui_end_frame(
-		engine.scene.top_level_ui_elements[:],
-		engine.ui_ctx.cache.layout_extent,
-		engine.platform.delta_secs,
-		&engine.ui_renderer.batches,
-	)
-	q.ui_renderer_end_frame_and_prepare_buffers(
-		&engine.ui_renderer,
-		engine.platform.delta_secs,
-		engine.platform.asset_manager,
-	)
+	scene := &engine.scene
+	q.platform_prepare(&engine.platform, scene.camera)
+	q.ui_layout_top_level_elements(scene.ui_world_layer[:])
+	q.ui_layout_top_level_elements(scene.ui_top_layer[:])
+	q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
+	q.ui_render_buffers_batch_and_prepare(&engine.ui_world_layer_buffers, scene.ui_world_layer[:])
+	q.ui_render_buffers_batch_and_prepare(&engine.ui_top_layer_buffers, scene.ui_top_layer[:])
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
 
-
-	q.sort_and_batch_sprites(
-		engine.scene.sprites[:],
-		&engine.sprite_batches,
-		&engine.sprite_instances,
+	sprite_buffers_batch_and_prepare(&engine.cutout_sprites, scene.cutout_sprites[:])
+	sprite_buffers_batch_and_prepare(&engine.shine_sprites, scene.shine_sprites[:])
+	sprite_buffers_batch_and_prepare(
+		&engine.transparent_sprites_low,
+		scene.transparent_sprites_low[:],
 	)
-	q.dynamic_buffer_write(&engine.sprite_instance_buffer, engine.sprite_instances[:])
-
+	sprite_buffers_batch_and_prepare(
+		&engine.transparent_sprites_high,
+		scene.transparent_sprites_high[:],
+	)
 	// for the skinned mesh renderer, we currently let the user 
 	// do updates directly with `update_skinned_mesh_bones``
 }
@@ -273,6 +345,16 @@ _engine_render :: proc(engine: ^Engine) {
 		assert(pipeline != nil)
 	}
 
+
+	q.hex_chunks_render(
+		engine.pipelines[.HexChunk].pipeline,
+		hdr_pass,
+		global_bind_group,
+		engine.scene.tritex_textures,
+		engine.scene.hex_chunks[:],
+		asset_manager,
+	)
+
 	q.tritex_mesh_render(
 		engine.pipelines[.Tritex].pipeline,
 		hdr_pass,
@@ -289,16 +371,16 @@ _engine_render :: proc(engine: ^Engine) {
 		asset_manager,
 	)
 	q.sprite_batches_render(
-		engine.pipelines[.SpriteDefault].pipeline,
-		engine.sprite_batches[:],
-		engine.sprite_instance_buffer,
+		engine.pipelines[.SpriteCutout].pipeline,
+		engine.cutout_sprites.batches[:],
+		engine.cutout_sprites.instance_buffer,
 		hdr_pass,
 		global_bind_group,
 		asset_manager,
 	)
 	// todo: this is certainly stupid, because then we render all skinned meshes on top of sprites:
 	q.skinned_mesh_render(
-		engine.pipelines[.SkinnedDefault].pipeline,
+		engine.pipelines[.SkinnedCutout].pipeline,
 		engine.scene.skinned_render_commands[:],
 		hdr_pass,
 		global_bind_group,
@@ -307,14 +389,51 @@ _engine_render :: proc(engine: ^Engine) {
 	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, global_bind_group, asset_manager)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
 
+
+	// sandwich the world ui, e.g. health bars in two layers of transparent sprites + cutout sprites on top:
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteTransparent].pipeline,
+		engine.transparent_sprites_low.batches[:],
+		engine.transparent_sprites_low.instance_buffer,
+		hdr_pass,
+		global_bind_group,
+		asset_manager,
+	)
+	q.ui_render(
+		engine.ui_world_layer_buffers,
+		engine.pipelines[.UiGlyph].pipeline,
+		engine.pipelines[.UiRect].pipeline,
+		hdr_pass,
+		global_bind_group,
+		engine.platform.screen_size,
+		asset_manager,
+	)
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteTransparent].pipeline,
+		engine.transparent_sprites_high.batches[:],
+		engine.transparent_sprites_high.instance_buffer,
+		hdr_pass,
+		global_bind_group,
+		asset_manager,
+	)
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteShine].pipeline,
+		engine.shine_sprites.batches[:],
+		engine.shine_sprites.instance_buffer,
+		hdr_pass,
+		global_bind_group,
+		asset_manager,
+	)
 	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
 	// Solution 2: use depth writes for at least one of the two and render that first.
 	// 
 	// also consider, that we might need a second "shine through" skinned shader for stuff behind geometry.
 
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .WORLD)
-	q.ui_renderer_render(
-		&engine.ui_renderer,
+	q.ui_render(
+		engine.ui_top_layer_buffers,
+		engine.pipelines[.UiGlyph].pipeline,
+		engine.pipelines[.UiRect].pipeline,
 		hdr_pass,
 		global_bind_group,
 		engine.platform.screen_size,
@@ -525,6 +644,15 @@ create_3d_mesh :: proc() -> q.Mesh3d {
 draw_3d_mesh :: proc(mesh: q.Mesh3d) {
 	append(&ENGINE.scene.meshes_3d, mesh)
 }
+draw_hex_chunk :: proc(chunk: q.HexChunkUniform) {
+	append(&ENGINE.scene.hex_chunks, chunk)
+}
+create_hex_chunk :: proc(chunk_pos: [2]i32) -> q.HexChunkUniform {
+	return q.hex_chunk_uniform_create(ENGINE.platform.device, ENGINE.platform.queue, chunk_pos)
+}
+destroy_hex_chunk :: proc(hex_chunk: ^q.HexChunkUniform) {
+	q.hex_chunk_uniform_destroy(hex_chunk)
+}
 create_skinned_mesh :: proc(
 	triangles: []q.Triangle,
 	vertices: []q.SkinnedVertex,
@@ -622,8 +750,20 @@ load_font :: proc(path: string) -> q.FontHandle {
 	return handle
 }
 draw_sprite :: #force_inline proc(sprite: q.Sprite) {
-	append(&ENGINE.scene.sprites, sprite)
+	append(&ENGINE.scene.cutout_sprites, sprite)
 }
+draw_shine_sprite :: #force_inline proc(sprite: q.Sprite) {
+	append(&ENGINE.scene.shine_sprites, sprite)
+}
+// if high, above world ui layer (e.g. health bars), else below
+draw_transparent_sprite :: #force_inline proc(sprite: q.Sprite, above_world_ui: bool = false) {
+	buffer :=
+		&ENGINE.scene.transparent_sprites_high if above_world_ui else &ENGINE.scene.transparent_sprites_low
+	append(buffer, sprite)
+}
+// above world ui layer (e.g. health bars)
+
+
 draw_tritex_mesh :: proc(mesh: q.TritexMesh) {
 	append(&ENGINE.scene.tritex_meshes, mesh)
 }
@@ -683,7 +823,7 @@ access_mesh_2d_write_buffers :: #force_inline proc(
 	start = u32(len(vertices))
 	return
 }
-set_mesh_2d_texture :: proc(texture: q.TextureHandle) {
+set_current_mesh_2d_texture :: proc(texture: q.TextureHandle) {
 	q.mesh_2d_renderer_set_texture(&ENGINE.mesh_2d_renderer, texture)
 }
 
@@ -706,7 +846,10 @@ draw_color_mesh_indexed_single_color :: proc(
 	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, triangles, color)
 }
 add_ui :: proc(ui: q.Ui) {
-	append(&ENGINE.scene.top_level_ui_elements, ui)
+	append(&ENGINE.scene.ui_top_layer, ui)
+}
+add_world_ui :: proc(ui: q.Ui) {
+	append(&ENGINE.scene.ui_world_layer, ui)
 }
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
 	append(

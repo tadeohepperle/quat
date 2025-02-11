@@ -104,7 +104,7 @@ main :: proc() {
 		E.draw_skinned_mesh(skinned_mesh, {0, 0}, {1, 1, 1, 0.3})
 		E.draw_grid(1, q.Color{1, 1, 1, 0.2})
 		if !E.is_key_pressed(.SPACE) {
-			E.set_mesh_2d_texture(texture)
+			E.set_current_mesh_2d_texture(texture)
 			verts, tris, start := E.access_mesh_2d_write_buffers()
 			for v in vertices {
 				pos := v.pos

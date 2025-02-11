@@ -5,22 +5,16 @@ var t_diffuse: texture_2d<f32>;
 @group(1) @binding(1)
 var s_diffuse: sampler;
 
-@group(2) @binding(0)
-var t_depth: texture_2d<f32>;
-@group(2) @binding(1)
-var s_depth: sampler;
-
-
 struct SpriteInstance {
-    @location(0) pos:      vec2<f32>,
-    @location(1) size:     vec2<f32>,
-    @location(2) color:    vec4<f32>,
-    @location(3) uv:       vec4<f32>, // aabb
+    @location(0) pos: vec2<f32>,
+    @location(1) size: vec2<f32>,
+    @location(2) color: vec4<f32>,
+    @location(3) uv: vec4<f32>, // aabb
     @location(4) rotation: f32, 
-    @location(5) z:        f32,
+    @location(5) z: f32,
 }
 
-struct VertexOutput{
+struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec4<f32>,
     @location(1) uv: vec2<f32>,
@@ -28,74 +22,61 @@ struct VertexOutput{
 
 @vertex
 fn vs_all(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
-    let pos_and_uv = pos_and_uv(vertex_index, instance);
+    let vertex = sprite_vertex(vertex_index, instance);
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc_with_z(pos_and_uv.pos, instance.z);
-    out.color = instance.color;
-    out.uv = pos_and_uv.uv;
+    out.clip_position = world_pos_to_ndc_with_z(vertex.pos, vertex.z); //  
+    out.color = instance.color; // v4(v3(vertex.z), 1.0); //
+    out.uv = vertex.uv;
     return out;
 }
 
+const CUTOUT_ALPHA_THRESHOLD : f32 = 0.5;
 @fragment
-fn fs_default(in: VertexOutput) -> @location(0) vec4<f32>  {
-    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    return image_color * in.color;
-}
-
-@fragment
-fn fs_shine(in: VertexOutput) -> @location(0) vec4<f32>  {
-   let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-   let default_color = image_color * in.color;
-   return  vec4<f32>(default_color.rgb + osc(7.0, 0.4, 1.4),  default_color.a * 0.2);
-}
-
-struct FsDepthOut {
-  @location(0) color: vec4<f32>,
-  @builtin(frag_depth) depth: f32,
-}
-@fragment
-fn fs_depth(in: VertexOutput) -> FsDepthOut {
-    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    let image_depth = textureSample(t_depth, s_depth, in.uv).x;
-    // var out: FsDepthOut;
-    // out.color = vec4<f32>(vec3<f32>(image_depth), 1.0);
-    // out.depth = 0.5;
-    // return out;
-    if image_depth > 0.01 { 
-        var out: FsDepthOut;
-        out.color = image_color * in.color;
-        let instance_depth = in.clip_position.z;
-        // let instance_depth = 0.0;
-        let texture_depth_offset = calc_depth_offset(image_depth);
-        out.depth = instance_depth + texture_depth_offset;
-        return out;
-    }
-    else {
+fn fs_cutout(in: VertexOutput) -> @location(0) vec4<f32> {
+    let color = textureSample(t_diffuse, s_diffuse, in.uv) * in.color;
+    if color.a < CUTOUT_ALPHA_THRESHOLD {
         discard;
     }
+    return color;
+    // return v4(in.color.rgb, 1.0);
 }
 
-struct PosAndUv{
+@fragment
+fn fs_transparent(in: VertexOutput) -> @location(0) vec4<f32> {
+    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+    return image_color * in.color * osc(11.0, 0.8,4.0);
+}
+
+@fragment
+fn fs_shine(in: VertexOutput) -> @location(0) vec4<f32> {
+    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+    let default_color = image_color * in.color;
+    let lightness :f32 = (default_color.r + default_color.g + default_color.b) /3.0;
+    return  vec4<f32>( (1.0 - default_color.rgb) *0.6, default_color.a * 0.2);
+}
+
+struct SpriteVertex {
     pos: vec2<f32>,
     uv: vec2<f32>,
+    z: f32 // height
 }
 
-fn pos_and_uv(vertex_index: u32, instance: SpriteInstance) -> PosAndUv{
-    var out: PosAndUv;
+fn sprite_vertex(vertex_index: u32, instance: SpriteInstance) -> SpriteVertex {
+    var out: SpriteVertex;
     let size = instance.size;
     let size_half = size / 2.0;
     var u_uv = unit_uv_from_idx(vertex_index);
-    out.uv =vec2<f32>(
-       (1.0 - u_uv.x) * instance.uv.x +  u_uv.x * instance.uv.z,
+    out.uv = vec2<f32>(
+        (1.0 - u_uv.x) * instance.uv.x + u_uv.x * instance.uv.z,
         u_uv.y * instance.uv.y + (1.0 - u_uv.y) * instance.uv.w
     );
-    
     let rot = instance.rotation;
     let pos = (u_uv * size) - size_half;
     let pos_rotated = vec2(
-        cos(rot)* pos.x - sin(rot)* pos.y,
-        sin(rot)* pos.x + cos(rot)* pos.y,     
+        cos(rot) * pos.x - sin(rot) * pos.y,
+        sin(rot) * pos.x + cos(rot) * pos.y,
     );
+    out.z = pos_rotated.y+ instance.z + size_half.y;
     out.pos = pos_rotated + instance.pos;
     return out;
 }

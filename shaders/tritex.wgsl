@@ -7,7 +7,7 @@ var t_diffuse: texture_2d_array<f32>;
 var s_diffuse: sampler;
 
 struct Vertex {
-    @location(0) pos:        vec2<f32>,
+    @location(0) pos:     vec2<f32>,
     @location(1) indices: vec3<u32>,
     @location(2) weights: vec3<f32>,
 }
