@@ -113,17 +113,19 @@ text_from_string :: proc(s: string, id: UiId = 0) -> UiText {
 	)
 }
 
+row :: proc(children: []Ui, gap: f32 = 0) -> Ui {
+	row := div(Div{gap = gap, flags = {.AxisX, .CrossAlignCenter}})
+	for ch in children {
+		q.ui_add_child(row, ch)
+	}
+	return row
+}
+
 text_from_any :: proc(text: any, id: UiId = 0) -> UiText {
 	return text_from_string(fmt.aprint(text, allocator = context.temp_allocator), id)
 }
 
-row :: proc(container: Div, elements: []Ui) -> Ui {
-	r := div(container)
-	r.flags += {.AxisX}
-	return with_children(r, elements)
-}
-
-add_window :: proc(title: string, content: []Ui, window_width: f32 = 500) {
+add_window :: proc(title: string, content: []Ui, window_width: f32 = 0) {
 	id := q.ui_id(title)
 	cached_pos, cached_size, window_pos_start_drag, ok := q.ui_get_cached(id, Vec2)
 	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
@@ -152,15 +154,19 @@ add_window :: proc(title: string, content: []Ui, window_width: f32 = 500) {
 	window := div(
 		Div {
 			offset = window_pos,
-			width = window_width,
 			border_radius = THEME.border_radius,
 			color = THEME.background,
-			flags = {.Absolute, .WidthPx},
+			flags = {.Absolute},
 			padding = {16, 16, 8, 16},
 			gap = 12,
 		},
 		id,
 	)
+	if window_width != 0 {
+		window.width = window_width
+		window.flags += {.WidthPx}
+	}
+
 	child_text(
 		window,
 		Text {

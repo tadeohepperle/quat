@@ -10,8 +10,7 @@ hex_to_world_pos :: proc "contextless" (hex_pos: [2]i32) -> Vec2 {
 	return HEX_TO_WORLD_POS_MAT * Vec2{f32(hex_pos.x), f32(hex_pos.y)}
 }
 
-
-CHUNK_SIZE :: 64
+CHUNK_SIZE :: 32
 CHUNK_SIZE_PADDED :: CHUNK_SIZE + 2
 // This data has 1 padding on each side
 

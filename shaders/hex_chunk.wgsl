@@ -6,7 +6,9 @@ var t_diffuse: texture_2d_array<f32>;
 @group(1) @binding(1)
 var s_diffuse: sampler;
 
-const CHUNK_SIZE : u32 = 64;
+// keep this in sync with your logic manually!!!
+const CHUNK_SIZE : u32 = 32;
+
 const CHUNK_SIZE_I : i32 = i32(CHUNK_SIZE);
 const CHUNK_SIZE_PADDED : u32 = CHUNK_SIZE+2;
 const ARRAY_LEN : u32 = (CHUNK_SIZE_PADDED*CHUNK_SIZE_PADDED)/2;
@@ -60,14 +62,13 @@ struct VertexOutput{
     @location(4) new_fact_and_vis: vec2<f32>,
 }
 
-const HEX_TO_WORLD_POS_MAT : mat2x2f = mat2x2f(1.5, 0, -0.75, 1.5);
+const HEX_TO_WORLD_POS_MAT : mat2x2f = mat2x2f(1.5,  -0.75, 0, 1.5);
 fn hex_to_world_pos(hex_pos: IVec2) -> v2{
     return HEX_TO_WORLD_POS_MAT * v2(f32(hex_pos.x), f32(hex_pos.y));
 }
 
 @vertex
 fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-
 
     // first, convert the idx to the quad idx (0..<CHUNK_SIZE*CHUNKS_SIZE) and the vertex idx (0..<6) in that quad 
     let quad_idx    = idx / 6;
@@ -186,14 +187,19 @@ d is the center of the hex at {x,y+1}
             out.new_indices = vec3<u32>(a.new_ter, c.new_ter, d.new_ter);
         }
     }
-
+    // discard triangle if all indices are 0
     let w_pos = hex_to_world_pos(hex_pos + push.chunk_pos * CHUNK_SIZE_I);
     out.pos = w_pos;
+    // let old_and_new_index_sum: u32 = out.old_indices.x + out.old_indices.y + out.old_indices.z + out.new_indices.x + out.new_indices.y + out.new_indices.z;
+    // if (old_and_new_index_sum == 0u) {
+    //     out.clip_position = vec4<f32>(0.0);
+    //     return out;
+    // }
     out.clip_position = world_pos_to_ndc(vec2(w_pos.x, w_pos.y));
     return out;
 }
 
-const BLUR: f32 = 0.7;
+
 fn terrain_color(indices: vec3<u32>, weights: vec3<f32>, uv: vec2<f32>) -> vec4<f32>{
     let color_0 =  texture_rgb(uv, indices[0]);
     let color_1 =  texture_rgb(uv, indices[1]);
@@ -211,11 +217,12 @@ fn terrain_color(indices: vec3<u32>, weights: vec3<f32>, uv: vec2<f32>) -> vec4<
     return color;
 }
 
-
-const GRID_WIDTH: f32 = 0.05;
+const BLUR: f32 = 0.5;
+const GRID_WIDTH: f32 = 0.03;
+const GRID_STREGTH: f32 = 2.0;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample_uv = v2(in.pos.x, -in.pos.y) * 0.3; 
+    let sample_uv = v2(in.pos.x, -in.pos.y) * 0.4; 
 
     let xxx = globals.xxx.x;
     // let new_fact = in.new_fact_and_vis.x;
@@ -223,46 +230,53 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let vis = mix(in.new_fact_and_vis.y, 1.0, xxx);
 
     var weights = in.weights;
-    let old_color = terrain_color(in.old_indices, weights, sample_uv);
-    let new_color = terrain_color(in.new_indices, weights, sample_uv);
-    let color = mix(old_color, new_color, new_fact);
 
-    // let noise = noise_based_on_indices(in.pos, in.tex_indices, WAVELENGTH, AMPLITUDE, SEED);
-    // var noisy_weights = weights;//+ noise;
+
+    // let bary_noise = noise_based_on_indices(in.pos, in.new_indices, WAVELENGTH, AMPLITUDE, SEED);
+    // var noisy_weights = weights + bary_noise;
     // noisy_weights /= noisy_weights.x + noisy_weights.y + noisy_weights.z;
     // let weighted_vis : v3 = in.visibility * noisy_weights;
     // let vis : f32 = weighted_vis.x + weighted_vis.y + weighted_vis.z;
 
-    let noise_stregth = 1.0 - vis;
-    
+    let old_color = terrain_color(in.old_indices, weights, sample_uv);
+    let new_color = terrain_color(in.new_indices, weights, sample_uv);
+    let color = mix(old_color, new_color, new_fact);
+
+    let vis_noise_stregth = 1.0 - vis;
     let noise = noise2(in.pos * 1.3  + globals.time_secs *0.3) + noise2((in.pos+ globals.time_secs*0.5) * 3.127) - 2.0;
-    let vis_noised =  clamp(vis + noise_stregth * noise, 0.0, 1.0);
+    let vis_noised =  clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
     // let vis = noise_stregth; //sum((in.weights) * in.visibility) + noise2(in.pos) - 1.0;
+
+
+    let vis_final = mix(vis, vis_noised, globals.xxx.y);
 
     // let dotted = v4(step(0.95, max(max(weights.x, weights.y), weights.z))) * RED;
     let a = weights.x;
     let b = weights.y;
     let c = weights.z;
-    // let dotted = step(0.95, max(max(a, b), c)) * RED;
+    let dotted = step(0.95, max(max(a, b), c)) * RED;
 
     let on_grid: bool = abs(a-b) < GRID_WIDTH && a+b > c*2 || abs(b-c) < GRID_WIDTH && b+c > a*2 || abs(a-c) < GRID_WIDTH && a+c > b*2;
-    var grid_f: f32;
-    if  on_grid {
-        grid_f = (vis_noised + (noise + 2.0) * 0.2) *0.7;
-    } else {
-        grid_f = 0.0;
-    }
+    let vis_border_f = (0.5 - abs(vis_noised - 0.5)) *2.0;
+    var grid_f: f32 = select(0.0, 1.0, on_grid) * (vis_final - 0.5) * GRID_STREGTH * globals.xxx.z;
+    // let strength = 
+    // if on_grid {
+    //     grid_f = (vis_noised + (noise + 2.0) * 0.2) * GRID_STREGTH;
+    // } else {
+    //     grid_f = 0.0;
+    // }
     // let dotted = v4(1.0 -step(0.01, min(min(a, b), c))) * RED;
     let color_width_grid = mix(color,mix(color, BLACK, 0.7), grid_f);
-    return mix(BLACK, color_width_grid, clamp(vis_noised + 0.5, 0.0,1.0));
+    return mix(BLACK, color_width_grid, clamp(vis_final + 0.3, 0.0,1.0)) ;
 }
 
 fn sum(v: v3) -> f32{
     return v.x + v.y + v.z;
 }
 
+const VOID_COLOR: vec4<f32> = RED; // v4(0.0)
 fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
-    return select(textureSample(t_diffuse, s_diffuse, sample_uv, idx-1).rgba, vec4f(0.0), idx == 0);
+    return select(textureSample(t_diffuse, s_diffuse, sample_uv, idx-1).rgba, VOID_COLOR, idx == 0);
 }
 
 const WAVELENGTH: f32 = 0.3;

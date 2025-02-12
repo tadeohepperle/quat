@@ -48,7 +48,7 @@ main :: proc() {
 	}
 	q.mesh_3d_unshare_vertices(&mesh)
 	q.mesh_3d_sync(&mesh)
-
+	mesh_vertices_unshared := slice.clone(mesh.vertices[:])
 
 	corn := engine.load_texture_tile("./assets/corn.png")
 	engine.set_clear_color(q.Color{0.4, 0.4, 0.6, 1.0})
@@ -79,6 +79,9 @@ main :: proc() {
 	}
 	// q.hex_chunk_uniform_write_terrain_data()
 
+	engine.access_shader_globals_xxx().y = 1
+	engine.access_shader_globals_xxx().z = 1
+
 	total: f32 = 0
 	for engine.next_frame() {
 		dt := engine.get_delta_secs()
@@ -97,7 +100,24 @@ main :: proc() {
 		}
 
 
-		engine.add_ui(engine.slider(&engine.access_shader_globals_xxx().x))
+		shader_xxx := engine.access_shader_globals_xxx()
+		engine.add_window(
+			"Shader Variables",
+			{
+				engine.row(
+					{engine.slider(&shader_xxx.x), engine.text_from_string("transition")},
+					gap = 8,
+				),
+				engine.row(
+					{engine.slider(&shader_xxx.y), engine.text_from_string("noise")},
+					gap = 8,
+				),
+				engine.row(
+					{engine.slider(&shader_xxx.z, 0.0, 10.0), engine.text_from_string("vis_bias")},
+					gap = 8,
+				),
+			},
+		)
 
 		// corn_sprite := q.Sprite {
 		// 	pos      = Vec2{math.sin(total) * 2.0, math.cos(total) * 2.0},
@@ -114,9 +134,13 @@ main :: proc() {
 		// }
 		// engine.draw_shine_sprite(corn_sprite)
 
-		// q.mesh_3d_rotate_around_z_axis(&mesh, 0.4 * dt, {0, 0})
-		// q.mesh_3d_sync(&mesh)
-		// engine.draw_3d_mesh(mesh)
+		hit_pos := engine.get_hit_pos()
+		for original_v, idx in mesh_vertices_unshared {
+			new_pos := original_v.pos + Vec3{hit_pos.x, hit_pos.y, 0}
+			mesh.vertices[idx].pos = new_pos
+		}
+		q.mesh_3d_sync(&mesh)
+		engine.draw_3d_mesh(mesh)
 	}
 }
 IVec2 :: [2]i32
@@ -131,7 +155,7 @@ random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 			sample_pos: [2]f64 = {f64(sample_pos_f32.x), f64(sample_pos_f32.y)}
 			noise_t := (noise.noise_2d(42, sample_pos / 0.3) + 1.0) / 2.0
 			// noise_t2 := (noise.noise_2d(122323, sample_pos / 0.12) + 1.0) / 2.0
-			noise_v := (noise.noise_2d(32421, sample_pos / 20.7) + 1.0) / 2.0
+			noise_v := (noise.noise_2d(32421, sample_pos / 21.0) + 1.0) / 2.0
 
 			new_ter: u16
 			old_ter: u16
@@ -156,7 +180,7 @@ random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 			// vis: f32 = 1.0 if noise_v > 0.66 else 0.5 if noise_v > 0.33 else 0.0
 			// vis: f16 = 1.0 if noise_v > 0.5 else 0.0
 
-			// vis := 1.0 if noise_v > 0.5 else 0.0
+			// vis: f16 = 1.0 if noise_v > 0.5 else 0.0
 			vis := clamp(f16(noise_v), 0, 1)
 			new_fact: f16 = 1
 			if vis < 0.5 {

@@ -42,7 +42,7 @@ mesh_3d_clone :: proc(this: Mesh3d) -> Mesh3d {
 		index_buffer = {},
 	}
 }
-mesh_3d_drop :: proc(this: ^Mesh3d) {
+mesh_3d_destroy :: proc(this: ^Mesh3d) {
 	dynamic_buffer_destroy(&this.vertex_buffer)
 	dynamic_buffer_destroy(&this.index_buffer)
 	delete(this.vertices)
@@ -168,6 +168,38 @@ mesh_3d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 		bind_group_layouts = bind_group_layouts(
 			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
+		),
+		push_constant_ranges = {},
+		blend = ALPHA_BLENDING,
+		format = HDR_FORMAT,
+		depth = DepthConfig{depth_compare = .GreaterEqual, depth_write_enabled = true},
+	}
+}
+
+mesh_3d_with_hex_visibility_mask_pipeline_config :: proc(
+	device: wgpu.Device,
+) -> RenderPipelineConfig {
+	return RenderPipelineConfig {
+		debug_name = "mesh_3d",
+		vs_shader = "mesh_3d",
+		vs_entry_point = "vs_hex_mask",
+		fs_shader = "mesh_3d",
+		fs_entry_point = "fs_hex_mask",
+		topology = .TriangleList,
+		vertex = {
+			ty_id = Mesh3dVertex,
+			attributes = vert_attributes(
+				{format = .Float32x3, offset = offset_of(Mesh3dVertex, pos)},
+				{format = .Float32x3, offset = offset_of(Mesh3dVertex, normal)},
+				{format = .Float32x2, offset = offset_of(Mesh3dVertex, uv)},
+				{format = .Float32x4, offset = offset_of(Mesh3dVertex, color)},
+			),
+		},
+		instance = {},
+		bind_group_layouts = bind_group_layouts(
+			globals_bind_group_layout_cached(device),
+			rgba_bind_group_layout_cached(device),
+			hex_chunk_data_bind_group_layout_cached(device),
 		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
