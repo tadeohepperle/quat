@@ -76,6 +76,7 @@ shader_registry_create :: proc(
 
 shader_registry_get :: proc(reg: ^ShaderRegistry, shader_name: string) -> wgpu.ShaderModule {
 	shader, err := get_or_load_shader(reg, shader_name, true)
+
 	if err != "" {
 		fmt.panicf("shader_registry_get should not panic (at least not on hot-reload): %s", err)
 	}
@@ -285,7 +286,6 @@ create_shader_module :: proc(device: wgpu.Device, shader: ^Shader) -> (err: stri
 	}
 	return
 }
-
 
 composite_wgsl_code :: proc(reg: ^ShaderRegistry, shader: ^Shader) -> (err: string) {
 	wgsl_code: StringAndCString

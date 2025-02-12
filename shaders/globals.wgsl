@@ -13,6 +13,7 @@ var<uniform> globals: Globals;
 alias v4 = vec4<f32>;
 alias v3 = vec3<f32>;
 alias v2 = vec2<f32>;
+alias i2 = vec2<i32>;
 
 fn world_pos_to_ndc(world_pos: vec2<f32>) -> vec4<f32> {
     let world_pos_3 = vec3<f32>(world_pos, 1.0);
@@ -57,4 +58,11 @@ const BLACK : vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 1.0);
 fn osc(speed: f32, low: f32, high: f32) -> f32 {
     let half_diff = (high - low) / 2.0;
     return sin(globals.time_secs * speed) * half_diff + low + half_diff;
+}
+
+fn dist_gradient(pt: vec2f, center: vec2f) -> vec4f {
+    let frequency = 20.0;
+    let d = length(pt - center); // Compute distance to the target point
+    let t = 0.5 + 0.5 * cos(d * frequency); // Create a repeating gradient with cosine
+    return vec4f(t, t * 0.5, 1.0 - t, 1.0); // Map to a color gradient (blue to cyan)
 }

@@ -1,57 +1,11 @@
 #import globals.wgsl
 #import noise.wgsl
+#import hex.wgsl
 
 @group(1) @binding(0)
 var t_diffuse: texture_2d_array<f32>;
 @group(1) @binding(1)
 var s_diffuse: sampler;
-
-// keep this in sync with your logic manually!!!
-const CHUNK_SIZE : u32 = 32;
-
-const CHUNK_SIZE_I : i32 = i32(CHUNK_SIZE);
-const CHUNK_SIZE_PADDED : u32 = CHUNK_SIZE+2;
-const ARRAY_LEN : u32 = (CHUNK_SIZE_PADDED*CHUNK_SIZE_PADDED)/2;
-// completely retarded: wgpu forces alignment 16 on arrays in uniform buffers, so we need to store our 8 byte tiles grouped as vec4<u32>
-// the data contains pairs of these packed tiles that are unpacked in the vertex shader:
-// struct PackedTile { 
-//     old_and_new_ter: u32,  // 2xu16 
-//     new_fact_and_vis: u32, // 2xf16
-// }
-struct HexChunkData {
-    // is actually array<vec2<PackedTile>> representing array<PackedTile> for 16 alignment
-    data: array<vec4<u32>, ARRAY_LEN>, 
-}
-@group(2) @binding(0) var<uniform> hex_chunk_terrain : HexChunkData;
-
-// very wasteful! probably 8 bytes would be enough per field...
-struct PackedTile {
-    old_and_new_ter: u32,  // 2xu16
-    new_fact_and_vis: u32, // 2xf16
-}
-struct Tile {
-    old_ter: u32,
-    new_ter: u32,
-    new_fact_and_vis: vec2<f32>,
-}
-fn get_data(idx_in_chunk: u32) -> Tile {
-    let buf_idx = idx_in_chunk / 2;
-    let comp_idx = (idx_in_chunk % 2) * 2; // 0 or 2
-    let two_tiles: vec4<u32> = hex_chunk_terrain.data[buf_idx];
-    
-    var res: Tile;
-    let old_and_new_ter: u32 = two_tiles[comp_idx];
-    res.old_ter = old_and_new_ter & 0xFFFF;
-    res.new_ter = old_and_new_ter >> 16;
-    res.new_fact_and_vis = unpack2x16float(two_tiles[comp_idx + 1]);
-    return res;
-}
-
-alias IVec2 = vec2<i32>;
-struct ChunkPushConstants {
-    chunk_pos: IVec2,
-}
-var<push_constant> push: ChunkPushConstants;
 
 struct VertexOutput{
     @builtin(position) clip_position: vec4<f32>,
@@ -60,11 +14,6 @@ struct VertexOutput{
     @location(2) new_indices:      vec3<u32>, // indices into texture array
     @location(3) weights:          vec3<f32>,
     @location(4) new_fact_and_vis: vec2<f32>,
-}
-
-const HEX_TO_WORLD_POS_MAT : mat2x2f = mat2x2f(1.5,  -0.75, 0, 1.5);
-fn hex_to_world_pos(hex_pos: IVec2) -> v2{
-    return HEX_TO_WORLD_POS_MAT * v2(f32(hex_pos.x), f32(hex_pos.y));
 }
 
 @vertex
@@ -115,7 +64,7 @@ d is the center of the hex at {x,y+1}
 
 
     var out: VertexOutput;
-    var hex_pos: IVec2;
+    var hex_pos: i2;
     let a: Tile = get_data(a_idx_in_chunk);
     let c: Tile = get_data(a_idx_in_chunk + 1 + CHUNK_SIZE_PADDED);
 
@@ -123,7 +72,7 @@ d is the center of the hex at {x,y+1}
         // first triangle:
         case 0u, default: {
             // a
-            hex_pos = IVec2(i32(x), i32(y));
+            hex_pos = i2(i32(x), i32(y));
             let b: Tile = get_data(a_idx_in_chunk + 1);
 
             out.weights = v3(1.0, 0.0, 0.0);
@@ -134,7 +83,7 @@ d is the center of the hex at {x,y+1}
         }
         case 1u: {
             // b
-            hex_pos = IVec2(i32(x+1), i32(y));
+            hex_pos = i2(i32(x+1), i32(y));
             let b: Tile = get_data(a_idx_in_chunk + 1);
             out.weights = v3(0.0, 1.0, 0.0);
             out.new_fact_and_vis = b.new_fact_and_vis;
@@ -144,7 +93,7 @@ d is the center of the hex at {x,y+1}
         }
         case 2u: {
             // c
-            hex_pos = IVec2(i32(x+1), i32(y+1));
+            hex_pos = i2(i32(x+1), i32(y+1));
             let b: Tile = get_data(a_idx_in_chunk + 1);
             
             out.weights = v3(0.0, 0.0, 1.0);
@@ -155,7 +104,7 @@ d is the center of the hex at {x,y+1}
         // second triangle:
         case 3u: {
             // a
-            hex_pos = IVec2(i32(x), i32(y));
+            hex_pos = i2(i32(x), i32(y));
             let d: Tile = get_data(a_idx_in_chunk + CHUNK_SIZE_PADDED);
 
             out.weights = v3(1.0, 0.0, 0.0);
@@ -166,7 +115,7 @@ d is the center of the hex at {x,y+1}
         }
         case 4u: {
             // c
-            hex_pos = IVec2(i32(x+1), i32(y+1));
+            hex_pos = i2(i32(x+1), i32(y+1));
             let d: Tile = get_data(a_idx_in_chunk + CHUNK_SIZE_PADDED);
 
             out.weights = v3(0.0, 1.0, 0.0);
@@ -177,7 +126,7 @@ d is the center of the hex at {x,y+1}
         }  
         case 5u: {
             // d
-            hex_pos = IVec2(i32(x), i32(y+1));
+            hex_pos = i2(i32(x), i32(y+1));
             let d: Tile = get_data(a_idx_in_chunk + CHUNK_SIZE_PADDED);
 
             out.weights = v3(0.0, 0.0, 1.0);
@@ -188,7 +137,7 @@ d is the center of the hex at {x,y+1}
         }
     }
     // discard triangle if all indices are 0
-    let w_pos = hex_to_world_pos(hex_pos + push.chunk_pos * CHUNK_SIZE_I);
+    let w_pos = hex_to_world_pos(hex_pos + hex_chunk_terrain.chunk_pos * CHUNK_SIZE_I);
     out.pos = w_pos;
     // let old_and_new_index_sum: u32 = out.old_indices.x + out.old_indices.y + out.old_indices.z + out.new_indices.x + out.new_indices.y + out.new_indices.z;
     // if (old_and_new_index_sum == 0u) {

@@ -21,6 +21,11 @@ Mesh3d :: struct {
 	index_buffer:    DynamicBuffer(Triangle),
 }
 
+Mesh3dHexChunkMasked :: struct {
+	using mesh:           Mesh3d,
+	hex_chunk_bind_group: wgpu.BindGroup,
+}
+
 mesh_3d_create :: proc(
 	device: wgpu.Device,
 	queue: wgpu.Queue,
@@ -147,6 +152,57 @@ mesh_3d_renderer_render :: proc(
 	}
 }
 
+
+mesh_3d_renderer_render_hex_chunk_masked :: proc(
+	pipeline: wgpu.RenderPipeline,
+	render_pass: wgpu.RenderPassEncoder,
+	globals_uniform_bind_group: wgpu.BindGroup,
+	meshes: []Mesh3dHexChunkMasked,
+	assets: AssetManager,
+) {
+	if len(meshes) == 0 {
+		return
+	}
+	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	last_texture_handle := TextureHandle(max(u32))
+	last_hex_chunk_bind_group: wgpu.BindGroup = nil
+	for mesh in meshes {
+		if mesh.diffuse_texture != last_texture_handle {
+			diffuse_bind_group := assets_get_texture_bind_group(assets, mesh.diffuse_texture)
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, diffuse_bind_group)
+			last_texture_handle = mesh.diffuse_texture
+		}
+		if mesh.hex_chunk_bind_group != last_hex_chunk_bind_group {
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, mesh.hex_chunk_bind_group)
+			last_hex_chunk_bind_group = mesh.hex_chunk_bind_group
+		}
+		wgpu.RenderPassEncoderSetVertexBuffer(
+			render_pass,
+			0,
+			mesh.vertex_buffer.buffer,
+			0,
+			mesh.vertex_buffer.size,
+		)
+		wgpu.RenderPassEncoderSetIndexBuffer(
+			render_pass,
+			mesh.index_buffer.buffer,
+			.Uint32,
+			0,
+			mesh.index_buffer.size,
+		)
+		wgpu.RenderPassEncoderDrawIndexed(
+			render_pass,
+			u32(mesh.index_buffer.length * 3),
+			1,
+			0,
+			0,
+			0,
+		)
+	}
+}
+
+
 mesh_3d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_3d",
@@ -176,9 +232,7 @@ mesh_3d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	}
 }
 
-mesh_3d_with_hex_visibility_mask_pipeline_config :: proc(
-	device: wgpu.Device,
-) -> RenderPipelineConfig {
+mesh_3d_hex_chunk_masked_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_3d",
 		vs_shader = "mesh_3d",

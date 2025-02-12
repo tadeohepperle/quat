@@ -23,7 +23,11 @@ HexTileData :: struct {
 	visibility:  f16,
 }
 
-HexChunkData :: [CHUNK_SIZE_PADDED * CHUNK_SIZE_PADDED]HexTileData
+HexChunkData :: struct {
+	chunk_pos: [2]i32,
+	_pad:      [2]u32, // such that the tiles are aligned to 16 bytes (wgpu wants it)
+	tiles:     [CHUNK_SIZE_PADDED * CHUNK_SIZE_PADDED]HexTileData,
+}
 
 HexChunkUniform :: struct {
 	chunk_pos:  [2]i32,
@@ -123,13 +127,13 @@ hex_chunks_render :: proc(
 	for chunk in chunks {
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, chunk.bind_group)
 		push_const := HexChunkPushConstants{chunk.chunk_pos}
-		wgpu.RenderPassEncoderSetPushConstants(
-			render_pass,
-			{.Vertex},
-			0,
-			size_of(HexChunkPushConstants),
-			&push_const,
-		)
+		// wgpu.RenderPassEncoderSetPushConstants(
+		// 	render_pass,
+		// 	{.Vertex},
+		// 	0,
+		// 	size_of(HexChunkPushConstants),
+		// 	&push_const,
+		// )
 		num_vertices := u32(CHUNK_SIZE * CHUNK_SIZE * 6)
 		// num_vertices = 18
 		wgpu.RenderPassEncoderDraw(render_pass, num_vertices, 1, 0, 0)
@@ -155,13 +159,7 @@ hex_chunk_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 			tritex_textures_bind_group_layout_cached(device),
 			hex_chunk_data_bind_group_layout_cached(device),
 		),
-		push_constant_ranges = push_const_ranges(
-			wgpu.PushConstantRange {
-				stages = {.Vertex},
-				start = 0,
-				end = size_of(HexChunkPushConstants),
-			},
-		),
+		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DepthConfig{depth_write_enabled = true, depth_compare = .GreaterEqual},

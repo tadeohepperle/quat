@@ -112,13 +112,11 @@ main :: proc() {
 					{engine.slider(&shader_xxx.y), engine.text_from_string("noise")},
 					gap = 8,
 				),
-				engine.row(
-					{engine.slider(&shader_xxx.z, 0.0, 10.0), engine.text_from_string("vis_bias")},
-					gap = 8,
-				),
 			},
 		)
-
+		hit_pos := engine.get_hit_pos()
+		shader_xxx.z = hit_pos.x
+		shader_xxx.w = hit_pos.y
 		// corn_sprite := q.Sprite {
 		// 	pos      = Vec2{math.sin(total) * 2.0, math.cos(total) * 2.0},
 		// 	size     = {2, 2},
@@ -133,19 +131,18 @@ main :: proc() {
 		// 	engine.draw_transparent_sprite(corn_sprite)
 		// }
 		// engine.draw_shine_sprite(corn_sprite)
-
-		hit_pos := engine.get_hit_pos()
 		for original_v, idx in mesh_vertices_unshared {
 			new_pos := original_v.pos + Vec3{hit_pos.x, hit_pos.y, 0}
 			mesh.vertices[idx].pos = new_pos
 		}
 		q.mesh_3d_sync(&mesh)
-		engine.draw_3d_mesh(mesh)
+		engine.draw_3d_mesh_hex_chunk_masked({mesh, hex_chunks[0].bind_group})
 	}
 }
 IVec2 :: [2]i32
 random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 	chunk_data: q.HexChunkData
+	chunk_data.chunk_pos = chunk_pos
 
 	for y in 0 ..< i32(q.CHUNK_SIZE_PADDED) {
 		for x in 0 ..< i32(q.CHUNK_SIZE_PADDED) {
@@ -190,7 +187,7 @@ random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 			}
 
 			idx := x + y * q.CHUNK_SIZE_PADDED
-			chunk_data[idx] = q.HexTileData{old_ter, new_ter, new_fact, vis}
+			chunk_data.tiles[idx] = q.HexTileData{old_ter, new_ter, new_fact, vis}
 		}
 	}
 	uniform := q.hex_chunk_uniform_create(

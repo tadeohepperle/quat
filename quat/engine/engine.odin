@@ -85,6 +85,7 @@ PipelineType :: enum {
 	// SkinnedShine,
 	// SkinnedShine,
 	Mesh3d,
+	Mesh3dHexChunkMasked,
 	Tritex,
 	UiGlyph,
 	UiRect,
@@ -92,26 +93,27 @@ PipelineType :: enum {
 
 // roughly in render order
 Scene :: struct {
-	camera:                   q.Camera,
+	camera:                     q.Camera,
 	// geometry:
-	tritex_meshes:            [dynamic]q.TritexMesh,
-	tritex_textures:          q.TextureArrayHandle, // not owned! just set by the user.
-	meshes_3d:                [dynamic]q.Mesh3d,
+	tritex_meshes:              [dynamic]q.TritexMesh,
+	tritex_textures:            q.TextureArrayHandle, // not owned! just set by the user.
+	meshes_3d:                  [dynamic]q.Mesh3d,
+	meshes_3d_hex_chunk_masked: [dynamic]q.Mesh3dHexChunkMasked,
 	// cutout discard shader depth rendering:
-	cutout_sprites:           [dynamic]q.Sprite,
+	cutout_sprites:             [dynamic]q.Sprite,
 	// transparency layer 1:
-	transparent_sprites_low:  [dynamic]q.Sprite,
-	ui_world_layer:           [dynamic]q.Ui, // ui elements that are rendered below transparent sprites and shine sprites
+	transparent_sprites_low:    [dynamic]q.Sprite,
+	ui_world_layer:             [dynamic]q.Ui, // ui elements that are rendered below transparent sprites and shine sprites
 	// transparency layer 2:
-	transparent_sprites_high: [dynamic]q.Sprite,
-	shine_sprites:            [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
-	ui_top_layer:             [dynamic]q.Ui,
+	transparent_sprites_high:   [dynamic]q.Sprite,
+	shine_sprites:              [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
+	ui_top_layer:               [dynamic]q.Ui,
 	// other stuff
-	colliders:                [dynamic]q.Collider,
-	last_frame_colliders:     [dynamic]q.Collider,
-	skinned_render_commands:  [dynamic]q.SkinnedRenderCommand,
-	annotations:              [dynamic]Annotation, // put into ui_world_layer
-	hex_chunks:               [dynamic]q.HexChunkUniform,
+	colliders:                  [dynamic]q.Collider,
+	last_frame_colliders:       [dynamic]q.Collider,
+	skinned_render_commands:    [dynamic]q.SkinnedRenderCommand,
+	annotations:                [dynamic]Annotation, // put into ui_world_layer
+	hex_chunks:                 [dynamic]q.HexChunkUniform,
 }
 
 HitInfo :: struct {
@@ -128,6 +130,7 @@ _scene_create :: proc(scene: ^Scene) {
 _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.tritex_meshes)
 	delete(scene.meshes_3d)
+	delete(scene.meshes_3d_hex_chunk_masked)
 
 	delete(scene.cutout_sprites)
 	delete(scene.transparent_sprites_low)
@@ -147,6 +150,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.tritex_meshes)
 	clear(&scene.meshes_3d)
+	clear(&scene.meshes_3d_hex_chunk_masked)
 
 	clear(&scene.cutout_sprites)
 	clear(&scene.transparent_sprites_low)
@@ -194,6 +198,10 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 		q.sprite_pipeline_config(device, .Transparent),
 	)
 	p[.Mesh3d] = q.make_render_pipeline(reg, q.mesh_3d_pipeline_config(device))
+	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(
+		reg,
+		q.mesh_3d_hex_chunk_masked_pipeline_config(device),
+	)
 	p[.SkinnedCutout] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
 	p[.Tritex] = q.make_render_pipeline(reg, q.tritex_mesh_pipeline_config(device))
 	p[.UiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device))
@@ -370,6 +378,13 @@ _engine_render :: proc(engine: ^Engine) {
 		hdr_pass,
 		global_bind_group,
 		engine.scene.meshes_3d[:],
+		asset_manager,
+	)
+	q.mesh_3d_renderer_render_hex_chunk_masked(
+		engine.pipelines[.Mesh3dHexChunkMasked].pipeline,
+		hdr_pass,
+		global_bind_group,
+		engine.scene.meshes_3d_hex_chunk_masked[:],
 		asset_manager,
 	)
 	q.sprite_batches_render(
@@ -646,6 +661,11 @@ create_3d_mesh :: proc() -> q.Mesh3d {
 draw_3d_mesh :: proc(mesh: q.Mesh3d) {
 	append(&ENGINE.scene.meshes_3d, mesh)
 }
+draw_3d_mesh_hex_chunk_masked :: proc(mesh: q.Mesh3dHexChunkMasked) {
+	append(&ENGINE.scene.meshes_3d_hex_chunk_masked, mesh)
+}
+
+
 draw_hex_chunk :: proc(chunk: q.HexChunkUniform) {
 	append(&ENGINE.scene.hex_chunks, chunk)
 }
