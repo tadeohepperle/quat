@@ -14,7 +14,7 @@ Vec3 :: [3]f32
 main :: proc() {
 	settings := engine.DEFAULT_ENGINE_SETTINGS
 	settings.bloom_enabled = false
-	settings.debug_ui_gizmos = true
+	settings.debug_ui_gizmos = false
 	settings.debug_fps_in_title = true
 	// settings.present_mode = .Immediate
 	engine.init(settings)
@@ -55,7 +55,12 @@ main :: proc() {
 	cam := engine.camera_controller_create()
 
 	terrain_textures := engine.load_texture_array(
-		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_3.png"},
+		{
+			"./assets/t_0.png",
+			"./assets/t_1.png",
+			"./assets/t_2.png",
+			"./assets/t_undiscovered_dark.png",
+		},
 	)
 	engine.set_tritex_textures(terrain_textures)
 
@@ -92,6 +97,8 @@ main :: proc() {
 		}
 
 
+		engine.add_ui(engine.slider(&engine.access_shader_globals_xxx().x))
+
 		// corn_sprite := q.Sprite {
 		// 	pos      = Vec2{math.sin(total) * 2.0, math.cos(total) * 2.0},
 		// 	size     = {2, 2},
@@ -114,47 +121,60 @@ main :: proc() {
 }
 IVec2 :: [2]i32
 random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
-	terrain: q.HexChunkTerrainData
-	visibility: q.HexChunkVisibilityData
+	chunk_data: q.HexChunkData
 
 	for y in 0 ..< i32(q.CHUNK_SIZE_PADDED) {
 		for x in 0 ..< i32(q.CHUNK_SIZE_PADDED) {
 			pos := IVec2{x - 1, y - 1} + chunk_pos * q.CHUNK_SIZE
 
-
 			sample_pos_f32 := q.hex_to_world_pos(pos)
 			sample_pos: [2]f64 = {f64(sample_pos_f32.x), f64(sample_pos_f32.y)}
 			noise_t := (noise.noise_2d(42, sample_pos / 0.3) + 1.0) / 2.0
-			noise_v := (noise.noise_2d(32421, sample_pos / 20.7) * 100 + 1.0) / 2.0
+			// noise_t2 := (noise.noise_2d(122323, sample_pos / 0.12) + 1.0) / 2.0
+			noise_v := (noise.noise_2d(32421, sample_pos / 20.7) + 1.0) / 2.0
 
-			ter: u32
+			new_ter: u16
+			old_ter: u16
 			if noise_t > 0.6 {
-				ter = 2
+				old_ter = 1
 			} else if noise_t > 0.2 {
-
-				ter = 3
+				old_ter = 2
 			} else {
-				ter = 1
+				old_ter = 3
 			}
+			new_ter = old_ter
 
-			Q :: 3
+			// if noise_t2 > 0.6 {
+			// 	new_ter = 2
+			// } else if noise_t > 0.2 {
+			// 	new_ter = 1
+			// } else {
+			// 	new_ter = 3
+			// }
+			// Q :: 3
 			// vis := f32(int(noise_v * Q)) / Q
 			// vis: f32 = 1.0 if noise_v > 0.66 else 0.5 if noise_v > 0.33 else 0.0
-			vis: f32 = 1.0 if noise_v > 0.5 else 0.0
-			// vis = clamp(noise_v, 0, 1)
+			// vis: f16 = 1.0 if noise_v > 0.5 else 0.0
+
+			// vis := 1.0 if noise_v > 0.5 else 0.0
+			vis := clamp(f16(noise_v), 0, 1)
+			new_fact: f16 = 1
+			if vis < 0.5 {
+				old_ter = 4
+			} else {
+				vis = 1.0
+			}
+
 			idx := x + y * q.CHUNK_SIZE_PADDED
-			terrain[idx] = ter
-			visibility[idx] = vis
+			chunk_data[idx] = q.HexTileData{old_ter, new_ter, new_fact, vis}
 		}
 	}
-
 	uniform := q.hex_chunk_uniform_create(
 		engine.ENGINE.platform.device,
 		engine.ENGINE.platform.queue,
 		chunk_pos,
 	)
-	q.hex_chunk_uniform_write_terrain_data(&uniform, &terrain)
-	q.hex_chunk_uniform_write_visibility_data(&uniform, &visibility)
+	q.hex_chunk_uniform_write_data(&uniform, &chunk_data)
 	return uniform
 }
 

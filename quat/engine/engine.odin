@@ -309,11 +309,13 @@ _engine_end_frame :: proc(engine: ^Engine) {
 _engine_prepare :: proc(engine: ^Engine) {
 	scene := &engine.scene
 	q.platform_prepare(&engine.platform, scene.camera)
+
 	q.ui_layout_top_level_elements(scene.ui_world_layer[:])
 	q.ui_layout_top_level_elements(scene.ui_top_layer[:])
 	q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
 	q.ui_render_buffers_batch_and_prepare(&engine.ui_world_layer_buffers, scene.ui_world_layer[:])
 	q.ui_render_buffers_batch_and_prepare(&engine.ui_top_layer_buffers, scene.ui_top_layer[:])
+
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
@@ -401,8 +403,8 @@ _engine_render :: proc(engine: ^Engine) {
 	)
 	q.ui_render(
 		engine.ui_world_layer_buffers,
-		engine.pipelines[.UiGlyph].pipeline,
 		engine.pipelines[.UiRect].pipeline,
+		engine.pipelines[.UiGlyph].pipeline,
 		hdr_pass,
 		global_bind_group,
 		engine.platform.screen_size,
@@ -432,8 +434,8 @@ _engine_render :: proc(engine: ^Engine) {
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .WORLD)
 	q.ui_render(
 		engine.ui_top_layer_buffers,
-		engine.pipelines[.UiGlyph].pipeline,
 		engine.pipelines[.UiRect].pipeline,
+		engine.pipelines[.UiGlyph].pipeline,
 		hdr_pass,
 		global_bind_group,
 		engine.platform.screen_size,
@@ -866,6 +868,9 @@ add_triangle_collider :: proc(triangle: q.Triangle2d, metadata: q.ColliderMetada
 set_camera :: proc(camera: q.Camera) {
 	ENGINE.scene.camera = camera
 	_engine_recalculate_hit_info(&ENGINE) // todo! probably not appropriate??
+}
+access_shader_globals_xxx :: proc() -> ^[4]f32 {
+	return &ENGINE.platform.globals_xxx
 }
 set_tritex_textures :: proc(textures: q.TextureArrayHandle) {
 	ENGINE.scene.tritex_textures = textures

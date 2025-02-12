@@ -5,6 +5,7 @@ struct Globals {
     time_secs: f32,
     screen_size: vec2<f32>,
     cursor_pos: vec2<f32>,
+    xxx: vec4<f32>, // some user data for testing/debugging
 }
 @group(0) @binding(0)
 var<uniform> globals: Globals;

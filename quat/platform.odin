@@ -83,6 +83,7 @@ Platform :: struct {
 	dropped_file_paths:          []string,
 
 	// globals: 
+	globals_xxx:                 Vec4,
 	globals_data:                ShaderGlobals,
 	globals:                     UniformBuffer(ShaderGlobals),
 }
@@ -99,6 +100,7 @@ ShaderGlobals :: struct {
 	time_secs:         f32,
 	screen_size:       Vec2,
 	cursor_pos:        Vec2,
+	xxx:               Vec4, // some floats for testing purposes
 }
 platform_create :: proc(
 	platform: ^Platform,
@@ -156,6 +158,7 @@ platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 		time_secs         = platform.total_secs,
 		screen_size       = screen_size,
 		cursor_pos        = platform.cursor_pos,
+		xxx               = platform.globals_xxx,
 	}
 	uniform_buffer_write(platform.queue, &platform.globals, &platform.globals_data)
 }
