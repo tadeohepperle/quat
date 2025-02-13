@@ -1338,7 +1338,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		reg: ZRegion = b.z_regions[idx]
 		b.current_z_layer = reg.z_layer
 		if reg.clipped_to != b.current.clipped_to {
-			_flush_and_apply_new_clipping_rect(&b, reg.clipped_to)
+			             _flush_and_apply_new_clipping_rect(&b, reg.clipped_to)
 		}
 		_add(&b, reg.ui)
 	}
@@ -1355,7 +1355,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 	}
 	// Note: currently no sorting or z-index, just add children recursively in order.
 	_add :: proc(b: ^Batcher, ui: Ui) {
-		base := _element_base_ptr(ui)
+		base :=    _element_base_ptr(ui)
 		if base.id != NO_ID {
 			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
 			cached := &b.cached[base.id]

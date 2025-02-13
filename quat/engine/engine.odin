@@ -658,11 +658,14 @@ maximize_window :: proc() {
 create_3d_mesh :: proc() -> q.Mesh3d {
 	return q.mesh_3d_create(ENGINE.platform.device, ENGINE.platform.queue, 0)
 }
-draw_3d_mesh :: proc(mesh: q.Mesh3d) {
+draw_mesh_3d :: proc(mesh: q.Mesh3d) {
 	append(&ENGINE.scene.meshes_3d, mesh)
 }
-draw_3d_mesh_hex_chunk_masked :: proc(mesh: q.Mesh3dHexChunkMasked) {
-	append(&ENGINE.scene.meshes_3d_hex_chunk_masked, mesh)
+draw_mesh_3d_hex_chunk_masked :: proc(mesh: q.Mesh3d, hex_chunk_bind_group: wgpu.BindGroup) {
+	append(
+		&ENGINE.scene.meshes_3d_hex_chunk_masked,
+		q.Mesh3dHexChunkMasked{mesh, hex_chunk_bind_group},
+	)
 }
 
 

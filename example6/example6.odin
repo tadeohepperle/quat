@@ -4,6 +4,7 @@ package example
 import q "../quat"
 import engine "../quat/engine"
 import "core:math"
+import "core:math/linalg"
 import "core:math/noise"
 import "core:math/rand"
 import "core:slice"
@@ -27,18 +28,39 @@ main :: proc() {
 			color = q.Color{pos.x / 3.0, pos.y / 3.0, pos.z / 3.0, 1.0},
 		}
 	}
-	H :: 3
+	L :: 0.00
+	H :: 3.0
+	HTIP :: 0.02
+
+	WX :: 3
+	WY :: 0.75
+
+
+	
 	// odinfmt:disable
-	v_positions := []Vec3{
-		{-3,0,0}, {-2,-1,0}, {2,-1,0}, {3,0,0}, {2,1,0}, {-2,1,0},
-		{-3,0,H}, {-2,-1,H}, {2,-1,H}, {3,0,H}, {2,1,H}, {-2,1,H},
-		{-1,0,H+1}, {1,0,H+1}
+
+	when true {
+	    v_positions := []Vec3{
+	    	{-3,0,L}, {-2,-WY,L}, {2,-WY,L}, {3,0,L}, {2,WY,L}, {-2,WY,L},
+	    	{-3,0,H}, {-2,-WY,H}, {2,-WY,H}, {3,0,H}, {2,WY,H}, {-2,WY,H},
+	    	{-WY,0,H+HTIP}, {WY,0,H+HTIP}
+	    }
+	    triangles:= []q.Triangle{
+	    	{0,5,1},{1,5,4},{1,4,2},{2,4,3},// bottom
+	    	{0,1,7},{0,7,6},{1,2,8},{1,8,7},{2,3,9},{2,9,8},{3,4,10},{3,10,9},{4,5,11},{4,11,10},{5,0,6},{5,6,11}, //sides
+	    	{6,7,12},{6,12,11},{9,10,13},{9,13,8},{7,8,13},{7,13,12},{10,11,12},{10,12,13}, // roof
+	    }
+	}else{
+		W :: 3.0
+		v_positions := []Vec3{
+			{-W,-W, H},{W,-W, H},{W,W, H},{-W,W, H},
+		}
+		triangles := []q.Triangle{
+			{0,1,2}, {0,2,3}
+		}
 	}
-	triangles:= []q.Triangle{
-		{0,5,1},{1,5,4},{1,4,2},{2,4,3},// bottom
-		{0,1,7},{0,7,6},{1,2,8},{1,8,7},{2,3,9},{2,9,8},{3,4,10},{3,10,9},{4,5,11},{4,11,10},{5,0,6},{5,6,11}, //sides
-		{6,7,12},{6,12,11},{9,10,13},{9,13,8},{7,8,13},{7,13,12},{10,11,12},{10,12,13}, // roof
-	}
+
+
 	// odinfmt:enable
 
 	mesh := engine.create_3d_mesh()
@@ -65,40 +87,55 @@ main :: proc() {
 	engine.set_tritex_textures(terrain_textures)
 
 
-	hex_chunks := []q.HexChunkUniform {
-		random_hex_chunk({0, 0}),
-		random_hex_chunk({1, 0}),
-		// random_hex_chunk({2, 0}),
-		// random_hex_chunk({2, 1}),
-		// random_hex_chunk({2, 2}),
-		// random_hex_chunk({1, 3}),
-		random_hex_chunk({0, 1}),
-		random_hex_chunk({1, 1}),
-		random_hex_chunk({2, 0}),
-		random_hex_chunk({2, 1}),
-	}
-	// q.hex_chunk_uniform_write_terrain_data()
+	hex_chunk_positions := [][2]i32{{-1, 0}, {0, 0}, {1, 0}, {1, 1}, {0, 1}}
 
+	hex_chunks := make([]q.HexChunkUniform, len(hex_chunk_positions))
+	for chunk_pos, idx in hex_chunk_positions {
+		hex_chunks[idx] = random_hex_chunk(chunk_pos)
+	}
 	engine.access_shader_globals_xxx().y = 1
-	engine.access_shader_globals_xxx().z = 1
+	engine.access_shader_globals_xxx().z = 0
 
 	total: f32 = 0
+	active_chunk_idx := 0
 	for engine.next_frame() {
+
 		dt := engine.get_delta_secs()
 		if engine.is_key_pressed(.SPACE) {
 			dt = 0.0
 		}
 		total += dt
-
+		hit_pos := engine.get_hit_pos()
 
 		engine.camera_controller_update(&cam)
 		engine.draw_gizmos_coords()
 
 
-		for chunk in hex_chunks {
-			engine.draw_hex_chunk(chunk)
+		if engine.is_key_just_pressed(.COMMA) {
+			active_chunk_idx -= 1
+		}
+		if engine.is_key_just_pressed(.PERIOD) {
+			active_chunk_idx += 1
 		}
 
+		active_chunk_idx = active_chunk_idx %% len(hex_chunks)
+		for chunk, idx in hex_chunks {
+			a_hex_pos := chunk.chunk_pos * q.CHUNK_SIZE
+			a := q.hex_to_world_pos(a_hex_pos)
+			b := q.hex_to_world_pos(a_hex_pos + [2]i32{q.CHUNK_SIZE, 0})
+			c := q.hex_to_world_pos(a_hex_pos + q.CHUNK_SIZE)
+			d := q.hex_to_world_pos(a_hex_pos + [2]i32{0, q.CHUNK_SIZE})
+
+			if idx == active_chunk_idx {
+				color := q.ColorOrange
+				engine.draw_gizmos_line(a, b, color)
+				engine.draw_gizmos_line(b, c, color)
+				engine.draw_gizmos_line(c, d, color)
+				engine.draw_gizmos_line(d, a, color)
+
+			}
+			engine.draw_hex_chunk(chunk)
+		}
 
 		shader_xxx := engine.access_shader_globals_xxx()
 		engine.add_window(
@@ -112,11 +149,23 @@ main :: proc() {
 					{engine.slider(&shader_xxx.y), engine.text_from_string("noise")},
 					gap = 8,
 				),
+				engine.row(
+					{engine.slider(&shader_xxx.z), engine.text_from_string("mesh h")},
+					gap = 8,
+				),
 			},
 		)
-		hit_pos := engine.get_hit_pos()
-		shader_xxx.z = hit_pos.x
-		shader_xxx.w = hit_pos.y
+
+
+		rf := engine.get_rf()
+		if rf != 0 {
+			shader_xxx.z += rf * engine.get_delta_secs() * 3
+		}
+		shader_xxx.z = clamp(shader_xxx.z, 0, 1)
+
+
+		// shader_xxx.z = hit_pos.x
+		// shader_xxx.w = hit_pos.y
 		// corn_sprite := q.Sprite {
 		// 	pos      = Vec2{math.sin(total) * 2.0, math.cos(total) * 2.0},
 		// 	size     = {2, 2},
@@ -131,12 +180,14 @@ main :: proc() {
 		// 	engine.draw_transparent_sprite(corn_sprite)
 		// }
 		// engine.draw_shine_sprite(corn_sprite)
+		// height_fact := &
 		for original_v, idx in mesh_vertices_unshared {
 			new_pos := original_v.pos + Vec3{hit_pos.x, hit_pos.y, 0}
+			new_pos.z *= shader_xxx.z
 			mesh.vertices[idx].pos = new_pos
 		}
 		q.mesh_3d_sync(&mesh)
-		engine.draw_3d_mesh_hex_chunk_masked({mesh, hex_chunks[0].bind_group})
+		engine.draw_mesh_3d_hex_chunk_masked(mesh, hex_chunks[active_chunk_idx].bind_group)
 	}
 }
 IVec2 :: [2]i32
@@ -177,8 +228,8 @@ random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 			// vis: f32 = 1.0 if noise_v > 0.66 else 0.5 if noise_v > 0.33 else 0.0
 			// vis: f16 = 1.0 if noise_v > 0.5 else 0.0
 
-			// vis: f16 = 1.0 if noise_v > 0.5 else 0.0
-			vis := clamp(f16(noise_v), 0, 1)
+			vis: f16 = 1.0 if noise_v > 0.5 else 0.0
+			// vis := clamp(f16(noise_v), 0, 1)
 			new_fact: f16 = 1
 			if vis < 0.5 {
 				old_ter = 4

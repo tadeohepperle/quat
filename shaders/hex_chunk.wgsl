@@ -191,13 +191,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let new_color = terrain_color(in.new_indices, weights, sample_uv);
     let color = mix(old_color, new_color, new_fact);
 
-    let vis_noise_stregth = 1.0 - vis;
-    let noise = noise2(in.pos * 1.3  + globals.time_secs *0.3) + noise2((in.pos+ globals.time_secs*0.5) * 3.127) - 2.0;
-    let vis_noised =  clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
-    // let vis = noise_stregth; //sum((in.weights) * in.visibility) + noise2(in.pos) - 1.0;
-
-
-    let vis_final = mix(vis, vis_noised, globals.xxx.y);
+    let vis_n =  vis_noised(vis, in.pos);
+    let vis_final = mix(vis, vis_n, globals.xxx.y);
 
     // let dotted = v4(step(0.95, max(max(weights.x, weights.y), weights.z))) * RED;
     let a = weights.x;
@@ -206,17 +201,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dotted = step(0.95, max(max(a, b), c)) * RED;
 
     let on_grid: bool = abs(a-b) < GRID_WIDTH && a+b > c*2 || abs(b-c) < GRID_WIDTH && b+c > a*2 || abs(a-c) < GRID_WIDTH && a+c > b*2;
-    let vis_border_f = (0.5 - abs(vis_noised - 0.5)) *2.0;
-    var grid_f: f32 = select(0.0, 1.0, on_grid) * (vis_final - 0.5) * GRID_STREGTH * globals.xxx.z;
+    let vis_border_f = (0.5 - abs(vis_n- 0.5)) *2.0;
+    var grid_f: f32 = select(0.0, 1.0, on_grid) * (vis_final - 0.5) * GRID_STREGTH;
     // let strength = 
     // if on_grid {
-    //     grid_f = (vis_noised + (noise + 2.0) * 0.2) * GRID_STREGTH;
+    //     grid_f = (vis_n + (noise + 2.0) * 0.2) * GRID_STREGTH;
     // } else {
     //     grid_f = 0.0;
     // }
     // let dotted = v4(1.0 -step(0.01, min(min(a, b), c))) * RED;
     let color_width_grid = mix(color,mix(color, BLACK, 0.7), grid_f);
     return mix(BLACK, color_width_grid, clamp(vis_final + 0.3, 0.0,1.0)) ;
+}
+
+fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {
+    let vis_noise_stregth = 1.0 - vis;
+    let noise = noise2(w_pos * 1.3  + globals.time_secs *0.3) + noise2((w_pos + globals.time_secs*0.5) * 3.127) - 2.0;
+    return clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
 }
 
 fn sum(v: v3) -> f32{

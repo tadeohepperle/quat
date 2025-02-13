@@ -42,6 +42,9 @@ fn get_visibility(idx_in_chunk: u32) -> f32 {
     let two_tiles: vec4<u32> = hex_chunk_terrain.tiles[buf_idx];
     let new_fact_and_vis = unpack2x16float(two_tiles[comp_idx + 1]);
     return new_fact_and_vis.y;
+
+
+    // return 1.0;
 }
 
 const HEX_TO_WORLD_POS_MAT : mat2x2f = mat2x2f(1.5,  -0.75, 0, 1.5);
