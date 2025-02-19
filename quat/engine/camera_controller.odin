@@ -51,7 +51,7 @@ camera_controller_set_immediately :: proc(cam: ^CameraController) {
 camera_controller_update :: proc(cam: ^CameraController) {
 	screen_size := get_screen_size_f32()
 	pan_btn := get_mouse_btn(.Middle)
-	is_on_ui := get_hit().is_on_ui
+	is_on_ui := get_hit().is_on_screen_ui
 	cursor_pos := get_cursor_pos()
 	cursor_delta := get_cursor_delta()
 

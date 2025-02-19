@@ -152,6 +152,9 @@ RenderPipelineConfig :: struct {
 	blend:                Maybe(wgpu.BlendState), // if nil, no blending.
 	format:               wgpu.TextureFormat,
 	depth:                Maybe(DepthConfig),
+	// // just a single string flag that can be set to conditionally include some lines of wgsl, only if this is set, 
+	// // e.g. say `flag = "WORLDSPACE"` and then in the wgsl: `#WORLDSPACE   out.pos = vec2f(1.0,2.0);`
+	// flag:                 string,
 }
 DepthConfig :: struct {
 	depth_write_enabled: bool,

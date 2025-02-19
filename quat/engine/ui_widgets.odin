@@ -129,7 +129,7 @@ add_window :: proc(title: string, content: []Ui, window_width: f32 = 0) {
 	id := q.ui_id(title)
 	cached_pos, cached_size, window_pos_start_drag, ok := q.ui_get_cached(id, Vec2)
 	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
-	layout_extent := q.ui_layout_extent()
+	layout_extent := get_ui_layout_extent()
 
 	res := q.ui_interaction(id)
 	if res.just_pressed {

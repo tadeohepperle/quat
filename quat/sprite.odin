@@ -138,18 +138,28 @@ SpriteKind :: enum {
 	Cutout,
 	Transparent,
 	Shine,
+	Simple,
 }
 @(rodata)
 SPRITE_KIND_DEPTH := [SpriteKind]DepthConfig {
 	.Cutout = {depth_write_enabled = true, depth_compare = .GreaterEqual},
 	.Transparent = {depth_write_enabled = false, depth_compare = .GreaterEqual},
 	.Shine = {depth_write_enabled = false, depth_compare = .Less},
+	.Simple = DepthConfig{depth_write_enabled = false, depth_compare = .Always},
 }
 @(rodata)
 SPRITE_KIND_FS_NAMES := [SpriteKind]cstring {
 	.Cutout      = "fs_cutout",
 	.Transparent = "fs_transparent",
 	.Shine       = "fs_shine",
+	.Simple      = "fs_simple",
+}
+@(rodata)
+SPRITE_KIND_VS_NAMES := [SpriteKind]cstring {
+	.Cutout      = "vs_depth",
+	.Transparent = "vs_depth",
+	.Shine       = "vs_depth",
+	.Simple      = "vs_simple",
 }
 SPRITE_VERTEX_ATTRIBUTES := []VertAttibute {
 	{format = .Float32x2, offset = offset_of(SpriteInstance, pos)},
@@ -161,9 +171,9 @@ SPRITE_VERTEX_ATTRIBUTES := []VertAttibute {
 }
 sprite_pipeline_config :: proc(device: wgpu.Device, kind: SpriteKind) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
-		debug_name = "sprite_default",
+		debug_name = "sprite",
 		vs_shader = "sprite",
-		vs_entry_point = "vs_all",
+		vs_entry_point = SPRITE_KIND_VS_NAMES[kind],
 		fs_shader = "sprite",
 		fs_entry_point = SPRITE_KIND_FS_NAMES[kind],
 		topology = .TriangleStrip,

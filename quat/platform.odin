@@ -9,29 +9,33 @@ import wgpu "vendor:wgpu"
 import wgpu_glfw "vendor:wgpu/glfwglue"
 
 PlatformSettings :: struct {
-	title:              string,
-	initial_size:       UVec2,
-	clear_color:        Color,
-	shaders_dir_path:   string,
-	default_font_path:  string,
-	power_preference:   wgpu.PowerPreference,
-	present_mode:       wgpu.PresentMode,
-	hot_reload_shaders: bool,
-	debug_fps_in_title: bool,
-	tonemapping:        TonemappingMode,
+	title:                    string,
+	initial_size:             UVec2,
+	clear_color:              Color,
+	shaders_dir_path:         string,
+	default_font_path:        string,
+	power_preference:         wgpu.PowerPreference,
+	present_mode:             wgpu.PresentMode,
+	hot_reload_shaders:       bool,
+	debug_fps_in_title:       bool,
+	tonemapping:              TonemappingMode,
+	screen_ui_reference_size: Vec2,
+	world_ui_px_per_unit:     f32,
 }
 
 PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
-	title              = "Quat App",
-	initial_size       = {800, 600},
-	clear_color        = ColorBlack,
-	shaders_dir_path   = "./shaders",
-	default_font_path  = "",
-	power_preference   = .LowPower,
-	present_mode       = .Fifo,
-	tonemapping        = .Disabled,
-	debug_fps_in_title = true,
-	hot_reload_shaders = true,
+	title                    = "Quat App",
+	initial_size             = {800, 600},
+	clear_color              = ColorBlack,
+	shaders_dir_path         = "./shaders",
+	default_font_path        = "",
+	power_preference         = .LowPower,
+	present_mode             = .Fifo,
+	tonemapping              = .Disabled,
+	debug_fps_in_title       = true,
+	hot_reload_shaders       = true,
+	screen_ui_reference_size = {1920, 1080},
+	world_ui_px_per_unit     = 100,
 }
 
 SURFACE_FORMAT := wgpu.TextureFormat.BGRA8UnormSrgb
@@ -68,6 +72,7 @@ Platform :: struct {
 	delta_secs:                  f32,
 	screen_size:                 UVec2,
 	screen_size_f32:             Vec2,
+	ui_layout_extent:            Vec2, // screen size, scaled such that height is always e.g. 1080px
 	screen_resized:              bool,
 	should_close:                bool,
 	old_cursor_pos:              Vec2,
@@ -88,19 +93,23 @@ Platform :: struct {
 	globals:                     UniformBuffer(ShaderGlobals),
 }
 
+
 ShaderGlobals :: struct {
-	camera_proj_col_1: Vec3,
-	_pad_1:            f32,
-	camera_proj_col_2: Vec3,
-	_pad_2:            f32,
-	camera_proj_col_3: Vec3,
-	_pad_3:            f32,
-	camera_pos:        Vec2,
-	camera_height:     f32,
-	time_secs:         f32,
-	screen_size:       Vec2,
-	cursor_pos:        Vec2,
-	xxx:               Vec4, // some floats for testing purposes
+	camera_proj_col_1:       Vec3,
+	_pad_1:                  f32,
+	camera_proj_col_2:       Vec3,
+	_pad_2:                  f32,
+	camera_proj_col_3:       Vec3,
+	_pad_3:                  f32,
+	camera_pos:              Vec2,
+	camera_height:           f32,
+	time_secs:               f32,
+	screen_size:             Vec2,
+	cursor_pos:              Vec2,
+	screen_ui_layout_extent: Vec2,
+	world_ui_px_per_unit:    f32,
+	_pad_4:                  f32,
+	xxx:                     Vec4, // some floats for testing purposes
 }
 platform_create :: proc(
 	platform: ^Platform,
@@ -150,15 +159,17 @@ platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 	screen_size := platform.screen_size_f32
 	camera_proj := camera_projection_matrix(camera, screen_size)
 	platform.globals_data = ShaderGlobals {
-		camera_proj_col_1 = camera_proj[0],
-		camera_proj_col_2 = camera_proj[1],
-		camera_proj_col_3 = camera_proj[2],
-		camera_pos        = camera.focus_pos,
-		camera_height     = camera.height,
-		time_secs         = platform.total_secs,
-		screen_size       = screen_size,
-		cursor_pos        = platform.cursor_pos,
-		xxx               = platform.globals_xxx,
+		camera_proj_col_1       = camera_proj[0],
+		camera_proj_col_2       = camera_proj[1],
+		camera_proj_col_3       = camera_proj[2],
+		camera_pos              = camera.focus_pos,
+		camera_height           = camera.height,
+		time_secs               = platform.total_secs,
+		screen_size             = screen_size,
+		cursor_pos              = platform.cursor_pos,
+		screen_ui_layout_extent = platform.ui_layout_extent,
+		world_ui_px_per_unit    = platform.settings.world_ui_px_per_unit,
+		xxx                     = platform.globals_xxx,
 	}
 	uniform_buffer_write(platform.queue, &platform.globals, &platform.globals_data)
 }
@@ -204,11 +215,16 @@ platform_start_frame :: proc(platform: ^Platform) -> bool {
 		title := fmt.caprintf("%d fps/ %.2f ms", fps, dt_ms, allocator = context.temp_allocator)
 		glfw.SetWindowTitle(platform.window, title)
 	}
-
+	_recalculate_ui_layout_extent(platform)
 
 	return true
 }
 
+_recalculate_ui_layout_extent :: proc "contextless" (platform: ^Platform) {
+	ref_size := platform.settings.screen_ui_reference_size
+	screen_aspect := (platform.screen_size_f32.x / platform.screen_size_f32.y)
+	platform.ui_layout_extent = Vec2{ref_size.y * screen_aspect, ref_size.y}
+}
 
 platform_end_render :: proc(
 	platform: ^Platform,
@@ -428,6 +444,7 @@ _init_glfw_window :: proc(platform: ^Platform) {
 		platform.screen_resized = true
 		platform.screen_size = {u32(w), u32(h)}
 		platform.screen_size_f32 = {f32(w), f32(h)}
+		_recalculate_ui_layout_extent(platform)
 	}
 	glfw.SetFramebufferSizeCallback(platform.window, framebuffer_size_callback)
 

@@ -11,7 +11,7 @@ ShaderRegistry :: struct {
 	shaders_dir_path:                 string,
 	changed_shaders_since_last_watch: [dynamic]string,
 	device:                           wgpu.Device,
-	shaders:                          map[string]Shader,
+	shaders:                          map[string]Shader, // maps shader names, i.e foo.wgsl without the .wgsl to the shaders
 	pipelines:                        [dynamic]^RenderPipeline, // owned by the shader registry!!!
 	hot_reload_shaders:               bool,
 }
@@ -312,6 +312,14 @@ composite_wgsl_code :: proc(reg: ^ShaderRegistry, shader: ^Shader) -> (err: stri
 			strings.write_string(&b, line)
 			strings.write_rune(&b, '\n')
 		}
+		// else if strings.has_prefix(line, "#") {
+		// 	flag_prefix := fmt.tprintf("#{} ", flag)
+		// 	if strings.starts_with(line, flag_prefix) {
+		// 		strings.write_string(&b, line[len(flag_prefix):])
+		// 	} else {
+		// 		// ignore line
+		// 	}
+		// }
 	}
 	wgsl_code = StringAndCString {
 		c_str = strings.to_cstring(&b),
@@ -377,7 +385,7 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 	// try to find a shader file that has changed:
 	changed_shader_name: string
 	changed_shader: ^Shader
-	for shader_name, &shader in reg.shaders {
+	for name, &shader in reg.shaders {
 		last_write_time, err := os.last_write_time_by_name(shader.src.path)
 		if err != 0 {
 			continue
@@ -386,7 +394,7 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 		if shader.src.last_write_time >= last_write_time {
 			continue
 		}
-		changed_shader_name = shader_name
+		changed_shader_name = name
 		changed_shader = &shader
 		break
 	}
@@ -436,12 +444,12 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 			wgpu.ShaderModuleRelease(old_shader_module)
 			shaders_with_changed_modules[shader_name] = None{}
 		}
-		for name, shader in reg.shaders {
-			if name == shader_name {
+		for other, shader in reg.shaders {
+			if other == shader_name {
 				continue
 			}
 			if slice.contains(shader.composited.imports[:], shader_name) {
-				append(&queue, name)
+				append(&queue, other)
 			}
 		}
 	}

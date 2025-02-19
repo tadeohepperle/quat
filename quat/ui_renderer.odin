@@ -37,8 +37,9 @@ ui_render_buffers_destroy :: proc(this: ^UiRenderBuffers) {
 ui_render_buffers_batch_and_prepare :: proc(
 	this: ^UiRenderBuffers,
 	top_level_elements: []Ui,
+	is_world_ui: bool,
 ) {
-	build_ui_batches_and_attach_z_info(top_level_elements, this)
+	build_ui_batches_and_attach_z_info(top_level_elements, this, is_world_ui)
 	dynamic_buffer_write(&this.vertex_buffer, this.primitives.vertices[:])
 	dynamic_buffer_write(&this.index_buffer, this.primitives.triangles[:])
 	dynamic_buffer_write(&this.glyph_instance_buffer, this.primitives.glyphs_instances[:])
@@ -50,6 +51,7 @@ ui_render :: proc(
 	glyph_pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_bind_group: wgpu.BindGroup,
+	screen_reference_size: Vec2,
 	screen_size: UVec2,
 	assets: AssetManager,
 ) {
@@ -64,8 +66,16 @@ ui_render :: proc(
 		if batch.clipped_to != last_clipped_to {
 			if clipped_to, ok := batch.clipped_to.(Aabb); ok {
 				// convert clipping rect from layout to screen space and then set it:
-				min_f32 := layout_to_screen_space(clipped_to.min, screen_size_f32)
-				max_f32 := layout_to_screen_space(clipped_to.max, screen_size_f32)
+				min_f32 := layout_to_screen_space(
+					clipped_to.min,
+					screen_reference_size,
+					screen_size_f32,
+				)
+				max_f32 := layout_to_screen_space(
+					clipped_to.max,
+					screen_reference_size,
+					screen_size_f32,
+				)
 				min_x := min(u32(min_f32.x), screen_size.x)
 				min_y := min(u32(min_f32.y), screen_size.x)
 				max_x := min(u32(max_f32.x), screen_size.x)
@@ -154,22 +164,21 @@ ui_render :: proc(
 	}
 }
 
-
-screen_to_layout_space :: proc(pt: Vec2, screen_size: Vec2) -> Vec2 {
-	return pt * (f32(SCREEN_REFERENCE_SIZE.y) / screen_size.y)
+screen_to_layout_space :: proc(pt: Vec2, screen_reference_size: Vec2, screen_size: Vec2) -> Vec2 {
+	return pt * (f32(screen_reference_size.y) / screen_size.y)
 }
 
-layout_to_screen_space :: proc(pt: Vec2, screen_size: Vec2) -> Vec2 {
-	return pt * (screen_size.y / f32(SCREEN_REFERENCE_SIZE.y))
+layout_to_screen_space :: proc(pt: Vec2, screen_reference_size: Vec2, screen_size: Vec2) -> Vec2 {
+	return pt * (screen_size.y / f32(screen_reference_size.y))
 }
 
-ui_rect_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+ui_rect_pipeline_config :: proc(device: wgpu.Device, in_world: bool) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_rect",
 		vs_shader = "ui",
-		vs_entry_point = "vs_rect",
+		vs_entry_point = "vs_rect_world" if in_world else "vs_rect",
 		fs_shader = "ui",
-		fs_entry_point = "fs_rect",
+		fs_entry_point = "fs_rect_world" if in_world else "fs_rect",
 		topology = .TriangleList,
 		vertex = {
 			ty_id = UiVertex,
@@ -196,11 +205,16 @@ ui_rect_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	}
 }
 
-ui_glyph_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+
+UiPushConstants :: struct {
+	scale:  f32,
+	offset: Vec2,
+}
+ui_glyph_pipeline_config :: proc(device: wgpu.Device, in_world: bool) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
 		vs_shader = "ui",
-		vs_entry_point = "vs_glyph",
+		vs_entry_point = "vs_glyph_world" if in_world else "vs_glyph",
 		fs_shader = "ui",
 		fs_entry_point = "fs_glyph",
 		topology = .TriangleStrip,

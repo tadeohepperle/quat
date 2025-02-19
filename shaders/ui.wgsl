@@ -30,12 +30,10 @@ const RIGHT_VERTEX: u32 = 2u;
 const BOTTOM_VERTEX: u32 = 4u;
 const BORDER: u32 = 8u;
 
-
-
 @vertex
 fn vs_rect(vertex: Vertex) -> VsRectOut {
 	var out: VsRectOut;
-	out.clip_position = ui_layout_pos_to_ndc(vertex.pos);
+    out.clip_position = ui_layout_pos_to_ndc(vertex.pos);
 	var rel_pos = 0.5 * vertex.size;
     if (vertex.flags & RIGHT_VERTEX) == 0u {
         rel_pos.x *= -1.;
@@ -53,6 +51,31 @@ fn vs_rect(vertex: Vertex) -> VsRectOut {
 	out.flags = vertex.flags;
 	return out;
 }
+
+
+// copy of vs_rect except for clip position, would be much nicer with some conditional compilation!!!
+@vertex
+fn vs_rect_world(vertex: Vertex) -> VsRectOut {
+	var out: VsRectOut;
+    out.clip_position = ui_world_pos_to_ndc(vertex.pos);
+	var rel_pos = 0.5 * vertex.size;
+    if (vertex.flags & RIGHT_VERTEX) == 0u {
+        rel_pos.x *= -1.0;
+    }
+    if (vertex.flags & BOTTOM_VERTEX) == 0u {
+        rel_pos.y *= -1.0;
+    }
+    out.uv = vertex.uv;
+    out.rel_pos = rel_pos;
+	out.size = vertex.size;
+	out.color = vertex.color;
+	out.border_color = vertex.border_color;
+	out.border_radius = vertex.border_radius;
+	out.border_width = vertex.border_width;
+	out.flags = vertex.flags;
+	return out;
+}
+
 
 //  @interpolate(flat)
 
@@ -72,13 +95,21 @@ struct VsRectOut {
 // @interpolate(flat) 
 // @interpolate(flat) 
 
-const softness_factor :f32 = SCREEN_REFERENCE_SIZE.y;
-
 @fragment
 fn fs_rect(in: VsRectOut) -> @location(0) vec4<f32> {
+    let softness = globals.screen_ui_layout_extent.y / globals.screen_size.y;
+    return fs_rect_both(in, softness);
+}
 
-	let softness = softness_factor / globals.screen_size.y;
-     
+@fragment
+fn fs_rect_world(in: VsRectOut) -> @location(0) vec4<f32> {
+    // I have no idea if 8.0 is the right value here, but it looks fine visually.
+    let softness = 8.0 / globals.world_ui_px_per_unit * globals.camera_height;// globals.screen_ui_layout_extent.y / globals.screen_size.y / extra_factor;
+    return fs_rect_both(in, softness);
+}
+
+// softness is border softness
+fn fs_rect_both(in: VsRectOut, softness: f32) -> vec4<f32>{
 	let texture_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.uv);
     var external_distance = rounded_box_sdf(in.rel_pos, in.size, in.border_radius);
     external_distance += min(in.border_width.x, 0.0); // little hack that allows you to set a negative border width, to essentially disable smoothing on external edge.
@@ -92,9 +123,8 @@ fn fs_rect(in: VsRectOut) -> @location(0) vec4<f32> {
     let final_color = select(color, color * textureSample(t_diffuse, s_diffuse, in.uv), enabled(in.flags, TEXTURED));
 
 	return final_color;
-    // return in.color * textureSample(t_diffuse, s_diffuse, in.uv);
-    
 }
+
 
 fn enabled(flags: u32, mask: u32) -> bool {
     return (flags & mask) != 0u;
@@ -133,18 +163,27 @@ fn antialias(distance: f32) -> f32 {
 // SECTION: Glyphs
 // /////////////////////////////////////////////////////////////////////////////
 
-
-fn screen_size_r() -> vec2<f32> {
-	return vec2(SCREEN_REFERENCE_SIZE.y * globals.screen_size.x / globals.screen_size.y, SCREEN_REFERENCE_SIZE.y);
-}
-
 @vertex
 fn vs_glyph(@builtin(vertex_index) vertex_index: u32, instance: GlyphInstance) -> VsGlyphOut {
     let u_uv: vec2<f32> = unit_uv_from_idx(vertex_index);
 	let uv = ((1.0 - u_uv) * instance.uv.xy + u_uv * instance.uv.zw);
 	let v_pos: vec2<f32> = instance.pos + u_uv * instance.size;
 	var out: VsGlyphOut;
-	out.clip_position = ui_layout_pos_to_ndc(v_pos);
+    out.clip_position = ui_layout_pos_to_ndc(v_pos);
+	out.color = instance.color;
+	out.uv = uv;
+	out.shadow_and_bias = instance.shadow_and_bias; 
+	return out;
+}
+
+// copy of vs_glyph except for clip position, would be much nicer with some conditional compilation!!!
+@vertex
+fn vs_glyph_world(@builtin(vertex_index) vertex_index: u32, instance: GlyphInstance) -> VsGlyphOut {
+    let u_uv: vec2<f32> = unit_uv_from_idx(vertex_index);
+	let uv = ((1.0 - u_uv) * instance.uv.xy + u_uv * instance.uv.zw);
+	let v_pos: vec2<f32> = instance.pos + u_uv * instance.size;
+	var out: VsGlyphOut;
+    out.clip_position = ui_world_pos_to_ndc(v_pos); // ONLY DIFFERENCE!!
 	out.color = instance.color;
 	out.uv = uv;
 	out.shadow_and_bias = instance.shadow_and_bias; 

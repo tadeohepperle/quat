@@ -9,8 +9,6 @@ import "core:mem"
 import "core:os"
 import "core:slice"
 
-SCREEN_REFERENCE_SIZE :: [2]u32{1920, 1080}
-
 NO_ID: UiId = 0
 UiId :: u64
 ui_id :: proc(str: string) -> UiId {
@@ -128,9 +126,6 @@ ui_get_cached_no_user_data :: proc(id: UiId) -> (pos, size: Vec2, ok: bool) {
 ui_cursor_pos :: proc() -> (cursor_pos: Vec2, cursor_pos_start_press: Vec2) {
 	return UI_CTX_PTR.cache.cursor_pos, UI_CTX_PTR.cache.cursor_pos_start_press
 }
-ui_layout_extent :: proc() -> Vec2 {
-	return UI_CTX_PTR.cache.layout_extent
-}
 ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	for id in ids {
 		if UI_CTX_PTR.cache.state.pressed == id || UI_CTX_PTR.cache.state.focused == id {
@@ -143,11 +138,13 @@ ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 // stuff that should survive the frame boundary is stored here, e.g. previous aabb for divs that had ids
 UiCache :: struct {
 	cached:                 map[UiId]CachedElement,
+	new_cached:             map[UiId]CachedElement,
 	state:                  InteractionState(UiId),
 	cursor_pos_start_press: Vec2,
+	delta_secs:             f32,
 	platform:               ^Platform,
 	cursor_pos:             Vec2, // (scaled to reference cursor pos)
-	layout_extent:          Vec2,
+	cursor_pos_world:       Vec2,
 }
 
 // Z position in made up of the following components:
@@ -155,9 +152,13 @@ UiCache :: struct {
 // - layer of the UI, deliberately chosen, to render stuff earlier in the tree on top of stuff that comes later.
 // can be transmuted into a u64 to be compared with another ZInfo, layer in the high bits is most significant then
 ZInfo :: struct {
-	traversal_idx: u32, // less significant
-	layer:         u32, // most significant
+	traversal_idx:     u32, // less significant
+	layer:             u16, // most significant
+	screen_or_world_z: u16, // most significant, world always infront of screen
 }
+SCREEN_UI_Z: u16 : 1
+WORLD_UI_Z: u16 : 0
+
 // returns true if a is greater than b
 z_gte :: #force_inline proc "contextless" (a: ZInfo, b: ZInfo) -> bool {
 	return transmute(u64)a >= transmute(u64)b
@@ -167,12 +168,12 @@ CachedUserData :: [4]i64 // 32 bytes of custom data that can be used to store cu
 CachedElement :: struct {
 	pos:                  Vec2,
 	size:                 Vec2,
-	z_info:               ZInfo,
-	generation:           int,
 	pointer_pass_through: bool,
-	color:                Color,
 	border_color:         Color,
+	color:                Color,
 	user_data:            CachedUserData,
+	is_world_ui:          bool,
+	z_info:               ZInfo,
 	clipped_to:           Maybe(Aabb),
 }
 
@@ -312,7 +313,7 @@ Div :: struct {
 	border_width:      BorderWidth,
 	border_color:      Color,
 	lerp_speed:        f32, //   (lerp speed)
-	z_layer:           u32, // an offset to the parents z layer. 
+	z_layer:           u16, // an offset to the parents z layer. 
 }
 COVER_DIV :: Div {
 	flags  = {.Absolute, .WidthFraction, .HeightFraction},
@@ -429,6 +430,12 @@ UI_CTX_PTR: ^UiCtx
 set_global_ui_ctx_ptr :: proc(ptr: ^UiCtx) {
 	UI_CTX_PTR = ptr
 }
+assert_ui_ctx_ptr_is_set :: proc() {
+	assert(
+		UI_CTX_PTR.cache.platform != nil,
+		"platform ptr must be set on UI_CTX_PTR.cache, because it contains the asset manager that we need for resolving fonts!",
+	)
+}
 UiCtx :: struct {
 	// all buffers here are fixed size, allocated once because any reallocation could
 	// fuck up the internal ptrs in the childrens arrays!
@@ -532,18 +539,25 @@ ui_custom :: proc(
 	}
 }
 
-
-ui_ctx_start_frame :: proc(platform: ^Platform) {
+// important! This should be done AFTER hit info was calculated!
+ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 	screen_size := platform.screen_size_f32
 	cache := &UI_CTX_PTR.cache
-	cache.platform = platform
-	cache.layout_extent = Vec2 {
-		f32(SCREEN_REFERENCE_SIZE.y) * screen_size.x / screen_size.y,
-		f32(SCREEN_REFERENCE_SIZE.y),
-	}
-	cache.cursor_pos = screen_to_layout_space(platform.cursor_pos, screen_size)
+	cache.delta_secs = platform.delta_secs
+	// swap the cached id-element hashmaps:
+	cache.cached, cache.new_cached = cache.new_cached, cache.cached
+	clear(&cache.new_cached)
 
-	_ui_ctx_clear(UI_CTX_PTR)
+	cache.platform = platform
+	cache.cursor_pos = screen_to_layout_space(
+		platform.cursor_pos,
+		platform.settings.screen_ui_reference_size,
+		screen_size,
+	)
+	cache.cursor_pos_world =
+		Vec2{world_hit_pos.x, -world_hit_pos.y} * platform.settings.world_ui_px_per_unit
+
+	_ui_ctx_clear_arrays(UI_CTX_PTR)
 	// todo: this could probably also be done, by using the div tree as a space partitioning structure 
 	// (assuming non-overlapping divs for the most part!)
 	// figure out if any ui element with an id is hovered. If many, select the one with highest z value
@@ -554,11 +568,12 @@ ui_ctx_start_frame :: proc(platform: ^Platform) {
 			continue
 		}
 		if z_gte(cached.z_info, highest_z) {
+			cursor_pos := cache.cursor_pos_world if cached.is_world_ui else cache.cursor_pos
 			cursor_in_bounds :=
-				cache.cursor_pos.x >= cached.pos.x &&
-				cache.cursor_pos.y >= cached.pos.y &&
-				cache.cursor_pos.x <= cached.pos.x + cached.size.x &&
-				cache.cursor_pos.y <= cached.pos.y + cached.size.y
+				cursor_pos.x >= cached.pos.x &&
+				cursor_pos.y >= cached.pos.y &&
+				cursor_pos.x <= cached.pos.x + cached.size.x &&
+				cursor_pos.y <= cached.pos.y + cached.size.y
 
 			// for elements that are clipped by parent, the cursor also needs to be in the clipping rect! (hovering a clipped region should not trigger anything)
 			if clipped_to, ok := cached.clipped_to.(Aabb); cursor_in_bounds && ok {
@@ -580,22 +595,11 @@ ui_ctx_start_frame :: proc(platform: ^Platform) {
 		cache.cursor_pos_start_press = cache.cursor_pos
 	}
 }
-_ui_ctx_clear :: proc(ctx: ^UiCtx) {
+_ui_ctx_clear_arrays :: proc(ctx: ^UiCtx) {
 	ctx.divs_len = 0
 	ctx.texts_len = 0
 	ctx.custom_uis_len = 0
 	ctx.glyphs_len = 0
-}
-
-ui_layout_top_level_elements :: proc(top_level_elements: []Ui) {
-	assert(
-		UI_CTX_PTR.cache.platform != nil,
-		"platform ptr must be set on UI_CTX_PTR.cache, because it contains the asset manager that we need for resolving fonts!",
-	)
-	max_size := UI_CTX_PTR.cache.layout_extent
-	for ui in top_level_elements {
-		layout(ui, max_size) // warning! uses the global context at the moment
-	}
 }
 
 // ui_end_frame :: proc(
@@ -619,14 +623,23 @@ ui_layout_top_level_elements :: proc(top_level_elements: []Ui) {
 // /////////////////////////////////////////////////////////////////////////////
 // SECTION: Layout algorithm
 // /////////////////////////////////////////////////////////////////////////////
-layout :: proc(ui: Ui, max_size: Vec2) {
+layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
 	initial_pos := Vec2{0, 0}
-	used_size := _set_size(ui, max_size)
+	used_size := _set_size(ui, layout_extent)
 
 	// this allows top level divs to be absolute-positioned, relative to screen size
 	if div, ok := ui.(^DivElement); ok && DivFlag.Absolute in div.flags {
-		initial_pos = (max_size - used_size) * div.absolute_unit_pos
+		initial_pos = (layout_extent - used_size) * div.absolute_unit_pos
 	}
+	context.user_index = CONTEXT_USER_IDX_FOR_SCREEN_UI
+	_set_position(ui, initial_pos)
+}
+
+layout_in_world_space :: proc(ui: Ui, world_pos: Vec2, pixels_per_world_unit: f32) {
+	INFINITE_SIZE := Vec2{max(f32), max(f32)}
+	used_size := _set_size(ui, INFINITE_SIZE)
+	initial_pos := Vec2{world_pos.x, -world_pos.y} * pixels_per_world_unit - (used_size / 2)
+	context.user_index = CONTEXT_USER_IDX_FOR_WORLD_UI
 	_set_position(ui, initial_pos)
 }
 
@@ -762,6 +775,9 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 	}
 }
 
+CONTEXT_USER_IDX_FOR_WORLD_UI :: 9999
+CONTEXT_USER_IDX_FOR_SCREEN_UI :: 0
+
 // writes to ui.base.pos
 _set_position :: proc(ui: Ui, pos: Vec2) {
 	switch el in ui {
@@ -771,20 +787,71 @@ _set_position :: proc(ui: Ui, pos: Vec2) {
 		_set_position_for_text(el, pos)
 	case ^CustomUiElement:
 		el.pos = pos
+		if el.id != NO_ID {
+			UI_CTX_PTR.cache.new_cached[el.id] = CachedElement {
+				pos         = el.pos,
+				size        = el.size,
+				is_world_ui = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+			}
+		}
 	}
 }
-
+DIV_DEFAULT_LERP_SPEED :: 5.0
 // writes to div.pos
 _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 	div.pos = pos + div.offset
-	if len(div.children) == 0 {
-		return
+	if len(div.children) > 0 {
+		if DivFlag.LayoutAsText in div.flags {
+			_set_child_positions_for_div_with_text_layout(div)
+		} else {
+			_set_child_positions_for_div(div)
+		}
 	}
 
-	if DivFlag.LayoutAsText in div.flags {
-		_set_child_positions_for_div_with_text_layout(div)
-	} else {
-		_set_child_positions_for_div(div)
+	if div.id != NO_ID {
+		cache := &UI_CTX_PTR.cache
+
+
+		new_cached := CachedElement {
+			pos                  = div.pos,
+			size                 = div.size,
+			color                = div.color,
+			border_color         = div.border_color,
+			pointer_pass_through = .PointerPassThrough in div.flags,
+			is_world_ui          = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+		}
+
+		// lerp and transfer user data if this div existed last frame already
+		if old_cached, has_old_cached := cache.cached[div.id]; has_old_cached {
+			new_cached.user_data = old_cached.user_data
+
+			lerp_style := .LerpStyle in div.flags
+			lerp_transform := .LerpTransform in div.flags
+			t: f32 = --- // lerp factor
+			if lerp_style || lerp_transform {
+				lerp_speed := div.lerp_speed
+				if lerp_speed == 0 {
+					lerp_speed = DIV_DEFAULT_LERP_SPEED
+				}
+				t = lerp_speed * cache.delta_secs
+			}
+			if lerp_style {
+				new_cached.color = lerp(old_cached.color, div.color, t)
+				div.color = new_cached.color
+				new_cached.border_color = lerp(old_cached.border_color, div.border_color, t)
+				div.border_color = new_cached.border_color
+			}
+			// todo: should be in relation to parent
+			if lerp_transform {
+				new_cached.pos = lerp(old_cached.pos, div.pos, t)
+				div.pos = new_cached.pos
+				new_cached.size = lerp(old_cached.size, div.size, t)
+				div.size = new_cached.size
+			}
+		}
+
+
+		UI_CTX_PTR.cache.new_cached[div.id] = new_cached
 	}
 }
 
@@ -889,7 +956,7 @@ _element_base_ptr :: #force_inline proc(ui: Ui) -> ^UiElementBase {
 	// the first 8 bytes of Ui are always a ^UiElementBase, the second 8 Bytes are a tag.
 	UiFatPtr :: struct {
 		ptr:       ^UiElementBase, // because all variants have UiElementBase as first field
-		tag_bytes: [8]u8,
+		tag_bytes: u64,
 	}
 	return (transmute(UiFatPtr)(ui)).ptr
 }
@@ -900,7 +967,16 @@ _set_position_for_text :: proc(text: ^TextElement, pos: Vec2) {
 		g.pos.x += f32(text.pos.x)
 		g.pos.y += f32(text.pos.y)
 	}
-	return
+
+	if text.id != NO_ID {
+		UI_CTX_PTR.cache.new_cached[text.id] = CachedElement {
+			pos                  = text.pos,
+			size                 = text.size,
+			color                = text.color,
+			pointer_pass_through = text.pointer_pass_through,
+			is_world_ui          = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+		}
+	}
 }
 
 
@@ -1182,96 +1258,6 @@ merge_line_metrics_to_max :: proc(a: LineMetrics, b: LineMetrics) -> (res: LineM
 // SECTION: Batching and other stuff
 // /////////////////////////////////////////////////////////////////////////////
 
-// Note: also modifies the Ui-Elements in the UI_Memory to achieve lerping from the last frame.
-// Does NOT attach z-info, this is done later during batching. But update_ui_cache needs to be called
-// before batching, because during batching primitives are created, so color lerping has to happen before.
-ui_update_ui_cache_end_of_frame_after_layout_before_batching :: proc(delta_secs: f32) {
-	@(thread_local)
-	generation: int
-
-	DIV_DEFAULT_LERP_SPEED :: 5.0
-	generation += 1
-
-	cache := &UI_CTX_PTR.cache
-	for &div in UI_CTX_PTR.divs[:UI_CTX_PTR.divs_len] {
-		if div.id == NO_ID {
-			continue
-		}
-		// Todo: this logic could be more elegant, especially since Laytans map-entry PR in now merged in Odin (2025-01-08)
-		old_cached, has_old_cached := cache.cached[div.id]
-		new_cached: CachedElement = CachedElement {
-			pos        = div.pos,
-			size       = div.size,
-			generation = generation,
-		}
-		new_cached.pointer_pass_through = .PointerPassThrough in div.flags
-		if has_old_cached {
-			new_cached.user_data = old_cached.user_data
-			lerp_style := .LerpStyle in div.flags
-			lerp_transform := .LerpTransform in div.flags
-			s: f32 = --- // lerp factor
-			if lerp_style || lerp_transform {
-				lerp_speed := div.lerp_speed
-				if lerp_speed == 0 {
-					lerp_speed = DIV_DEFAULT_LERP_SPEED
-				}
-				s = lerp_speed * delta_secs
-			}
-			if lerp_style {
-				new_cached.color = lerp(old_cached.color, div.color, s)
-				div.color = new_cached.color
-				new_cached.border_color = lerp(old_cached.border_color, div.border_color, s)
-				div.border_color = new_cached.border_color
-			} else {
-				new_cached.color = div.color
-				new_cached.border_color = div.border_color
-			}
-			// todo: should be in relation to parent
-			if lerp_transform {
-				new_cached.pos = lerp(old_cached.pos, div.pos, s)
-				div.pos = new_cached.pos
-				new_cached.size = lerp(old_cached.size, div.size, s)
-				div.size = new_cached.size
-			}
-		} else {
-			new_cached.color = div.color
-			new_cached.border_color = div.border_color
-		}
-		cache.cached[div.id] = new_cached
-	}
-
-	for &text in UI_CTX_PTR.texts[:UI_CTX_PTR.texts_len] {
-		if text.id == NO_ID {
-			continue
-		}
-		cache.cached[text.id] = CachedElement {
-			pos                  = text.pos,
-			size                 = text.size,
-			generation           = generation,
-			pointer_pass_through = text.pointer_pass_through,
-		}
-	}
-
-	for &custom in UI_CTX_PTR.custom_uis[:UI_CTX_PTR.custom_uis_len] {
-		if custom.id == NO_ID {
-			continue
-		}
-		cache.cached[custom.id] = CachedElement {
-			pos        = custom.pos,
-			size       = custom.size,
-			generation = generation,
-		}
-	}
-
-	// delete old elements from the cache
-	for k, &v in cache.cached {
-		if v.generation != generation {
-			delete_key(&cache.cached, k)
-		}
-	}
-}
-
-
 PreBatch :: struct {
 	end_idx: int,
 	kind:    BatchKind,
@@ -1280,13 +1266,17 @@ PreBatch :: struct {
 
 // WARNING: calls this at the end of the frame AFTER update_ui_cache!
 // writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
-build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches: ^UiBatches) {
-	cached: ^map[UiId]CachedElement = &UI_CTX_PTR.cache.cached
+build_ui_batches_and_attach_z_info :: proc(
+	top_level_elements: []Ui,
+	out_batches: ^UiBatches,
+	is_world_ui: bool,
+) {
+	cached: ^map[UiId]CachedElement = &UI_CTX_PTR.cache.new_cached
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {
 		ui:         Ui,
-		z_layer:    u32,
+		z_layer:    u16,
 		clipped_to: Maybe(Aabb),
 	}
 	CurrentBatch :: struct {
@@ -1297,12 +1287,13 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 	}
 	// a new z region is added for each top level element and for each child div with a non-zero z-layer (offset)
 	Batcher :: struct {
-		current_z_layer: u32,
-		traversal_idx:   u32,
-		z_regions:       [dynamic]ZRegion, // kept sorted by region.z_info.layer
-		batches:         ^UiBatches,
-		current:         CurrentBatch,
-		cached:          ^map[UiId]CachedElement,
+		traversal_idx:     u32,
+		current_z_layer:   u16,
+		screen_or_world_z: u16,
+		z_regions:         [dynamic]ZRegion, // kept sorted by region.z_info.layer
+		batches:           ^UiBatches,
+		current:           CurrentBatch,
+		cached:            ^map[UiId]CachedElement,
 	}
 	_insert_z_region :: proc(z_regions: ^[dynamic]ZRegion, region: ZRegion) {
 		// search from the back to the front, adding when larger or equal to the highest layer up to now:
@@ -1315,30 +1306,37 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		}
 		inject_at(z_regions, insert_idx, region)
 	}
-	_batcher_create :: proc(top_level_elements: []Ui, out_batches: ^UiBatches) -> Batcher {
+	_batcher_create :: proc(
+		top_level_elements: []Ui,
+		out_batches: ^UiBatches,
+		is_world_ui: bool,
+	) -> Batcher {
 		elements_count := len(top_level_elements)
 		z_regions := make([dynamic]ZRegion, allocator = context.temp_allocator)
 		_clear_batches(out_batches)
 		for ui, i in top_level_elements {
 			base := _element_base_ptr(ui)
-			z_layer: u32 = 0
+			z_layer: u16 = 0
 			if div, ok := ui.(^DivElement); ok {
 				z_layer = div.z_layer
 			}
-
 			_insert_z_region(&z_regions, ZRegion{ui, z_layer, nil})
 		}
-		return Batcher{batches = out_batches, z_regions = z_regions}
+		return Batcher {
+			batches = out_batches,
+			z_regions = z_regions,
+			screen_or_world_z = WORLD_UI_Z if is_world_ui else SCREEN_UI_Z,
+		}
 	}
 	// Note: currently no sorting by z here
-	b: Batcher = _batcher_create(top_level_elements, out_batches)
+	b: Batcher = _batcher_create(top_level_elements, out_batches, is_world_ui)
 	b.cached = cached
 	idx := 0
 	for ; idx < len(b.z_regions); idx += 1 {
 		reg: ZRegion = b.z_regions[idx]
 		b.current_z_layer = reg.z_layer
 		if reg.clipped_to != b.current.clipped_to {
-			             _flush_and_apply_new_clipping_rect(&b, reg.clipped_to)
+			_flush_and_apply_new_clipping_rect(&b, reg.clipped_to)
 		}
 		_add(&b, reg.ui)
 	}
@@ -1355,11 +1353,12 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 	}
 	// Note: currently no sorting or z-index, just add children recursively in order.
 	_add :: proc(b: ^Batcher, ui: Ui) {
-		base :=    _element_base_ptr(ui)
+		base := _element_base_ptr(ui)
 		if base.id != NO_ID {
 			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
-			cached := &b.cached[base.id]
-			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer}
+			cached, ok := &b.cached[base.id]
+			assert(ok)
+			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer, b.screen_or_world_z}
 			cached.clipped_to = b.current.clipped_to
 		}
 		b.traversal_idx += 1
@@ -1774,7 +1773,6 @@ _add_nine_slice_rects_repeating :: proc(
 			v.pos = Vec2{p_x_max, p_y_max}
 			v.uv = Vec2{uv_x_max, uv_y_max}
 			append(vertices, v)
-
 
 			append(tris, Triangle{0, 2, 3} + start_v)
 			append(tris, Triangle{0, 3, 1} + start_v)

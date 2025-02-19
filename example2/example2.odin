@@ -15,14 +15,17 @@ Color :: [4]f32
 recorded_dt: [dynamic]f32
 
 main :: proc() {
-	E.init()
+	settings := E.DEFAULT_ENGINE_SETTINGS
+	settings.debug_ui_gizmos = true
+	E.init(settings)
 	defer {E.deinit()}
 	E.set_bloom_enabled(false)
 
 	corn := E.load_texture_tile("./assets/corn.png")
 	sprite := E.load_texture_tile("./assets/can.png")
-
-
+	cam := E.camera_controller_create()
+	cam.settings.move_with_wasd = false
+	cam.settings.min_size = 0.03
 	player_pos := Vec2{0, 0}
 	forest := [?]Vec2{{0, 0}, {2, 0}, {3, 0}, {5, 2}, {6, 3}}
 
@@ -39,8 +42,9 @@ main :: proc() {
 	tonemapping: q.TonemappingMode
 	bloom_enabled := true
 	bloom_blend_factor: f64 = 0.2
-
+	snake_enabled := false
 	for E.next_frame() {
+		E.camera_controller_update(&cam)
 		append(&recorded_dt, E.get_delta_secs() * 1000.0)
 
 		E.add_window(
@@ -52,11 +56,14 @@ main :: proc() {
 				E.color_picker(&color2, "Color 2"),
 				E.color_picker(&color3, "Color 3"),
 				E.toggle(&bloom_enabled, "Bloom"),
+				E.toggle(&snake_enabled, "Render Snake"),
 				E.text("Bloom blend factor:"),
 				E.slider(&bloom_blend_factor),
 				E.text_edit(&text_to_edit, align = .Center, font_size = E.THEME.font_size),
 			},
 		)
+		E.draw_annotation({2, -1}, "Hello from the engine!")
+		E.add_world_ui(E.button("Click me!", "abcde").ui, {2, 1})
 
 		E.set_tonemapping_mode(tonemapping)
 		E.set_bloom_enabled(bloom_enabled)
@@ -95,10 +102,13 @@ main :: proc() {
 
 		// poly := [?]q.Vec2{{-5, -5}, {-5, 0}, {0, 0}, {-5, -5}, {0, 0}, {0, -5}}
 		// q.draw_color_mesh(poly[:])
-		snake_update_body(&snake, E.get_hit_pos())
-		snake_draw(&snake)
-		E.set_clear_color(background_color)
 
+		if snake_enabled {
+			snake_update_body(&snake, E.get_hit_pos())
+			snake_draw(&snake)
+		}
+
+		E.set_clear_color(background_color)
 	}
 
 }

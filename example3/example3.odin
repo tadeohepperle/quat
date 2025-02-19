@@ -100,6 +100,7 @@ main :: proc() {
 			bone.head = q.affine_apply(transform, original.head)
 			bone.root = q.affine_apply(transform, original.root)
 		}
+
 		E.set_skinned_mesh_bones(skinned_mesh, current_pose[:])
 		E.draw_skinned_mesh(skinned_mesh, {0, 0}, {1, 1, 1, 0.3})
 		E.draw_grid(1, q.Color{1, 1, 1, 0.2})

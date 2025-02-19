@@ -16,11 +16,12 @@ print :: q.print
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
 
 EngineSettings :: struct {
-	using platform:        q.PlatformSettings,
-	bloom_enabled:         bool,
-	bloom_settings:        q.BloomSettings,
-	debug_ui_gizmos:       bool,
-	debug_collider_gizmos: bool,
+	using platform:           q.PlatformSettings,
+	bloom_enabled:            bool,
+	bloom_settings:           q.BloomSettings,
+	debug_ui_gizmos:          bool,
+	debug_collider_gizmos:    bool,
+	use_simple_sprite_shader: bool, // does not use the depth calculations
 }
 DEFAULT_ENGINE_SETTINGS := EngineSettings {
 	platform              = q.PLATFORM_SETTINGS_DEFAULT,
@@ -46,8 +47,8 @@ Engine :: struct {
 	shine_sprites:            SpriteBuffers,
 	transparent_sprites_low:  SpriteBuffers,
 	transparent_sprites_high: SpriteBuffers,
-	ui_world_layer_buffers:   q.UiRenderBuffers,
-	ui_top_layer_buffers:     q.UiRenderBuffers,
+	world_ui_buffers:         q.UiRenderBuffers,
+	screen_ui_buffers:        q.UiRenderBuffers,
 
 
 	// sprite_pipeline:     Pipeline,
@@ -78,6 +79,7 @@ sprite_buffers_batch_and_prepare :: proc(this: ^SpriteBuffers, sprites: []q.Spri
 PipelineType :: enum {
 	HexChunk,
 	SpriteCutout,
+	SpriteSimple,
 	SpriteShine,
 	SpriteTransparent,
 	SkinnedCutout,
@@ -87,8 +89,15 @@ PipelineType :: enum {
 	Mesh3d,
 	Mesh3dHexChunkMasked,
 	Tritex,
-	UiGlyph,
-	UiRect,
+	ScreenUiGlyph,
+	ScreenUiRect,
+	WorldUiGlyph,
+	WorldUiRect,
+}
+
+UiAtWorldPos :: struct {
+	ui:        q.Ui,
+	world_pos: Vec2,
 }
 
 // roughly in render order
@@ -103,11 +112,11 @@ Scene :: struct {
 	cutout_sprites:             [dynamic]q.Sprite,
 	// transparency layer 1:
 	transparent_sprites_low:    [dynamic]q.Sprite,
-	ui_world_layer:             [dynamic]q.Ui, // ui elements that are rendered below transparent sprites and shine sprites
+	world_ui:                   #soa[dynamic]UiAtWorldPos, // ui elements that are rendered below transparent sprites and shine sprites
 	// transparency layer 2:
 	transparent_sprites_high:   [dynamic]q.Sprite,
 	shine_sprites:              [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
-	ui_top_layer:               [dynamic]q.Ui,
+	screen_ui:                  [dynamic]q.Ui,
 	// other stuff
 	colliders:                  [dynamic]q.Collider,
 	last_frame_colliders:       [dynamic]q.Collider,
@@ -120,7 +129,8 @@ HitInfo :: struct {
 	hit_pos:          Vec2,
 	hit_collider:     q.ColliderMetadata,
 	hit_collider_idx: int,
-	is_on_ui:         bool,
+	is_on_screen_ui:  bool,
+	is_on_world_ui:   bool,
 }
 
 _scene_create :: proc(scene: ^Scene) {
@@ -135,10 +145,10 @@ _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.cutout_sprites)
 	delete(scene.transparent_sprites_low)
 
-	delete(scene.ui_world_layer)
+	delete(scene.world_ui)
 	delete(scene.transparent_sprites_high)
 	delete(scene.shine_sprites)
-	delete(scene.ui_top_layer)
+	delete(scene.screen_ui)
 
 	delete(scene.last_frame_colliders)
 	delete(scene.colliders)
@@ -155,10 +165,10 @@ _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.cutout_sprites)
 	clear(&scene.transparent_sprites_low)
 
-	clear(&scene.ui_world_layer)
+	clear(&scene.world_ui)
 	clear(&scene.transparent_sprites_high)
 	clear(&scene.shine_sprites)
-	clear(&scene.ui_top_layer)
+	clear(&scene.screen_ui)
 
 	// swap with last frame to still raycast against them:
 	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
@@ -191,7 +201,10 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	queue := platform.queue
 	p := &engine.pipelines
 	p[.HexChunk] = q.make_render_pipeline(reg, q.hex_chunk_pipeline_config(device))
+	p[.SpriteSimple] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Simple))
+	print(p[.SpriteSimple].config)
 	p[.SpriteCutout] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Cutout))
+	print(p[.SpriteCutout].config)
 	p[.SpriteShine] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Shine))
 	p[.SpriteTransparent] = q.make_render_pipeline(
 		reg,
@@ -204,8 +217,22 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	)
 	p[.SkinnedCutout] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
 	p[.Tritex] = q.make_render_pipeline(reg, q.tritex_mesh_pipeline_config(device))
-	p[.UiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device))
-	p[.UiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device))
+	p[.ScreenUiGlyph] = q.make_render_pipeline(
+		reg,
+		q.ui_glyph_pipeline_config(device, in_world = false),
+	)
+	p[.ScreenUiRect] = q.make_render_pipeline(
+		reg,
+		q.ui_rect_pipeline_config(device, in_world = false),
+	)
+	p[.WorldUiGlyph] = q.make_render_pipeline(
+		reg,
+		q.ui_glyph_pipeline_config(device, in_world = true),
+	)
+	p[.WorldUiRect] = q.make_render_pipeline(
+		reg,
+		q.ui_rect_pipeline_config(device, in_world = true),
+	)
 
 
 	engine.cutout_sprites = sprite_buffers_create(device, queue)
@@ -213,8 +240,8 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	engine.transparent_sprites_low = sprite_buffers_create(device, queue)
 	engine.transparent_sprites_high = sprite_buffers_create(device, queue)
 
-	engine.ui_world_layer_buffers = q.ui_render_buffers_create(device, queue)
-	engine.ui_top_layer_buffers = q.ui_render_buffers_create(device, queue)
+	engine.world_ui_buffers = q.ui_render_buffers_create(device, queue)
+	engine.screen_ui_buffers = q.ui_render_buffers_create(device, queue)
 }
 _engine_destroy :: proc(engine: ^Engine) {
 	q.platform_destroy(&engine.platform)
@@ -231,8 +258,8 @@ _engine_destroy :: proc(engine: ^Engine) {
 	sprite_buffers_destroy(&engine.transparent_sprites_low)
 	sprite_buffers_destroy(&engine.transparent_sprites_high)
 
-	q.ui_render_buffers_destroy(&engine.ui_world_layer_buffers)
-	q.ui_render_buffers_destroy(&engine.ui_top_layer_buffers)
+	q.ui_render_buffers_destroy(&engine.world_ui_buffers)
+	q.ui_render_buffers_destroy(&engine.screen_ui_buffers)
 }
 
 
@@ -260,7 +287,8 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 		return false
 	}
 	_engine_recalculate_hit_info(engine)
-	q.ui_ctx_start_frame(&engine.platform)
+	q.ui_ctx_start_frame(&engine.platform, engine.hit.hit_pos)
+	_engine_recalculate_ui_hit_info(engine)
 	return true
 }
 
@@ -283,8 +311,23 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 			}
 		}
 	}
-	is_on_ui := engine.ui_ctx.cache.state.hovered != 0
-	engine.hit = HitInfo{hit_pos, hit_collider, hit_collider_idx, is_on_ui}
+	engine.hit = HitInfo {
+		hit_pos          = hit_pos,
+		hit_collider     = hit_collider,
+		hit_collider_idx = hit_collider_idx,
+	}
+}
+_engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
+	// is_on_screen_ui, is_on_world_ui : bool
+	// hovered_id := engine.ui_ctx.cache.state.hovered
+	// if engine.ui_ctx.cache.state.hovered != 0{
+	// 	engine.ui_ctx.cache.new_cached[hovered_id] = 
+	// }
+
+	// = 
+	// is_on_world_ui := engine.ui_ctx.cache.state.hovered != 0
+	// engine.hit = HitInfo{hit_pos, hit_collider, hit_collider_idx, is_on_screen_ui, is_on_world_ui}
+
 }
 
 _engine_end_frame :: proc(engine: ^Engine) {
@@ -318,11 +361,21 @@ _engine_prepare :: proc(engine: ^Engine) {
 	scene := &engine.scene
 	q.platform_prepare(&engine.platform, scene.camera)
 
-	q.ui_layout_top_level_elements(scene.ui_world_layer[:])
-	q.ui_layout_top_level_elements(scene.ui_top_layer[:])
-	q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
-	q.ui_render_buffers_batch_and_prepare(&engine.ui_world_layer_buffers, scene.ui_world_layer[:])
-	q.ui_render_buffers_batch_and_prepare(&engine.ui_top_layer_buffers, scene.ui_top_layer[:])
+	q.assert_ui_ctx_ptr_is_set()
+	for e in scene.world_ui {
+		q.layout_in_world_space(e.ui, e.world_pos, engine.platform.settings.world_ui_px_per_unit)
+	}
+	for ui in scene.screen_ui {
+		q.layout_in_screen_space(ui, engine.platform.ui_layout_extent)
+	}
+	// q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
+	world_uis, _ := soa_unzip(scene.world_ui[:])
+	q.ui_render_buffers_batch_and_prepare(&engine.world_ui_buffers, world_uis, is_world_ui = true)
+	q.ui_render_buffers_batch_and_prepare(
+		&engine.screen_ui_buffers,
+		scene.screen_ui[:],
+		is_world_ui = false,
+	)
 
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
@@ -355,7 +408,6 @@ _engine_render :: proc(engine: ^Engine) {
 		assert(pipeline != nil)
 	}
 
-
 	q.hex_chunks_render(
 		engine.pipelines[.HexChunk].pipeline,
 		hdr_pass,
@@ -387,8 +439,10 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.meshes_3d_hex_chunk_masked[:],
 		asset_manager,
 	)
+
+	simple_sprite_shader := engine.settings.use_simple_sprite_shader
 	q.sprite_batches_render(
-		engine.pipelines[.SpriteCutout].pipeline,
+		engine.pipelines[.SpriteSimple if simple_sprite_shader else .SpriteCutout].pipeline,
 		engine.cutout_sprites.batches[:],
 		engine.cutout_sprites.instance_buffer,
 		hdr_pass,
@@ -417,11 +471,12 @@ _engine_render :: proc(engine: ^Engine) {
 		asset_manager,
 	)
 	q.ui_render(
-		engine.ui_world_layer_buffers,
-		engine.pipelines[.UiRect].pipeline,
-		engine.pipelines[.UiGlyph].pipeline,
+		engine.world_ui_buffers,
+		engine.pipelines[.WorldUiRect].pipeline,
+		engine.pipelines[.WorldUiGlyph].pipeline,
 		hdr_pass,
 		global_bind_group,
+		engine.platform.settings.screen_ui_reference_size,
 		engine.platform.screen_size,
 		asset_manager,
 	)
@@ -448,11 +503,12 @@ _engine_render :: proc(engine: ^Engine) {
 
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .WORLD)
 	q.ui_render(
-		engine.ui_top_layer_buffers,
-		engine.pipelines[.UiRect].pipeline,
-		engine.pipelines[.UiGlyph].pipeline,
+		engine.screen_ui_buffers,
+		engine.pipelines[.ScreenUiRect].pipeline,
+		engine.pipelines[.ScreenUiGlyph].pipeline,
 		hdr_pass,
 		global_bind_group,
+		engine.platform.settings.screen_ui_reference_size,
 		engine.platform.screen_size,
 		asset_manager,
 	)
@@ -473,7 +529,6 @@ _engine_render :: proc(engine: ^Engine) {
 
 	q.platform_end_render(&engine.platform, surface_texture, surface_view, command_encoder)
 }
-
 
 @(private)
 _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
@@ -505,8 +560,21 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 		if state.pressed == k {
 			color = q.ColorRed
 		}
-		q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)
+		if v.is_world_ui {
+			pos := Vec2{v.pos.x, -v.pos.y} / engine.settings.world_ui_px_per_unit
+			size := Vec2{v.size.x, -v.size.y} / engine.settings.world_ui_px_per_unit
+			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {pos, pos + size}, color, .WORLD)
+		} else {
+			q.gizmos_renderer_add_aabb(
+				&engine.gizmos_renderer,
+				{v.pos, v.pos + v.size},
+				color,
+				.UI,
+			)
+		}
+
 	}
+
 
 	// for &e in UI_MEMORY_elements() {
 	// 	color: Color = ---
@@ -591,6 +659,9 @@ get_osc :: proc(speed: f32 = 1, amplitude: f32 = 1, bias: f32 = 0, phase: f32 = 
 }
 get_screen_size_f32 :: proc() -> Vec2 {
 	return ENGINE.platform.screen_size_f32
+}
+get_ui_layout_extent :: proc() -> Vec2 {
+	return ENGINE.platform.ui_layout_extent
 }
 get_cursor_pos :: proc() -> Vec2 {
 	return ENGINE.platform.cursor_pos
@@ -871,10 +942,10 @@ draw_color_mesh_indexed_single_color :: proc(
 	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, triangles, color)
 }
 add_ui :: proc(ui: q.Ui) {
-	append(&ENGINE.scene.ui_top_layer, ui)
+	append(&ENGINE.scene.screen_ui, ui)
 }
-add_world_ui :: proc(ui: q.Ui) {
-	append(&ENGINE.scene.ui_world_layer, ui)
+add_world_ui :: proc(ui: q.Ui, world_pos: Vec2) {
+	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos})
 }
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
 	append(
@@ -987,45 +1058,31 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 	if len(engine.scene.annotations) == 0 {
 		return
 	}
-	cover := div(q.COVER_DIV)
-	add_ui(cover)
 
 	screen_size := engine.platform.screen_size_f32
 	camera := engine.scene.camera
-	half_cam_world_size := Vec2{camera.height * screen_size.x / screen_size.y, camera.height}
+	half_cam_world_size := Vec2{camera.height * screen_size.x / screen_size.y, camera.height} / 2
+	margin := Vec2{1, 1}
+	// todo: maybe use this culling technique also elsewhere, e.g. for skinned meshes????
 	culling_aabb := q.Aabb {
-		min = camera.focus_pos - half_cam_world_size - Vec2{1, 1},
-		max = camera.focus_pos + half_cam_world_size + Vec2{1, 1},
+		min = camera.focus_pos - half_cam_world_size - margin,
+		max = camera.focus_pos + half_cam_world_size + margin,
 	}
 	for ann in engine.scene.annotations {
 		// cull points that are likely offscreen anyway
 		if !q.aabb_contains(culling_aabb, ann.pos) {
 			continue
 		}
-
-		screen_pos := q.world_to_screen_pos(camera, ann.pos, screen_size)
-		screen_unit_pos := screen_pos / screen_size
-		div_at_pt := child_div(
-			cover,
-			Div {
-				flags = q.DivFlags {
-					.Absolute,
-					.MainAlignCenter,
-					.ZeroSizeButInfiniteSizeForChildren,
-					.CrossAlignCenter,
-				},
-				absolute_unit_pos = screen_unit_pos,
-			},
-		)
 		// red_box := child_div(div_at_pt, q.RED_BOX_DIV)
-		child_text(
-			div_at_pt,
-			Text {
-				color     = ann.color,
-				shadow    = 0.5,
-				font_size = 10.80 / camera.height * ann.font_size, // because UI layout assumes screen is 1080 px in height
-				str       = ann.str,
-			},
+
+		ui := text(
+		Text {
+			color     = ann.color,
+			shadow    = 0.5,
+			font_size = 10.80 / camera.height * ann.font_size, // because UI layout assumes screen is 1080 px in height
+			str       = ann.str,
+		},
 		)
+		add_world_ui(ui, ann.pos)
 	}
 }

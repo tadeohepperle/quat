@@ -21,11 +21,21 @@ struct VertexOutput {
 }
 
 @vertex
-fn vs_all(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
+fn vs_depth(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
     let vertex = sprite_vertex(vertex_index, instance);
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc_with_z(vertex.pos, vertex.z); //  
-    out.color = instance.color; // v4(v3(vertex.z), 1.0); //
+    out.clip_position = world_pos_to_ndc_with_z(vertex.pos, vertex.z); 
+    out.color = instance.color;
+    out.uv = vertex.uv;
+    return out;
+}
+
+@vertex
+fn vs_simple(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
+    let vertex = sprite_vertex(vertex_index, instance);
+    var out: VertexOutput;
+    out.clip_position = world_pos_to_ndc(vertex.pos);
+    out.color = instance.color; 
     out.uv = vertex.uv;
     return out;
 }
@@ -44,7 +54,7 @@ fn fs_cutout(in: VertexOutput) -> @location(0) vec4<f32> {
 @fragment
 fn fs_transparent(in: VertexOutput) -> @location(0) vec4<f32> {
     let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
-    return image_color * in.color * osc(11.0, 0.8,4.0);
+    return image_color * in.color;
 }
 
 @fragment
@@ -53,6 +63,12 @@ fn fs_shine(in: VertexOutput) -> @location(0) vec4<f32> {
     let default_color = image_color * in.color;
     let lightness :f32 = (default_color.r + default_color.g + default_color.b) /3.0;
     return  vec4<f32>( (1.0 - default_color.rgb) *0.6, default_color.a * 0.2);
+}
+
+@fragment
+fn fs_simple(in: VertexOutput) -> @location(0) vec4<f32> {
+    let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
+    return image_color * in.color;
 }
 
 struct SpriteVertex {
