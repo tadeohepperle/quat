@@ -311,23 +311,22 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 			}
 		}
 	}
-	engine.hit = HitInfo {
-		hit_pos          = hit_pos,
-		hit_collider     = hit_collider,
-		hit_collider_idx = hit_collider_idx,
-	}
+	engine.hit.hit_pos = hit_pos
+	engine.hit.hit_collider = hit_collider
+	engine.hit.hit_collider_idx = hit_collider_idx
 }
 _engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
-	// is_on_screen_ui, is_on_world_ui : bool
-	// hovered_id := engine.ui_ctx.cache.state.hovered
-	// if engine.ui_ctx.cache.state.hovered != 0{
-	// 	engine.ui_ctx.cache.new_cached[hovered_id] = 
-	// }
-
-	// = 
-	// is_on_world_ui := engine.ui_ctx.cache.state.hovered != 0
-	// engine.hit = HitInfo{hit_pos, hit_collider, hit_collider_idx, is_on_screen_ui, is_on_world_ui}
-
+	hovered_id := engine.ui_ctx.cache.state.hovered
+	engine.hit.is_on_world_ui = false
+	engine.hit.is_on_screen_ui = false
+	if hovered_id != 0 {
+		cached_element := engine.ui_ctx.cache.cached[hovered_id]
+		if cached_element.is_world_ui {
+			engine.hit.is_on_world_ui = true
+		} else {
+			engine.hit.is_on_screen_ui = true
+		}
+	}
 }
 
 _engine_end_frame :: proc(engine: ^Engine) {
@@ -572,22 +571,7 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 				.UI,
 			)
 		}
-
 	}
-
-
-	// for &e in UI_MEMORY_elements() {
-	// 	color: Color = ---
-	// 	switch &var in &e.variant {
-	// 	case DivWithComputed:
-	// 		color = Color_Red
-	// 	case TextWithComputed:
-	// 		color = Color_Yellow
-	// 	case CustomUiElement:
-	// 		color = Color_Green
-	// 	}
-	// 	
-	// }
 }
 
 

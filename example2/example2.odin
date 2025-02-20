@@ -47,6 +47,7 @@ main :: proc() {
 		E.camera_controller_update(&cam)
 		append(&recorded_dt, E.get_delta_secs() * 1000.0)
 
+
 		E.add_window(
 			"Example window",
 			{
@@ -68,6 +69,7 @@ main :: proc() {
 		E.set_tonemapping_mode(tonemapping)
 		E.set_bloom_enabled(bloom_enabled)
 		E.set_bloom_blend_factor(bloom_blend_factor)
+		E.display_value(E.get_hit().is_on_screen_ui, E.get_hit().is_on_world_ui)
 
 		for y in -5 ..= 5 {
 			E.draw_gizmos_line(Vec2{-5, f32(y)}, Vec2{5, f32(y)}, color2)
