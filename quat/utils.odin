@@ -95,7 +95,7 @@ ivec2_to_vec2 :: proc "contextless" (i: IVec2) -> Vec2 {
 	return Vec2{f32(i.x), f32(i.y)}
 }
 
-rotation_mat_2d :: proc(angle: f32) -> Mat2 {
+rotation_mat_2d :: proc "contextless" (angle: f32) -> Mat2 {
 	co := math.cos(angle)
 	si := math.sin(angle)
 	return Mat2{co, -si, si, co}

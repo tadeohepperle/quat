@@ -64,7 +64,7 @@ main :: proc() {
 			},
 		)
 		E.draw_annotation({2, -1}, "Hello from the engine!")
-		E.add_world_ui(E.button("Click me!", "abcde").ui, {2, 1})
+		E.add_world_ui({2, 1}, E.button("Click me!", "abcde").ui)
 
 		E.set_tonemapping_mode(tonemapping)
 		E.set_bloom_enabled(bloom_enabled)

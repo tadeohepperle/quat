@@ -415,7 +415,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.hex_chunks[:],
 		asset_manager,
 	)
-
 	q.tritex_mesh_render(
 		engine.pipelines[.Tritex].pipeline,
 		hdr_pass,
@@ -928,7 +927,7 @@ draw_color_mesh_indexed_single_color :: proc(
 add_ui :: proc(ui: q.Ui) {
 	append(&ENGINE.scene.screen_ui, ui)
 }
-add_world_ui :: proc(ui: q.Ui, world_pos: Vec2) {
+add_world_ui :: proc(world_pos: Vec2, ui: q.Ui) {
 	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos})
 }
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
@@ -1067,6 +1066,6 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 			str       = ann.str,
 		},
 		)
-		add_world_ui(ui, ann.pos)
+		add_world_ui(ann.pos, ui)
 	}
 }

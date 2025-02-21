@@ -1100,7 +1100,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 		ctx.last_byte_idx = ch_byte_idx
 		g := get_or_add_glyph(font.sdf_font, ch)
 		if g.kind == .NotContained {
-			fmt.panicf("Character '{}' not rastierized yet! {}", ch, u32(ch), text)
+			fmt.panicf("Character '{}' not contained in font! {}", ch, u32(ch))
 		}
 		g.advance *= scale
 		g.xmin *= scale
