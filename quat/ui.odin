@@ -454,7 +454,7 @@ UiCtx :: struct {
 	temp_alloc:              runtime.Allocator,
 }
 
-DIVS_MAX_COUNT :: 2024
+DIVS_MAX_COUNT :: 4096
 TEXTS_MAX_COUNT :: 4096
 CUSTOM_UIS_MAX_COUNT :: 512
 GLYPHS_MAX_COUNT :: 4096 * 16

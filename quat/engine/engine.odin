@@ -1012,6 +1012,7 @@ get_arrows :: proc() -> Vec2 {
 	}
 	return dir
 }
+
 // call before initializing engine!
 enable_max_fps :: proc() {
 	DEFAULT_ENGINE_SETTINGS.power_preference = .HighPerformance
