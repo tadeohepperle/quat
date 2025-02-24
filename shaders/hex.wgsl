@@ -18,33 +18,43 @@ struct HexChunkData {
 @group(2) @binding(0) var<uniform> hex_chunk_terrain : HexChunkData;
 
 struct Tile {
-    old_ter: u32,
-    new_ter: u32,
-    new_fact_and_vis: vec2<f32>,
+    old_ter:  u32,
+    new_ter:  u32,
+    new_fact_and_vis: vec2<f32>, 
 }
 fn get_data(idx_in_chunk: u32) -> Tile {
     let buf_idx = idx_in_chunk / 2;
     let comp_idx = (idx_in_chunk % 2) * 2; // 0 or 2
     let two_tiles: vec4<u32> = hex_chunk_terrain.tiles[buf_idx];
-    
+
     var res: Tile;
-    let old_and_new_ter: u32 = two_tiles[comp_idx];
-    res.old_ter = old_and_new_ter & 0xFFFF;
-    res.new_ter = old_and_new_ter >> 16;
-    res.new_fact_and_vis = unpack2x16float(two_tiles[comp_idx + 1]);
+    let u8_values = unpack4xU8(two_tiles[comp_idx]);
+    res.old_ter = u8_values[0];
+    res.new_ter = u8_values[1];
+    let old_vis_255 = f32(u8_values[2]);
+    let new_vis_255 = f32(u8_values[3]);
+    
+    let new_fact = bitcast<f32>(two_tiles[comp_idx + 1]);
+    // let new_fact = globals.xxx.x;
+    let vis = (old_vis_255 + ((new_vis_255 - old_vis_255) * new_fact)) * (1.0 / 255.0);
+    res.new_fact_and_vis = vec2<f32>(new_fact, vis);
     return res;
 }
-
 
 fn get_visibility(idx_in_chunk: u32) -> f32 {
     let buf_idx = idx_in_chunk / 2;
     let comp_idx = (idx_in_chunk % 2) * 2; // 0 or 2
     let two_tiles: vec4<u32> = hex_chunk_terrain.tiles[buf_idx];
-    let new_fact_and_vis = unpack2x16float(two_tiles[comp_idx + 1]);
-    return new_fact_and_vis.y;
 
+    
+    let u8_values = unpack4xU8(two_tiles[comp_idx]);
+    let old_vis_255 = f32(u8_values[2]);
+    let new_vis_255 = f32(u8_values[3]);
 
-    // return 1.0;
+    let new_fact = bitcast<f32>(two_tiles[comp_idx + 1]);
+    // let new_fact = globals.xxx.x;
+    let vis = (old_vis_255 + ((new_vis_255 - old_vis_255) * new_fact)) * (1.0 / 255.0);
+    return vis;
 }
 
 const HEX_TO_WORLD_POS_MAT : mat2x2f = mat2x2f(1.5,  -0.75, 0, 1.5);

@@ -89,15 +89,17 @@ main :: proc() {
 
 	hex_chunk_positions := [][2]i32{{-1, 0}, {0, 0}, {1, 0}, {1, 1}, {0, 1}}
 
-	hex_chunks := make([]q.HexChunkUniform, len(hex_chunk_positions))
+	hex_chunks := make([]Chunk, len(hex_chunk_positions))
 	for chunk_pos, idx in hex_chunk_positions {
-		hex_chunks[idx] = random_hex_chunk(chunk_pos)
+		hex_chunks[idx] = random_chunk(chunk_pos)
 	}
 	engine.access_shader_globals_xxx().y = 1
 	engine.access_shader_globals_xxx().z = 0
 
 	total: f32 = 0
 	active_chunk_idx := 0
+
+	new_factor: f32 = 0.0
 	for engine.next_frame() {
 
 		dt := engine.get_delta_secs()
@@ -120,7 +122,7 @@ main :: proc() {
 
 		active_chunk_idx = active_chunk_idx %% len(hex_chunks)
 		for chunk, idx in hex_chunks {
-			a_hex_pos := chunk.chunk_pos * q.CHUNK_SIZE
+			a_hex_pos := chunk.data.chunk_pos * q.CHUNK_SIZE
 			a := q.hex_to_world_pos(a_hex_pos)
 			b := q.hex_to_world_pos(a_hex_pos + [2]i32{q.CHUNK_SIZE, 0})
 			c := q.hex_to_world_pos(a_hex_pos + q.CHUNK_SIZE)
@@ -134,15 +136,17 @@ main :: proc() {
 				engine.draw_gizmos_line(d, a, color)
 
 			}
-			engine.draw_hex_chunk(chunk)
+			engine.draw_hex_chunk(chunk.uniform)
 		}
 
+
+		new_new_factor := new_factor
 		shader_xxx := engine.access_shader_globals_xxx()
 		engine.add_window(
 			"Shader Variables",
 			{
 				engine.row(
-					{engine.slider(&shader_xxx.x), engine.text_from_string("transition")},
+					{engine.slider(&new_new_factor), engine.text_from_string("transition")},
 					gap = 8,
 				),
 				engine.row(
@@ -155,6 +159,20 @@ main :: proc() {
 				),
 			},
 		)
+
+		if engine.is_key_pressed(.T) {
+			new_new_factor = q.lerp(new_new_factor, 1.0, engine.get_delta_secs() * 4.0)
+		}
+		if engine.is_key_pressed(.G) {
+			new_new_factor = q.lerp(new_new_factor, 0.0, engine.get_delta_secs() * 4.0)
+		}
+
+		if new_new_factor != new_factor {
+			new_factor = new_new_factor
+			for &chunk in hex_chunks {
+				chunk_set_new_fact(&chunk, new_factor)
+			}
+		}
 
 
 		rf := engine.get_rf()
@@ -187,26 +205,35 @@ main :: proc() {
 			mesh.vertices[idx].pos = new_pos
 		}
 		q.mesh_3d_sync(&mesh)
-		engine.draw_mesh_3d_hex_chunk_masked(mesh, hex_chunks[active_chunk_idx].bind_group)
+		engine.draw_mesh_3d_hex_chunk_masked(mesh, hex_chunks[active_chunk_idx].uniform.bind_group)
 	}
 }
+
+Chunk :: struct {
+	data:    q.HexChunkData,
+	uniform: q.HexChunkUniform,
+}
+
+chunk_set_new_fact :: proc(chunk: ^Chunk, new_factor: f32) {
+	for &t in chunk.data.tiles {
+		t.new_factor = new_factor
+	}
+	q.hex_chunk_uniform_write_data(&chunk.uniform, &chunk.data)
+}
+
 IVec2 :: [2]i32
-random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
-	chunk_data: q.HexChunkData
-	chunk_data.chunk_pos = chunk_pos
+random_chunk :: proc(chunk_pos: IVec2) -> (res: Chunk) {
+	res.data.chunk_pos = chunk_pos
 
 	for y in 0 ..< i32(q.CHUNK_SIZE_PADDED) {
 		for x in 0 ..< i32(q.CHUNK_SIZE_PADDED) {
 			pos := IVec2{x - 1, y - 1} + chunk_pos * q.CHUNK_SIZE
-
 			sample_pos_f32 := q.hex_to_world_pos(pos)
 			sample_pos: [2]f64 = {f64(sample_pos_f32.x), f64(sample_pos_f32.y)}
 			noise_t := (noise.noise_2d(42, sample_pos / 0.3) + 1.0) / 2.0
-			// noise_t2 := (noise.noise_2d(122323, sample_pos / 0.12) + 1.0) / 2.0
 			noise_v := (noise.noise_2d(32421, sample_pos / 21.0) + 1.0) / 2.0
 
-			new_ter: u16
-			old_ter: u16
+			old_ter: u8
 			if noise_t > 0.6 {
 				old_ter = 1
 			} else if noise_t > 0.2 {
@@ -214,7 +241,12 @@ random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 			} else {
 				old_ter = 3
 			}
-			new_ter = old_ter
+			new_ter: u8 = old_ter
+			old_vis: u8 = 255
+			new_vis: u8 = 255 if noise_v > 0.5 else 0
+			if new_vis < 127 {
+				new_ter = 4
+			}
 
 			// if noise_t2 > 0.6 {
 			// 	new_ter = 2
@@ -228,26 +260,19 @@ random_hex_chunk :: proc(chunk_pos: IVec2) -> q.HexChunkUniform {
 			// vis: f32 = 1.0 if noise_v > 0.66 else 0.5 if noise_v > 0.33 else 0.0
 			// vis: f16 = 1.0 if noise_v > 0.5 else 0.0
 
-			vis: f16 = 1.0 if noise_v > 0.5 else 0.0
 			// vis := clamp(f16(noise_v), 0, 1)
-			new_fact: f16 = 1
-			if vis < 0.5 {
-				old_ter = 4
-			} else {
-				vis = 1.0
-			}
-
+			new_fact: f32 = 0
 			idx := x + y * q.CHUNK_SIZE_PADDED
-			chunk_data.tiles[idx] = q.HexTileData{old_ter, new_ter, new_fact, vis}
+			res.data.tiles[idx] = q.HexTileData{old_ter, new_ter, old_vis, new_vis, new_fact}
 		}
 	}
-	uniform := q.hex_chunk_uniform_create(
+	res.uniform = q.hex_chunk_uniform_create(
 		engine.ENGINE.platform.device,
 		engine.ENGINE.platform.queue,
 		chunk_pos,
 	)
-	q.hex_chunk_uniform_write_data(&uniform, &chunk_data)
-	return uniform
+	q.hex_chunk_uniform_write_data(&res.uniform, &res.data)
+	return res
 }
 
 // obj_file 

@@ -173,10 +173,10 @@ const GRID_STREGTH: f32 = 2.0;
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sample_uv = v2(in.pos.x, -in.pos.y) * 0.4; 
 
-    let xxx = globals.xxx.x;
-    // let new_fact = in.new_fact_and_vis.x;
-    let new_fact = xxx;
-    let vis = mix(in.new_fact_and_vis.y, 1.0, xxx);
+    let new_fact = in.new_fact_and_vis.x;
+    let vis = in.new_fact_and_vis.y;
+    // let new_fact = globals.xxx.x;
+    // let vis = mix(0.0, 1.0, new_fact);
 
     var weights = in.weights;
 

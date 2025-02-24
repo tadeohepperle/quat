@@ -183,6 +183,9 @@ ENGINE: Engine
 
 // after creating the engine, let it be pinned, don't move it in memory!!
 _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
+
+	assert(settings.screen_ui_reference_size.x > 0)
+	assert(settings.screen_ui_reference_size.y > 0)
 	engine.settings = settings
 	platform := &engine.platform
 	q.platform_create(platform, settings.platform)
@@ -1063,7 +1066,7 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 		Text {
 			color     = ann.color,
 			shadow    = 0.5,
-			font_size = 10.80 / camera.height * ann.font_size, // because UI layout assumes screen is 1080 px in height
+			font_size = ann.font_size, // because UI layout assumes screen is 1080 px in height
 			str       = ann.str,
 		},
 		)

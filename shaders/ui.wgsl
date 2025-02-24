@@ -97,14 +97,17 @@ struct VsRectOut {
 
 @fragment
 fn fs_rect(in: VsRectOut) -> @location(0) vec4<f32> {
-    let softness = globals.screen_ui_layout_extent.y / globals.screen_size.y;
+    let screen_ui_pixels_on_screen = globals.screen_ui_layout_extent.y;
+    let softness = screen_ui_pixels_on_screen / globals.screen_size.y;
     return fs_rect_both(in, softness);
 }
 
 @fragment
 fn fs_rect_world(in: VsRectOut) -> @location(0) vec4<f32> {
     // I have no idea if 8.0 is the right value here, but it looks fine visually.
-    let softness = 8.0 / globals.world_ui_px_per_unit * globals.camera_height;// globals.screen_ui_layout_extent.y / globals.screen_size.y / extra_factor;
+    // let softness = inverseSqrt(globals.camera_height);// globals.screen_ui_layout_extent.y / globals.screen_size.y / extra_factor;
+    let world_ui_pixels_on_screen = globals.world_ui_px_per_unit * globals.camera_height;
+    let softness = world_ui_pixels_on_screen / globals.screen_size.y;
     return fs_rect_both(in, softness);
 }
 

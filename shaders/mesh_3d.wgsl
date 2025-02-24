@@ -147,7 +147,8 @@ fn fs_hex_mask(in: VertexOutput) -> @location(0) vec4<f32>  {
 
     // return vec4f(vec3f(in.pos.z), 1.0);
 
-    let vis = world_pos_to_hex_visibility(in.pos.xy);
+    // let vis = world_pos_to_hex_visibility(in.pos.xy);
+    let vis = 1.0;
 
     var center = globals.xxx.zw;
     center = world_to_hex_pos(center);

@@ -17,10 +17,11 @@ CHUNK_SIZE_PADDED :: CHUNK_SIZE + 2
 // could probably be compressed to 1/2 or 1/4th of this size. Very wasteful.
 // but that is a concern for later
 HexTileData :: struct {
-	old_terrain: u16,
-	new_terrain: u16,
-	new_factor:  f16,
-	visibility:  f16,
+	old_terrain:    u8,
+	new_terrain:    u8,
+	old_visibility: u8, // 0 is invisible, 255 is visible
+	new_visibility: u8, // 0 is invisible, 255 is visible
+	new_factor:     f32,
 }
 
 HexChunkData :: struct {
