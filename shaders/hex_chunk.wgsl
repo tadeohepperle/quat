@@ -175,6 +175,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let new_fact = in.new_fact_and_vis.x;
     let vis = in.new_fact_and_vis.y;
+    // let new_fact = globals.xxx.y;
     // let new_fact = globals.xxx.x;
     // let vis = mix(0.0, 1.0, new_fact);
 
@@ -212,6 +213,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let dotted = v4(1.0 -step(0.01, min(min(a, b), c))) * RED;
     let color_width_grid = mix(color,mix(color, BLACK, 0.7), grid_f);
     return mix(BLACK, color_width_grid, clamp(vis_final + 0.3, 0.0,1.0)) ;
+
+
+    // return v4(v3(vis), 1.0);
+    // return color;
 }
 
 fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {

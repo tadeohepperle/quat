@@ -30,11 +30,19 @@ ui_id_from_any :: proc(data: any) -> UiId {
 	bytes := slice.bytes_from_ptr(data.data, ty_info.size)
 	return hash.crc64_xz(bytes[:])
 }
-
-ui_interaction :: proc(id: UiId) -> Interaction {
+ui_interaction :: proc "contextless" (id: UiId) -> Interaction {
 	return interaction(id, &UI_CTX_PTR.cache.state)
 }
-
+ui_tag_hovered :: proc "contextless" (tag: UiTag) -> bool {
+	return UI_CTX_PTR.cache.tag_state.hovered == tag
+}
+ui_hovered_tag :: proc "contextless" () -> UiTag {
+	return UI_CTX_PTR.cache.tag_state.hovered
+}
+ui_set_tag :: proc "contextless" (ui: Ui, tag: UiTag) {
+	ptr := _element_base_ptr(ui)
+	ptr.tag = tag
+}
 
 UiWithInteraction :: struct {
 	ui:  Ui,
@@ -85,7 +93,7 @@ Interaction :: struct {
 	just_released:  bool,
 	just_unfocused: bool,
 }
-interaction :: proc(id: $T, state: ^InteractionState(T)) -> Interaction {
+interaction :: proc "contextless" (id: $T, state: ^InteractionState(T)) -> Interaction {
 	return Interaction {
 		hovered = state.hovered == id,
 		pressed = state.pressed == id,
@@ -135,11 +143,14 @@ ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	return false
 }
 
+// used to give groups of elements the same tag, such that you can check if a certain tag was hovered
+UiTag :: u64
 // stuff that should survive the frame boundary is stored here, e.g. previous aabb for divs that had ids
 UiCache :: struct {
 	cached:                 map[UiId]CachedElement,
 	new_cached:             map[UiId]CachedElement,
 	state:                  InteractionState(UiId),
+	tag_state:              InteractionState(UiTag),
 	cursor_pos_start_press: Vec2,
 	delta_secs:             f32,
 	platform:               ^Platform,
@@ -175,6 +186,7 @@ CachedElement :: struct {
 	is_world_ui:          bool,
 	z_info:               ZInfo,
 	clipped_to:           Maybe(Aabb),
+	tag:                  UiTag, // some tag set by the user explicitly
 }
 
 ComputedGlyph :: struct {
@@ -239,6 +251,7 @@ UiElementBase :: struct {
 	pos:  Vec2, // computed: in layout (`set_position`)
 	size: Vec2, // computed: in layout (`set_size`)
 	id:   UiId,
+	tag:  UiTag,
 }
 
 TextElement :: struct {
@@ -252,7 +265,7 @@ TextElement :: struct {
 DivElement :: struct {
 	using base:   UiElementBase,
 	using div:    Div,
-	content_size: Vec2, // computeds
+	content_size: Vec2, // computed
 	children:     [dynamic]Ui, // in temp storage, 
 	// todo: optimize children to be 3 usizes only, and store a single child inline: {backing: []Ui | Ui, len: int} because []Ui and Ui are both 2*8 bytes.    
 }
@@ -562,6 +575,7 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 	// (assuming non-overlapping divs for the most part!)
 	// figure out if any ui element with an id is hovered. If many, select the one with highest z value
 	hovered: UiId = 0
+	hovered_tag: UiTag = 0
 	highest_z := ZInfo{}
 	for id, cached in cache.cached {
 		if cached.pointer_pass_through {
@@ -583,15 +597,17 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 			if cursor_in_bounds {
 				highest_z = cached.z_info
 				hovered = id
+				hovered_tag = cached.tag
 			}
 		}
 	}
 
-	// determine the rest of ids, i.e. 
-	update_interaction_state(&cache.state, hovered, cache.platform.mouse_buttons[.Left])
+	// determine the rest of ids, i.e. \
+	left_btn := cache.platform.mouse_buttons[.Left]
+	update_interaction_state(&cache.state, hovered, left_btn)
+	update_interaction_state(&cache.tag_state, hovered_tag, left_btn)
 
 	if cache.state.just_pressed != 0 {
-		// print("just_pressed", cache.state.just_pressed)
 		cache.cursor_pos_start_press = cache.cursor_pos
 	}
 }
@@ -792,6 +808,7 @@ _set_position :: proc(ui: Ui, pos: Vec2) {
 				pos         = el.pos,
 				size        = el.size,
 				is_world_ui = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+				tag         = el.tag,
 			}
 		}
 	}
@@ -819,6 +836,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 			border_color         = div.border_color,
 			pointer_pass_through = .PointerPassThrough in div.flags,
 			is_world_ui          = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+			tag                  = div.tag,
 		}
 
 		// lerp and transfer user data if this div existed last frame already
@@ -952,7 +970,7 @@ _set_child_positions_for_div :: proc(div: ^DivElement) {
 
 
 // all variants of Ui have first field `base: UiElementBase`, so we can convert a Ui ptr union to the base ptr.
-_element_base_ptr :: #force_inline proc(ui: Ui) -> ^UiElementBase {
+_element_base_ptr :: #force_inline proc "contextless" (ui: Ui) -> ^UiElementBase {
 	// the first 8 bytes of Ui are always a ^UiElementBase, the second 8 Bytes are a tag.
 	UiFatPtr :: struct {
 		ptr:       ^UiElementBase, // because all variants have UiElementBase as first field
@@ -975,6 +993,7 @@ _set_position_for_text :: proc(text: ^TextElement, pos: Vec2) {
 			color                = text.color,
 			pointer_pass_through = text.pointer_pass_through,
 			is_world_ui          = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+			tag                  = text.tag,
 		}
 	}
 }
