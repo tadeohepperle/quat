@@ -817,18 +817,9 @@ DIV_DEFAULT_LERP_SPEED :: 5.0
 // writes to div.pos
 _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 	div.pos = pos + div.offset
-	if len(div.children) > 0 {
-		if DivFlag.LayoutAsText in div.flags {
-			_set_child_positions_for_div_with_text_layout(div)
-		} else {
-			_set_child_positions_for_div(div)
-		}
-	}
 
 	if div.id != NO_ID {
 		cache := &UI_CTX_PTR.cache
-
-
 		new_cached := CachedElement {
 			pos                  = div.pos,
 			size                 = div.size,
@@ -870,6 +861,16 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 
 
 		UI_CTX_PTR.cache.new_cached[div.id] = new_cached
+	}
+
+	// set position of children (important to do this after lerping):
+
+	if len(div.children) > 0 {
+		if DivFlag.LayoutAsText in div.flags {
+			_set_child_positions_for_div_with_text_layout(div)
+		} else {
+			_set_child_positions_for_div(div)
+		}
 	}
 }
 
@@ -1070,17 +1071,15 @@ tmp_text_layout_ctx :: proc(
 }
 
 
-_layout_element_in_text_ctx :: proc(ctx: ^TextLayoutCtx, ui_element: Ui) -> (skipped: int) {
+_layout_element_in_text_ctx :: proc(ctx: ^TextLayoutCtx, ui_element: Ui) {
 	switch el in ui_element {
 	case ^DivElement:
 		_layout_div_in_text_ctx(ctx, el)
 	case ^TextElement:
 		_layout_text_in_text_ctx(ctx, el)
-		skipped = 1
 	case ^CustomUiElement:
 		panic("Custom Ui elements in text not allowed yet.")
 	}
-	return
 }
 
 

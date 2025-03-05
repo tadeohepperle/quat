@@ -27,7 +27,6 @@ font_destroy :: proc(font: ^Font) {
 	sdffont.font_free(font.sdf_font)
 	delete(font.name)
 }
-
 font_from_bytes :: proc(
 	ttf_file_bytes: []u8,
 	assets: ^AssetManager,

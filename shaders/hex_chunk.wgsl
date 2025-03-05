@@ -231,7 +231,8 @@ fn sum(v: v3) -> f32{
 
 const VOID_COLOR: vec4<f32> = RED; // v4(0.0)
 fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
-    return select(textureSample(t_diffuse, s_diffuse, sample_uv, idx-1).rgba, VOID_COLOR, idx == 0);
+    let uv = select(sample_uv, sample_uv * 0.5, idx == 1);
+    return select(textureSample(t_diffuse, s_diffuse, uv, idx-1).rgba, VOID_COLOR, idx == 0);
 }
 
 const WAVELENGTH: f32 = 0.3;

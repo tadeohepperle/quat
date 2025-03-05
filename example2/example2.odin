@@ -43,6 +43,11 @@ main :: proc() {
 	bloom_enabled := true
 	bloom_blend_factor: f64 = 0.2
 	snake_enabled := false
+
+
+	drop_down_idx := 0
+	drop_down_values := []string{"English", "German", "French"}
+
 	for E.next_frame() {
 		E.camera_controller_update(&cam)
 		append(&recorded_dt, E.get_delta_secs() * 1000.0)
@@ -61,6 +66,7 @@ main :: proc() {
 				E.text("Bloom blend factor:"),
 				E.slider(&bloom_blend_factor),
 				E.text_edit(&text_to_edit, align = .Center, font_size = E.THEME.font_size),
+				E.dropdown(drop_down_values, &drop_down_idx),
 			},
 		)
 		E.draw_annotation({2, -1}, "Hello from the engine!")

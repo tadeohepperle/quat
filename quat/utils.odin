@@ -203,6 +203,9 @@ next_pow2_number :: proc(n: int) -> int {
 lerp :: proc "contextless" (a: $T, b: T, t: f32) -> T {
 	return a + (b - a) * t
 }
+lerp_clamped :: proc "contextless" (a: $T, b: T, t: f32) -> T {
+	return a + (b - a) * clamp(t, 0, 1)
+}
 dump :: proc(args: ..any, filename := "log.txt") {
 	sb: strings.Builder
 	fmt.sbprint(&sb, args)
@@ -227,12 +230,12 @@ lorem :: proc(letters := 300) -> string {
 	return LOREM[0:letters]
 }
 
-ElementOrNextFreeIdx :: struct($T: typeid) #raw_union {
+SlotMapElement :: struct($T: typeid) {
 	element:       T,
-	next_free_idx: u32,
+	next_free_idx: u32, // if is NO_FREE_IDX, means that there is an element in here
 }
 SlotMap :: struct($T: typeid) {
-	slots:         [dynamic]ElementOrNextFreeIdx(T),
+	slots:         [dynamic]SlotMapElement(T),
 	next_free_idx: u32, // there is a linked stack of next free indices starting here, that can be followed through the slots array until NO_FREE_IDX is hit
 	initialized:   bool, // set to true only once on first insert, to set the next_free_idx to NO_FREE_IDX instead of 0
 }
@@ -244,52 +247,70 @@ slotmap_insert :: proc(self: ^SlotMap($T), element: T) -> (handle: u32) {
 	}
 	if self.next_free_idx == NO_FREE_IDX {
 		// append a new element to end of elements array:
-		append(&self.slots, ElementOrNextFreeIdx(T){element = element})
+		append(&self.slots, SlotMapElement(T){element, NO_FREE_IDX})
 		handle = u32(len(self.slots)) - 1
 	} else {
 		// there is a free slot at next_handle
 		handle = self.next_free_idx
 		slot := &self.slots[handle]
 		self.next_free_idx = slot.next_free_idx
+
 		slot.element = element
+		slot.next_free_idx = NO_FREE_IDX
 	}
 	return handle
 }
-slotmap_remove :: proc(self: ^SlotMap($T), handle: u32) -> T {
+slotmap_remove :: proc(self: ^SlotMap($T), handle: u32) -> (res: T) {
 	slot := &self.slots[handle]
-	el := slot.element
+	res = slot.element
 	slot.next_free_idx = self.next_free_idx
 	self.next_free_idx = handle
-	return el
+	return res
 }
 slotmap_get :: #force_inline proc(self: SlotMap($T), handle: u32) -> T {
 	assert(handle < u32(len(self.slots)))
-	return self.slots[handle].element
+	el := self.slots[handle]
+	assert(el.next_free_idx == NO_FREE_IDX)
+	return el.element
 }
 slotmap_access :: #force_inline proc(self: ^SlotMap($T), handle: u32) -> ^T {
 	assert(handle < u32(len(self.slots)))
-	return &self.slots[handle].element
+	el := &self.slots[handle]
+	assert(el.next_free_idx == NO_FREE_IDX)
+	return &el.element
 }
 // returns slice in tmp memory with only the taken slots in it, useful for calling a drop function on  all elements in the slotmap
 slotmap_to_tmp_slice :: proc(self: SlotMap($T)) -> []T {
-	empty_slot_indices := make(map[u32]None, allocator = context.temp_allocator)
 	elements := make([dynamic]T, 0, len(self.slots), allocator = context.temp_allocator)
-
-	// follow the linked list to collect the indices of all empty slots:
-	next_free_idx := self.next_free_idx if self.initialized else NO_FREE_IDX
-	for next_free_idx != NO_FREE_IDX {
-		empty_slot_indices[next_free_idx] = None{}
-		next_free_idx = self.slots[next_free_idx].next_free_idx
-	}
-
-	for s, i in self.slots {
-		if u32(i) not_in empty_slot_indices {
-			append(&elements, s.element)
+	for el in self.slots {
+		if el.next_free_idx == NO_FREE_IDX {
+			append(&elements, el.element)
 		}
 	}
 	return elements[:]
 }
 
+// set i to 0 initially
+slotmap_iter :: proc "contextless" (
+	self: ^SlotMap($T),
+	i: ^int,
+) -> (
+	element: ^T,
+	handle: u32,
+	ok: bool,
+) {
+	idx := i^
+	for idx < len(self.slots) {
+		el := &self.slots[idx]
+		if el.next_free_idx == NO_FREE_IDX {
+			i^ = idx + 1
+			return &el.element, u32(idx), true
+		}
+		idx += 1
+	}
+	i^ = idx
+	return {}, NO_FREE_IDX, false
+}
 
 // Note: all these functions (vert_attributes, bind_group_layouts, push_const_ranges)
 // just clone the args from a stack slice into the default allocator

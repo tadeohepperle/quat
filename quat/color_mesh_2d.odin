@@ -90,7 +90,7 @@ color_mesh_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig 
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
-		depth = DEPTH_IGNORE,
+		depth = DepthConfig{depth_compare = .GreaterEqual, depth_write_enabled = true},
 	}
 }
 

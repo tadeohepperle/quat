@@ -4,7 +4,9 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:image"
 import "core:image/png"
+import "core:log"
 import "core:os"
+import "shared:sdffont"
 import wgpu "vendor:wgpu"
 
 TextureHandle :: distinct u32
@@ -61,23 +63,53 @@ asset_manager_create :: proc(
 	font_handle := FontHandle(slotmap_insert(&assets.fonts, default_font))
 	assert(font_handle == 0)
 }
-asset_manager_destroy :: proc(assets: ^AssetManager) {
-	textures := slotmap_to_tmp_slice(assets.textures)
-	for &texture in textures {
-		texture_destroy(&texture)
+asset_manager_update_changed_font_atlas_textures :: proc(assets: ^AssetManager) {
+	i := 0
+	for font, _ in slotmap_iter(&assets.fonts, &i) {
+		if sdffont.font_has_atlas_image_changed(font.sdf_font) {
+			log.info("Update font atlas texture because it has changed:", font.name)
+			atlas_image := sdffont.font_get_atlas_image(font.sdf_font)
+			texture := slotmap_get(assets.textures, u32(font.texture_handle))
+			size := texture.info.size
+			image_copy := wgpu.ImageCopyTexture {
+				texture  = texture.texture,
+				mipLevel = 0,
+				origin   = {0, 0, 0},
+				aspect   = .All,
+			}
+			data_layout := wgpu.TextureDataLayout {
+				offset       = 0,
+				bytesPerRow  = size.x,
+				rowsPerImage = size.y,
+			}
+			wgpu.QueueWriteTexture(
+				assets.queue,
+				&image_copy,
+				raw_data(atlas_image.bytes),
+				uint(len(atlas_image.bytes)),
+				&data_layout,
+				&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
+			)
+		}
 	}
-	fonts := slotmap_to_tmp_slice(assets.fonts)
-	for &font in fonts {
-		font_destroy(&font)
-	}
+}
 
-	geometries := slotmap_to_tmp_slice(assets.skinned_geometries)
-	for &geom in geometries {
-		_geometry_drop(&geom)
+asset_manager_destroy :: proc(assets: ^AssetManager) {
+	i := 0
+	for texture, _ in slotmap_iter(&assets.textures, &i) {
+		texture_destroy(texture)
 	}
-	meshes := slotmap_to_tmp_slice(assets.skinned_meshes)
-	for &mesh in meshes {
-		_skinned_mesh_drop(&mesh)
+	i = 0
+	for font, _ in slotmap_iter(&assets.fonts, &i) {
+		font_destroy(font)
+	}
+	i = 0
+	for geom, _ in slotmap_iter(&assets.skinned_geometries, &i) {
+		_geometry_drop(geom)
+	}
+	i = 0
+	for mesh, _ in slotmap_iter(&assets.skinned_meshes, &i) {
+		_skinned_mesh_drop(mesh)
 	}
 }
 assets_get_texture_array_bind_group :: proc(

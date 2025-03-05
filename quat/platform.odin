@@ -172,6 +172,7 @@ platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 		xxx                     = platform.globals_xxx,
 	}
 	uniform_buffer_write(platform.queue, &platform.globals, &platform.globals_data)
+	asset_manager_update_changed_font_atlas_textures(&platform.asset_manager)
 }
 
 platform_destroy :: proc(platform: ^Platform) {

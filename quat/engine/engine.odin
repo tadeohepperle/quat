@@ -362,7 +362,6 @@ _engine_end_frame :: proc(engine: ^Engine) {
 _engine_prepare :: proc(engine: ^Engine) {
 	scene := &engine.scene
 	q.platform_prepare(&engine.platform, scene.camera)
-
 	q.assert_ui_ctx_ptr_is_set()
 	for e in scene.world_ui {
 		q.layout_in_world_space(e.ui, e.world_pos, engine.platform.settings.world_ui_px_per_unit)
@@ -648,6 +647,10 @@ get_screen_size_f32 :: proc() -> Vec2 {
 }
 get_ui_layout_extent :: proc() -> Vec2 {
 	return ENGINE.platform.ui_layout_extent
+}
+get_ui_cursor_pos :: proc() -> Vec2 {
+	p, _ := q.ui_cursor_pos()
+	return p
 }
 get_cursor_pos :: proc() -> Vec2 {
 	return ENGINE.platform.cursor_pos

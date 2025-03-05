@@ -463,7 +463,7 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0) -> Ui 
 		container,
 		Div {
 			width = 1,
-			height = 32,
+			height = THEME.control_standard_height - 2,
 			color = THEME.text_secondary,
 			border_radius = THEME.border_radius_sm,
 			flags = {.WidthFraction, .HeightPx, .Absolute},
@@ -513,6 +513,99 @@ check_box :: proc(value: ^bool, title: string, id: UiId = 0) -> Ui {
 }
 
 
+dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
+	action := q.ui_interaction(id)
+	cur_idx := clamp(current_idx^, 0, len(values))
+
+	assert(len(values) > 0)
+	id := id if id != 0 else u64(uintptr(current_idx))
+	tag := q.UiTag(id)
+
+
+	DROPDOWN_W :: 200
+	container := div(
+		Div {
+			width = DROPDOWN_W,
+			height = THEME.control_standard_height,
+			flags = {.WidthPx, .HeightPx},
+		},
+	)
+
+	first_el, first_el_res := _field(
+		values[cur_idx],
+		q.ui_id_combined(id, q.ui_id(values[cur_idx])),
+		0,
+		true,
+	)
+	child(container, first_el)
+
+	if first_el_res.focused || q.ui_tag_hovered(tag) {
+		new_cur_idx := cur_idx
+		for v, idx in values {
+			if idx != cur_idx {
+				field_id := q.ui_id_combined(id, q.ui_id(v))
+				field, field_res := _field(v, field_id, tag, false)
+				child(container, field)
+				if field_res.just_released {
+					new_cur_idx = idx
+				}
+			}
+		}
+		current_idx^ = new_cur_idx
+	}
+
+	return container
+
+	_field :: proc(
+		str: string,
+		field_id: UiId,
+		tag: q.UiTag,
+		is_first: bool,
+	) -> (
+		^q.DivElement,
+		q.Interaction,
+	) {
+		action := q.ui_interaction(field_id)
+		color: Color = ---
+		border_color: Color = ---
+		if action.pressed {
+			color = THEME.surface_deep
+			border_color = THEME.text
+		} else if action.hovered {
+			color = THEME.surface_border
+			border_color = THEME.text
+		} else {
+			color = THEME.surface
+			if is_first {
+				border_color = THEME.text
+			} else {
+				border_color = THEME.surface_border
+			}
+		}
+		field := div(
+			Div {
+				width = 200,
+				height = THEME.control_standard_height,
+				color = color,
+				border_color = border_color,
+				padding = {2, 2, 2, 2},
+				border_radius = {4, 4, 4, 4},
+				border_width = q.BorderWidth{3, 3, 3, 3} if is_first else {1, 1, 1, 1},
+				flags = {.WidthPx, .HeightPx, .CrossAlignCenter, .LerpStyle},
+			},
+			field_id,
+		)
+		q.ui_set_tag(field, tag)
+		child_text(
+			field,
+			Text{str = str, font_size = THEME.font_size, color = THEME.text, shadow = 0.5},
+		)
+
+		return field, action
+	}
+}
+
+
 @(private)
 _check_box_inner :: #force_inline proc(
 	checked: bool,
@@ -543,8 +636,8 @@ _check_box_inner :: #force_inline proc(
 	child_div(
 		ui,
 		Div {
-			width = 24.0,
-			height = 24.0,
+			width = 20,
+			height = 20,
 			color = knob_inner_color,
 			border_color = text_color,
 			flags = {.WidthPx, .HeightPx, .MainAlignCenter, .CrossAlignCenter},
