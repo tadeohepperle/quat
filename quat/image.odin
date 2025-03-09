@@ -43,6 +43,7 @@ depth_image_drop :: proc(this: ^DepthImage16) {
 		delete(this.pixels)
 	}
 }
+
 Image :: struct {
 	size:           IVec2,
 	pixels:         []Rgba `fmt:"-"`,

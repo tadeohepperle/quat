@@ -245,6 +245,7 @@ platform_end_render :: proc(
 	// /////////////////////////////////////////////////////////////////////////////
 
 	command_buffer := wgpu.CommandEncoderFinish(command_encoder, nil)
+	wgpu.CommandEncoderRelease(command_encoder)
 	wgpu.QueueSubmit(platform.queue, {command_buffer})
 	wgpu.SurfacePresent(platform.surface)
 	// cleanup:
