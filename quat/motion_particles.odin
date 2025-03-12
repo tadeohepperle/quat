@@ -46,7 +46,7 @@ _motion_texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue)
 			origin = {0, 0, 0},
 			aspect = .All,
 		},
-		&diffuse_data,
+		&motion_data,
 		4,
 		&data_layout,
 		&wgpu.Extent3D{width = 1, height = 1, depthOrArrayLayers = 1},
@@ -100,7 +100,7 @@ motion_texture_create :: proc(
 	)
 
 	DIFFUSE_FORMAT := wgpu.TextureFormat.RGBA8UnormSrgb
-	MOTION_FORMAT := wgpu.TextureFormat.RGBA8UnormSrgb // maybe use RG8SNorm later because we only need two channels but anyway...
+	MOTION_FORMAT := wgpu.TextureFormat.RGBA8Unorm // maybe use RG8SNorm later because we only need two channels but anyway...
 
 	diffuse_size := UVec2{u32(diffuse_size.x), u32(diffuse_size.y)}
 	motion_size := UVec2{u32(motion_size.x), u32(motion_size.y)}
@@ -153,7 +153,7 @@ motion_texture_create :: proc(
 		},
 	)
 	res.motion_view = wgpu.TextureCreateView(
-		res.diffuse_texture,
+		res.motion_texture,
 		&wgpu.TextureViewDescriptor {
 			format = MOTION_FORMAT,
 			dimension = ._2D,
@@ -246,8 +246,8 @@ motion_texture_write :: proc(
 			origin = {0, 0, 0},
 			aspect = .All,
 		},
-		raw_data(diffuse.pixels),
-		uint(len(diffuse.pixels) * 4),
+		raw_data(motion.pixels),
+		uint(len(motion.pixels) * 4),
 		&wgpu.TextureDataLayout {
 			offset = 0,
 			bytesPerRow = 4 * this.motion_size.x,
@@ -313,20 +313,21 @@ MotionParticleInstance :: struct {
 	t_offset: f32,
 }
 
-MotionFramesData :: struct {
-	time:      f32,
-	n:         u32,
-	uv_size:   Vec2,
-	start_uvs: [MAX_N_MOTION_FRAMES]Vec2, // max 14 frames, so we can fit it in a push constant
+// ASSUMPTION: tiles of the diffuse image and motion image have the same UV coords (motion image can be scaled though!!)
+FlipbookData :: struct {
+	time:         f32,
+	_:            f32,
+	n_tiles:      u32, // how many tiles there are in total
+	n_x_tiles:    u32, // how many tiles there are in x direction
+	start_uv:     Vec2, // diffuse and motion image start uv pos of first flipbook tile in atlas
+	uv_tile_size: Vec2, // size per tile!
 }
-MAX_N_MOTION_FRAMES :: 14 // to keep total MotionFramesData at 128 bytes for push constant
-
 
 MotionParticlesRenderCommand :: struct {
 	texture:        MotionTextureHandle,
 	first_instance: u32,
 	instance_count: u32,
-	frames_data:    MotionFramesData,
+	flipbook:       FlipbookData,
 }
 
 // all particles share the same instance_buffer, that is rewritten every frame
@@ -357,8 +358,8 @@ motion_particles_render :: proc(
 			render_pass,
 			{.Vertex, .Fragment},
 			0,
-			size_of(MotionFramesData),
-			&cmd.frames_data,
+			size_of(FlipbookData),
+			&cmd.flipbook,
 		)
 		wgpu.RenderPassEncoderDraw(render_pass, 4, cmd.instance_count, 0, cmd.first_instance)
 	}
@@ -390,7 +391,7 @@ motion_particles_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineC
 			wgpu.PushConstantRange {
 				stages = {.Vertex, .Fragment},
 				start = 0,
-				end = size_of(MotionFramesData),
+				end = size_of(FlipbookData),
 			},
 		),
 		blend = ALPHA_BLENDING,

@@ -411,8 +411,13 @@ slider_f64 :: proc(value: ^f64, min: f64 = 0, max: f64 = 1, id: UiId = 0) -> Ui 
 }
 
 
-slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0) -> Ui {
-	slider_width: f32 = 192
+slider_f32 :: proc(
+	value: ^f32,
+	min: f32 = 0,
+	max: f32 = 1,
+	id: UiId = 0,
+	slider_width: f32 = 192,
+) -> Ui {
 	knob_width: f32 = 24
 	id := id if id != 0 else u64(uintptr(value))
 	val: f32 = value^

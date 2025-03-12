@@ -18,6 +18,7 @@ MotionTextureAllocator :: struct {
 	atlas:       Atlas, // stores coords of diffuse_img, motion_img should be the same but scaled, so uv of diffuse and motion img are the same!
 	diffuse_img: Image,
 	motion_img:  Image,
+	ratio:       int, // diffuse_img.size should be an integer multiple of motion_img.size
 	texture:     q.MotionTextureHandle,
 }
 // currently only supports fixed size, no resizing
@@ -27,6 +28,18 @@ motion_texture_allocator_create :: proc(
 ) -> (
 	res: MotionTextureAllocator,
 ) {
+	ratio, is_ratio := _is_ratio(diffuse_size, motion_size)
+	assert(
+		is_ratio,
+		q.tprint(
+			"non-integer ratio between diffuse size",
+			diffuse_size,
+			"and motion size",
+			motion_size,
+		),
+	)
+	res.ratio = ratio
+
 	texture := q.motion_texture_create(diffuse_size, motion_size, ENGINE.platform.device)
 	q.atlas_init(&res.atlas, diffuse_size)
 	res.texture = q.assets_add_motion_texture(&ENGINE.platform.asset_manager, texture)
@@ -35,58 +48,87 @@ motion_texture_allocator_create :: proc(
 	return res
 }
 
+_is_ratio :: proc(big: IVec2, small: IVec2) -> (ratio: int, ok: bool) {
+	if big == small {
+		return 1, true
+	}
+	if big.x % small.x != 0 || big.y % small.y != 0 {
+		return 0, false
+	}
+	if big.x < small.x || big.y < small.y {
+		return 0, false
+	}
+
+	ratio_x := big.x / small.x
+	ratio_y := big.y / small.y
+	if ratio_x != ratio_y {
+		return 0, false
+	}
+	return ratio_x, true
+}
+
 DiffuseAndMotionImage :: struct {
 	diffuse: q.ImageView,
 	motion:  q.ImageView,
 }
-motion_texture_allocator_allocate_frames :: proc(
+motion_texture_allocator_allocate_flipbook :: proc(
 	this: ^MotionTextureAllocator,
-	diffuse_images: []q.ImageView,
-	motion_images: []q.ImageView,
+	diffuse_image: q.ImageView,
+	motion_image: q.ImageView,
+	n_x_tiles: int,
+	n_y_tiles: int,
+	n_tiles: int,
 	sync_to_texture: bool = true,
 ) -> (
-	frames: q.MotionFramesData,
+	flipbook: q.FlipbookData,
 	err: q.Error,
 ) {
 
-	if len(diffuse_images) != len(motion_images) {
-		return {}, "needs to have same number of motion and diffuse images"
-	}
-	if len(diffuse_images) == 0 {
-		return {}, "needs at least 1 motion frame"
-	}
-	if len(diffuse_images) > q.MAX_N_MOTION_FRAMES {
-		return
-	}
-	n_frames := len(diffuse_images)
+	d_size := diffuse_image.size
+	m_size := motion_image.size
 
-	diffuse_size := diffuse_images[0].size
-	motion_size := motion_images[0].size
-	for idx in 0 ..< n_frames {
-		if diffuse_images[idx].size != diffuse_size || motion_images[idx].size != motion_size {
-			return {}, "all images for motion frames need to have same size!"
-		}
+	if n_tiles > n_x_tiles * n_y_tiles || n_tiles <= 0 {
+		return {}, "invalid tiling params n_x_tiles, n_y_tiles, n_tiles"
 	}
+
+	if d_size.x % n_x_tiles != 0 ||
+	   d_size.y % n_y_tiles != 0 ||
+	   m_size.x % n_x_tiles != 0 ||
+	   m_size.y % n_y_tiles != 0 {
+		return {}, "diffuse and motion image sizes need to be divisible by n_tiles_x and n_tiles_y"
+	}
+
+	ratio, is_ratio := _is_ratio(diffuse_image.size, motion_image.size)
+	if !is_ratio {
+		return {}, "non integer ratio between diffuse image size and motion image size!"
+	}
+	if ratio != this.ratio {
+		return {}, "allocators ratio of diffuse/motion size should be the same as flipbook"
+	}
+
+	pos_in_atlas, success := q.atlas_allocate(&this.atlas, d_size)
+	if !success {
+		return {}, "no space for all motion frames in atlas!"
+	}
+
+	assert(pos_in_atlas.x % ratio == 0 && pos_in_atlas.y % ratio == 0)
 	atlas_size_f := q.ivec2_to_vec2(this.atlas.size)
-	frames.uv_size = q.ivec2_to_vec2(diffuse_size) / atlas_size_f
-	frames.time = 0.0
-	frames.n = u32(n_frames)
-	for idx in 0 ..< n_frames {
-		diffuse := diffuse_images[idx]
-		motion := motion_images[idx]
-		assert(diffuse.size == motion.size)
-		pos_in_atlas, success := q.atlas_allocate(&this.atlas, diffuse_size)
-		if !success {
-			return {}, "no space for all motion frames in atlas!"
-		}
-		q.image_copy_into(&this.diffuse_img, diffuse, pos_in_atlas)
-		q.image_copy_into(&this.motion_img, motion, pos_in_atlas)
-		frames.start_uvs[idx] = q.ivec2_to_vec2(pos_in_atlas) / atlas_size_f
-	}
+
+	start_uv := q.ivec2_to_vec2(pos_in_atlas) / atlas_size_f
+	uv_tile_size := q.ivec2_to_vec2(d_size) / atlas_size_f / Vec2{f32(n_x_tiles), f32(n_y_tiles)}
+
+	q.image_copy_into(&this.diffuse_img, diffuse_image, pos_in_atlas)
+	q.image_copy_into(&this.motion_img, motion_image, pos_in_atlas / ratio)
+
+	flipbook.start_uv = start_uv
+	flipbook.uv_tile_size = uv_tile_size
+	flipbook.n_tiles = u32(n_tiles)
+	flipbook.n_x_tiles = u32(n_x_tiles)
+
 	if sync_to_texture {
 		_motion_texture_allocator_sync(this)
 	}
-	return frames, nil
+	return flipbook, nil
 }
 
 _motion_texture_allocator_sync :: proc(this: ^MotionTextureAllocator) {

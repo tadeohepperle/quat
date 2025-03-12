@@ -423,7 +423,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 				texture = cmd.texture,
 				first_instance = first_instance,
 				instance_count = instance_count,
-				frames_data = cmd.frames,
+				flipbook = cmd.flipbook,
 			},
 		)
 		first_instance += instance_count
@@ -1121,16 +1121,16 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 
 _MotionParticleDrawCommand :: struct {
 	particles: []q.MotionParticleInstance,
-	frames:    q.MotionFramesData,
+	flipbook:  q.FlipbookData,
 	texture:   q.MotionTextureHandle,
 }
 draw_motion_particles :: proc(
 	particles: []q.MotionParticleInstance,
-	frames: q.MotionFramesData,
+	flipbook: q.FlipbookData,
 	texture: q.MotionTextureHandle,
 ) {
 	append(
 		&ENGINE.scene.motion_particles_draw_commands,
-		_MotionParticleDrawCommand{particles, frames, texture},
+		_MotionParticleDrawCommand{particles, flipbook, texture},
 	)
 }
