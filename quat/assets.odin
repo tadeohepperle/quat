@@ -9,6 +9,7 @@ import "core:os"
 import "shared:sdffont"
 import wgpu "vendor:wgpu"
 
+MotionTextureHandle :: distinct u32
 TextureHandle :: distinct u32
 TextureArrayHandle :: distinct u32
 FontHandle :: distinct u32
@@ -24,6 +25,7 @@ TextureSlot :: struct #raw_union {
 
 AssetManager :: struct {
 	textures:           SlotMap(Texture), // also contains texture arrays!
+	motion_textures:    SlotMap(MotionTexture),
 	fonts:              SlotMap(Font),
 	skinned_geometries: SlotMap(SkinnedGeometry),
 	skinned_meshes:     SlotMap(SkinnedMesh),
@@ -48,6 +50,13 @@ asset_manager_create :: proc(
 	default_texture := _texture_create_1px_white(device, queue)
 	default_texture_handle := slotmap_insert(&assets.textures, default_texture)
 	assert(default_texture_handle == 0) // is the first one
+
+	default_motion_texture := _motion_texture_create_1px_white(device, queue)
+	default_motion_texture_handle := slotmap_insert(
+		&assets.motion_textures,
+		default_motion_texture,
+	)
+	assert(default_motion_texture_handle == 0) // is the first one
 
 	default_font: Font
 	font_err: Error
@@ -144,6 +153,14 @@ assets_get_texture :: proc(assets: AssetManager, handle: TextureHandle) -> Textu
 	texture := slotmap_get(assets.textures, u32(handle))
 	return texture
 }
+assets_get_motion_texture :: proc(
+	assets: AssetManager,
+	handle: MotionTextureHandle,
+) -> MotionTexture {
+	texture := slotmap_get(assets.motion_textures, u32(handle))
+	return texture
+}
+
 
 assets_get_font :: proc(assets: AssetManager, handle: FontHandle) -> Font {
 	return slotmap_get(assets.fonts, u32(handle))
@@ -159,8 +176,15 @@ assets_load_depth_texture :: proc(assets: ^AssetManager, path: string) -> Textur
 	return texture_handle
 }
 assets_add_texture :: proc(assets: ^AssetManager, texture: Texture) -> TextureHandle {
-	texture_handle := TextureHandle(slotmap_insert(&assets.textures, texture))
-	return texture_handle
+	handle := TextureHandle(slotmap_insert(&assets.textures, texture))
+	return handle
+}
+assets_add_motion_texture :: proc(
+	assets: ^AssetManager,
+	texture: MotionTexture,
+) -> MotionTextureHandle {
+	handle := MotionTextureHandle(slotmap_insert(&assets.motion_textures, texture))
+	return handle
 }
 assets_load_texture :: proc(
 	assets: ^AssetManager,

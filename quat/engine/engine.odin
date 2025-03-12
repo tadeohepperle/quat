@@ -33,22 +33,24 @@ DEFAULT_ENGINE_SETTINGS := EngineSettings {
 
 Pipeline :: ^q.RenderPipeline
 Engine :: struct {
-	settings:                 EngineSettings,
-	platform:                 q.Platform,
-	hit:                      HitInfo,
-	scene:                    Scene,
-	ui_ctx:                   q.UiCtx,
-	bloom_renderer:           q.BloomRenderer,
-	gizmos_renderer:          q.GizmosRenderer,
-	color_mesh_renderer:      q.ColorMeshRenderer,
-	mesh_2d_renderer:         q.Mesh2dRenderer,
-	pipelines:                [PipelineType]^q.RenderPipeline,
-	cutout_sprites:           SpriteBuffers,
-	shine_sprites:            SpriteBuffers,
-	transparent_sprites_low:  SpriteBuffers,
-	transparent_sprites_high: SpriteBuffers,
-	world_ui_buffers:         q.UiRenderBuffers,
-	screen_ui_buffers:        q.UiRenderBuffers,
+	settings:                         EngineSettings,
+	platform:                         q.Platform,
+	hit:                              HitInfo,
+	scene:                            Scene,
+	ui_ctx:                           q.UiCtx,
+	bloom_renderer:                   q.BloomRenderer,
+	gizmos_renderer:                  q.GizmosRenderer,
+	color_mesh_renderer:              q.ColorMeshRenderer,
+	mesh_2d_renderer:                 q.Mesh2dRenderer,
+	pipelines:                        [PipelineType]^q.RenderPipeline,
+	cutout_sprites:                   SpriteBuffers,
+	shine_sprites:                    SpriteBuffers,
+	transparent_sprites_low:          SpriteBuffers,
+	transparent_sprites_high:         SpriteBuffers,
+	world_ui_buffers:                 q.UiRenderBuffers,
+	screen_ui_buffers:                q.UiRenderBuffers,
+	motion_particles_render_commands: [dynamic]q.MotionParticlesRenderCommand,
+	motion_particles_buffer:          q.DynamicBuffer(q.MotionParticleInstance),
 
 
 	// sprite_pipeline:     Pipeline,
@@ -93,6 +95,7 @@ PipelineType :: enum {
 	ScreenUiRect,
 	WorldUiGlyph,
 	WorldUiRect,
+	MotionParticles,
 }
 
 UiAtWorldPos :: struct {
@@ -102,27 +105,28 @@ UiAtWorldPos :: struct {
 
 // roughly in render order
 Scene :: struct {
-	camera:                     q.Camera,
+	camera:                         q.Camera,
 	// geometry:
-	tritex_meshes:              [dynamic]q.TritexMesh,
-	tritex_textures:            q.TextureArrayHandle, // not owned! just set by the user.
-	meshes_3d:                  [dynamic]q.Mesh3d,
-	meshes_3d_hex_chunk_masked: [dynamic]q.Mesh3dHexChunkMasked,
+	tritex_meshes:                  [dynamic]q.TritexMesh,
+	tritex_textures:                q.TextureArrayHandle, // not owned! just set by the user.
+	meshes_3d:                      [dynamic]q.Mesh3d,
+	meshes_3d_hex_chunk_masked:     [dynamic]q.Mesh3dHexChunkMasked,
 	// cutout discard shader depth rendering:
-	cutout_sprites:             [dynamic]q.Sprite,
+	cutout_sprites:                 [dynamic]q.Sprite,
 	// transparency layer 1:
-	transparent_sprites_low:    [dynamic]q.Sprite,
-	world_ui:                   #soa[dynamic]UiAtWorldPos, // ui elements that are rendered below transparent sprites and shine sprites
+	transparent_sprites_low:        [dynamic]q.Sprite,
+	world_ui:                       #soa[dynamic]UiAtWorldPos, // ui elements that are rendered below transparent sprites and shine sprites
 	// transparency layer 2:
-	transparent_sprites_high:   [dynamic]q.Sprite,
-	shine_sprites:              [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
-	screen_ui:                  [dynamic]q.Ui,
+	transparent_sprites_high:       [dynamic]q.Sprite,
+	shine_sprites:                  [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
+	screen_ui:                      [dynamic]q.Ui,
 	// other stuff
-	colliders:                  [dynamic]q.Collider,
-	last_frame_colliders:       [dynamic]q.Collider,
-	skinned_render_commands:    [dynamic]q.SkinnedRenderCommand,
-	annotations:                [dynamic]Annotation, // put into ui_world_layer
-	hex_chunks:                 [dynamic]q.HexChunkUniform,
+	colliders:                      [dynamic]q.Collider,
+	last_frame_colliders:           [dynamic]q.Collider,
+	skinned_render_commands:        [dynamic]q.SkinnedRenderCommand,
+	motion_particles_draw_commands: [dynamic]_MotionParticleDrawCommand,
+	annotations:                    [dynamic]Annotation, // put into ui_world_layer
+	hex_chunks:                     [dynamic]q.HexChunkUniform,
 }
 
 HitInfo :: struct {
@@ -153,6 +157,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.last_frame_colliders)
 	delete(scene.colliders)
 	delete(scene.skinned_render_commands)
+	delete(scene.motion_particles_draw_commands)
 	delete(scene.annotations)
 	delete(scene.hex_chunks)
 }
@@ -174,6 +179,7 @@ _scene_clear :: proc(scene: ^Scene) {
 	scene.last_frame_colliders, scene.colliders = scene.colliders, scene.last_frame_colliders
 	clear(&scene.colliders)
 	clear(&scene.skinned_render_commands)
+	clear(&scene.motion_particles_draw_commands)
 	clear(&scene.annotations)
 	clear(&scene.hex_chunks)
 }
@@ -205,9 +211,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p := &engine.pipelines
 	p[.HexChunk] = q.make_render_pipeline(reg, q.hex_chunk_pipeline_config(device))
 	p[.SpriteSimple] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Simple))
-	print(p[.SpriteSimple].config)
 	p[.SpriteCutout] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Cutout))
-	print(p[.SpriteCutout].config)
 	p[.SpriteShine] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Shine))
 	p[.SpriteTransparent] = q.make_render_pipeline(
 		reg,
@@ -236,6 +240,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 		reg,
 		q.ui_rect_pipeline_config(device, in_world = true),
 	)
+	p[.MotionParticles] = q.make_render_pipeline(reg, q.motion_particles_pipeline_config(device))
 
 
 	engine.cutout_sprites = sprite_buffers_create(device, queue)
@@ -245,6 +250,8 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 
 	engine.world_ui_buffers = q.ui_render_buffers_create(device, queue)
 	engine.screen_ui_buffers = q.ui_render_buffers_create(device, queue)
+
+	q.dynamic_buffer_init(&engine.motion_particles_buffer, {.Vertex}, device, queue)
 }
 _engine_destroy :: proc(engine: ^Engine) {
 	q.platform_destroy(&engine.platform)
@@ -263,6 +270,9 @@ _engine_destroy :: proc(engine: ^Engine) {
 
 	q.ui_render_buffers_destroy(&engine.world_ui_buffers)
 	q.ui_render_buffers_destroy(&engine.screen_ui_buffers)
+
+	q.dynamic_buffer_destroy(&engine.motion_particles_buffer)
+	delete(engine.motion_particles_render_commands)
 }
 
 
@@ -349,8 +359,8 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 	engine.platform.settings = engine.settings.platform
 	q.platform_reset_input_at_end_of_frame(&engine.platform)
-	// PREPARE
 
+	// PREPARE
 	_engine_prepare(engine)
 	// RENDER
 	_engine_render(engine)
@@ -394,6 +404,31 @@ _engine_prepare :: proc(engine: ^Engine) {
 	)
 	// for the skinned mesh renderer, we currently let the user 
 	// do updates directly with `update_skinned_mesh_bones``
+
+
+	// schedule buffer writes for all submitted slices of particles to be written to a single instance buffer
+	clear(&engine.motion_particles_render_commands)
+	n_particles := 0
+	for cmd in scene.motion_particles_draw_commands {
+		n_particles += len(cmd.particles)
+	}
+	q.dynamic_buffer_clear(&engine.motion_particles_buffer)
+	q.dynamic_buffer_reserve(&engine.motion_particles_buffer, n_particles)
+	first_instance: u32 = 0
+	for cmd in scene.motion_particles_draw_commands {
+		instance_count := u32(len(cmd.particles))
+		append(
+			&engine.motion_particles_render_commands,
+			q.MotionParticlesRenderCommand {
+				texture = cmd.texture,
+				first_instance = first_instance,
+				instance_count = instance_count,
+				frames_data = cmd.frames,
+			},
+		)
+		first_instance += instance_count
+		q.dynamic_buffer_append_no_resize(&engine.motion_particles_buffer, cmd.particles)
+	}
 }
 
 _engine_render :: proc(engine: ^Engine) {
@@ -457,9 +492,16 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		asset_manager,
 	)
+	q.motion_particles_render(
+		engine.pipelines[.MotionParticles].pipeline,
+		engine.motion_particles_buffer,
+		engine.motion_particles_render_commands[:],
+		hdr_pass,
+		global_bind_group,
+		asset_manager,
+	)
 	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, global_bind_group, asset_manager)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
-
 
 	// sandwich the world ui, e.g. health bars in two layers of transparent sprites + cutout sprites on top:
 	q.sprite_batches_render(
@@ -1075,4 +1117,20 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 		)
 		add_world_ui(ann.pos, ui)
 	}
+}
+
+_MotionParticleDrawCommand :: struct {
+	particles: []q.MotionParticleInstance,
+	frames:    q.MotionFramesData,
+	texture:   q.MotionTextureHandle,
+}
+draw_motion_particles :: proc(
+	particles: []q.MotionParticleInstance,
+	frames: q.MotionFramesData,
+	texture: q.MotionTextureHandle,
+) {
+	append(
+		&ENGINE.scene.motion_particles_draw_commands,
+		_MotionParticleDrawCommand{particles, frames, texture},
+	)
 }

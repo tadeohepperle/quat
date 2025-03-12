@@ -190,16 +190,9 @@ affine_around_and_offset :: proc(affine: Affine2) -> (around: Vec2, offset: Vec2
 	return around, offset
 
 }
+next_power_of_two :: math.next_power_of_two
+is_power_of_two :: math.is_power_of_two
 
-next_pow2_number :: proc(n: int) -> int {
-	next: int = 2
-	for {
-		if next >= n {
-			return next
-		}
-		next *= 2
-	}
-}
 lerp :: proc "contextless" (a: $T, b: T, t: f32) -> T {
 	return a + (b - a) * t
 }

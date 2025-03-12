@@ -62,7 +62,7 @@ fn fs_shine(in: VertexOutput) -> @location(0) vec4<f32> {
     let image_color = textureSample(t_diffuse, s_diffuse, in.uv);
     let default_color = image_color * in.color;
     let lightness :f32 = (default_color.r + default_color.g + default_color.b) /3.0;
-    return  vec4<f32>( (1.0 - default_color.rgb) *0.6, default_color.a * 0.2);
+    return  vec4<f32>( (1.0 - default_color.rgb) *0.6, default_color.a * 0.3);
 }
 
 @fragment
@@ -82,26 +82,13 @@ fn sprite_vertex(vertex_index: u32, instance: SpriteInstance) -> SpriteVertex {
     let size = instance.size;
     let size_half = size / 2.0;
     var u_uv = unit_uv_from_idx(vertex_index);
-    out.uv = vec2<f32>(
-        (1.0 - u_uv.x) * instance.uv.x + u_uv.x * instance.uv.z,
-        u_uv.y * instance.uv.y + (1.0 - u_uv.y) * instance.uv.w
-    );
-    let rot = instance.rotation;
+    out.uv = map_unit_uv(u_uv, instance.uv);
+    
     let pos = (u_uv * size) - size_half;
-    let pos_rotated = vec2(
-        cos(rot) * pos.x - sin(rot) * pos.y,
-        sin(rot) * pos.x + cos(rot) * pos.y,
-    );
+    let pos_rotated = rotate(pos, instance.rotation);
     out.z = pos_rotated.y+ instance.z + size_half.y;
     out.pos = pos_rotated + instance.pos;
     return out;
-}
-
-fn unit_uv_from_idx(idx: u32) -> vec2<f32> {
-    return vec2<f32>(
-        f32(((idx << 1) & 2) >> 1),
-        f32((idx & 2) >> 1)
-    );
 }
 
 fn more_contrast(color: vec4<f32>, contrast: f32) -> vec4<f32> {
@@ -111,5 +98,4 @@ fn more_contrast(color: vec4<f32>, contrast: f32) -> vec4<f32> {
     let smoothed_rgb = adjusted_rgb * adjusted_rgb * (3.0 - 2.0 * adjusted_rgb);
     return vec4<f32>(smoothed_rgb, color.a);
 }
-
 

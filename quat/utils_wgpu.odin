@@ -6,16 +6,15 @@ import "core:strings"
 import wgpu "vendor:wgpu"
 
 DynamicBuffer :: struct($T: typeid) {
-	device:   wgpu.Device,
-	queue:    wgpu.Queue,
-	buffer:   wgpu.Buffer,
-	usage:    wgpu.BufferUsageFlags,
-	size:     u64, // in bytes
-	length:   int,
-	capacity: int,
+	device: wgpu.Device,
+	queue:  wgpu.Queue,
+	buffer: wgpu.Buffer,
+	usage:  wgpu.BufferUsageFlags,
+	size:   u64, // capacity * size_of(T) in bytes, the number of bytes that is actually allocated for the buffer on the GPU
+	length: int, // number of elements currently in the buffer
 }
 
-MIN_BUFFER_CAPACITY :: 1024
+MIN_BUFFER_SIZE :: 1024
 dynamic_buffer_init :: proc(
 	this: ^DynamicBuffer($T),
 	usage: wgpu.BufferUsageFlags,
@@ -27,30 +26,68 @@ dynamic_buffer_init :: proc(
 	this.queue = queue
 }
 
+_target_buffer_size :: #force_inline proc "contextless" (n_elements: int, size_of_t: int) -> u64 {
+	return u64(max(next_power_of_two(n_elements * size_of_t), MIN_BUFFER_SIZE))
+}
+
+
+dynamic_buffer_reserve :: proc(
+	this: ^DynamicBuffer($T),
+	for_n_total_elements: int,
+	loc := #caller_location,
+) {
+	target_size := _target_buffer_size(for_n_total_elements, size_of(T))
+	if target_size > this.size {
+		if this.size != 0 {
+			dynamic_buffer_destroy(this)
+		}
+		this.size = target_size
+		assert(this.device != nil, tprint(loc))
+		this.buffer = wgpu.DeviceCreateBuffer(
+			this.device,
+			&wgpu.BufferDescriptor {
+				usage = this.usage,
+				size = target_size,
+				mappedAtCreation = false,
+			},
+		)
+	}
+}
+
+dynamic_buffer_clear :: proc "contextless" (this: ^DynamicBuffer($T)) {
+	this.length = 0
+}
+
+// overwrites all data in the buffer, resizing it if necessary
 dynamic_buffer_write :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #caller_location) {
 	assert(this.queue != nil, tprint(loc))
 	this.length = len(elements)
 	if this.length == 0 {
 		return
 	}
-
-	target_capacity := max(next_pow2_number(this.length), MIN_BUFFER_CAPACITY)
-	element_size := size_of(T)
-	// if not enough space or unallocated, allocate  new buffer:
-	if this.capacity < target_capacity {
-		// throw old buffer away if already allocated
-		if this.capacity != 0 {
-			dynamic_buffer_destroy(this)
-		}
-		this.capacity = target_capacity
-		this.size = u64(this.capacity * element_size)
-		this.buffer = wgpu.DeviceCreateBuffer(
-			this.device,
-			&wgpu.BufferDescriptor{usage = this.usage, size = this.size, mappedAtCreation = false},
-		)
-	}
-	used_size := uint(this.length * element_size)
+	dynamic_buffer_reserve(this, this.length)
+	used_size := uint(this.length * size_of(T))
 	wgpu.QueueWriteBuffer(this.queue, this.buffer, 0, raw_data(elements), used_size)
+}
+
+// appends to the end of the buffer, but requires that the buffer has enough size allocated, for this to succeed.
+// use in combination with `dynamic_buffer_reserve`
+dynamic_buffer_append_no_resize :: proc(
+	this: ^DynamicBuffer($T),
+	elements: []T,
+	loc := #caller_location,
+) {
+	used_size := u64(this.length * size_of(T))
+	additional_size := u64(len(elements) * size_of(T))
+	assert(this.size >= used_size + additional_size)
+	this.length += len(elements)
+	wgpu.QueueWriteBuffer(
+		this.queue,
+		this.buffer,
+		used_size,
+		raw_data(elements),
+		uint(additional_size),
+	)
 }
 
 dynamic_buffer_write_many :: proc(

@@ -23,7 +23,6 @@ TEXTURE_SETTINGS_DEPTH_SPRITE :: TextureSettings {
 	usage        = {.TextureBinding, .CopyDst},
 }
 
-
 TextureSettings :: struct {
 	label:        string,
 	format:       wgpu.TextureFormat,

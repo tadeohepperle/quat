@@ -217,10 +217,3 @@ fn fs_glyph(in: VsGlyphOut) -> @location(0) vec4<f32> {
     let color = mix(shadow_color, in.color, inside_factor);
     return color; // + vec4(0.2,0.2,0.2,0.2); * vec4(1.0,1.0,1.0,5.0);
 }
-
-fn unit_uv_from_idx(idx: u32) -> vec2<f32> {
-    return vec2<f32>(
-        f32(((idx << 1) & 2) >> 1),
-        f32((idx & 2) >> 1)
-    );
-}

@@ -74,3 +74,26 @@ fn dist_gradient(pt: vec2f, center: vec2f) -> vec4f {
     let t = 0.5 + 0.5 * cos(d * frequency); // Create a repeating gradient with cosine
     return vec4f(t, t * 0.5, 1.0 - t, 1.0); // Map to a color gradient (blue to cyan)
 }
+
+fn unit_uv_from_idx(idx: u32) -> vec2<f32> {
+    return vec2<f32>(
+        f32(((idx << 1) & 2) >> 1),
+        f32((idx & 2) >> 1)
+    );
+}
+
+fn map_unit_uv(u_uv: vec2<f32>, uv_aabb: vec4<f32>) -> vec2<f32> {
+    return vec2<f32>(
+        (1.0 - u_uv.x) * uv_aabb.x + u_uv.x * uv_aabb.z,
+        u_uv.y * uv_aabb.y + (1.0 - u_uv.y) * uv_aabb.w
+    );
+}
+
+fn rotate(pos: vec2<f32>, rot: f32) -> vec2<f32>{
+    let s = sin(rot);
+    let c = cos(rot);
+    return vec2<f32>(
+        c * pos.x - s * pos.y,
+        s * pos.x + c * pos.y,
+    );
+}

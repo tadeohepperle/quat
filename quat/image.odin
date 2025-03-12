@@ -133,11 +133,19 @@ image_save_as_png :: proc(this: Image, path: string) -> Error {
 	return nil
 }
 
-ImageView :: [][]Rgba
+ImageView :: struct {
+	size: IVec2,
+	rows: [][]Rgba,
+}
 
 // returns a slice in tmp that contains lines of the image in the specified rect.
 // provide {0,0}, {0,0} or {0,0}, this.size to view the whole image
-image_view :: proc(this: Image, min: IVec2 = IVec2{0, 0}, max: IVec2 = IVec2{0, 0}) -> ImageView {
+image_view :: proc(
+	this: Image,
+	min: IVec2 = IVec2{0, 0},
+	max: IVec2 = IVec2{0, 0},
+	allocator := context.temp_allocator,
+) -> ImageView {
 	assert(size_contains(this.size, min))
 	assert(size_contains(this.size, max))
 	max := max
@@ -145,35 +153,36 @@ image_view :: proc(this: Image, min: IVec2 = IVec2{0, 0}, max: IVec2 = IVec2{0, 
 		max = this.size
 	}
 	if max.x <= min.x || max.y <= min.y {
-		return nil
+		return {}
 	}
-	line_len := max.x - min.x
+	row_len := max.x - min.x
 
-	lines := make([][]Rgba, max.y - min.y)
-	for &line, i in lines {
+	rows := make([][]Rgba, max.y - min.y, allocator)
+	for &row, i in rows {
 		start_idx := (min.y + i) * this.size.x + min.x
-		end_idx := start_idx + line_len
-		line = this.pixels[start_idx:end_idx]
+		end_idx := start_idx + row_len
+		row = this.pixels[start_idx:end_idx]
 	}
-	return lines
+	view_size := max - min
+	return {view_size, rows}
 }
 size_contains :: proc(size: IVec2, pt: IVec2) -> bool {
 	return pt.x >= 0 && pt.y >= 0 && pt.x <= size.x && pt.y <= size.y
 }
 
 image_copy_into :: proc(target: ^Image, view: ImageView, pos_in_target: IVec2) {
-	if len(view) == 0 {
+	if view.size == {} {
 		return
 	}
-	view_width := len(view[0])
-	view_height := len(view)
+	view_width := view.size.x
+	view_height := view.size.y
 	assert(target.size.x - pos_in_target.x >= view_width)
 	assert(target.size.y - pos_in_target.y >= view_height)
 
-	for line, i in view {
-		assert(len(line) == view_width)
+	for row, i in view.rows {
+		assert(len(row) == view_width)
 		start_idx := (i + pos_in_target.y) * target.size.x + pos_in_target.x
-		mem.copy(&target.pixels[start_idx], raw_data(line), view_width * 4)
+		mem.copy(&target.pixels[start_idx], raw_data(row), view_width * 4)
 	}
 }
 
@@ -237,6 +246,30 @@ transparent_pad :: proc(img: Image, pad: IVec2) -> Image {
 	out := image_create(img.size + pad * 2)
 	image_copy_into(&out, image_view(img), pad)
 	return out
+}
+
+
+// returns x_n * y_n tiles of the same size (if img size allows for clean even tiling)
+image_slice_into_tiles :: proc(
+	img: Image,
+	x_n: int,
+	y_n: int,
+	allocator := context.temp_allocator,
+) -> (
+	res: []ImageView,
+) {
+	tile_width := img.size.x / x_n
+	tile_height := img.size.y / y_n
+
+	res = make([]ImageView, x_n * y_n)
+	for y_i in 0 ..< y_n {
+		for x_i in 0 ..< x_n {
+			min := IVec2{x_i * tile_width, y_i * tile_height}
+			max := min + IVec2{tile_width, tile_height}
+			res[x_i + y_i * x_n] = image_view(img, min, max, allocator)
+		}
+	}
+	return res
 }
 
 

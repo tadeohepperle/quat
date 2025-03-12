@@ -14,6 +14,91 @@ None :: q.None
 AtlasId :: distinct u32
 SrcImageId :: distinct u32
 
+MotionTextureAllocator :: struct {
+	atlas:       Atlas, // stores coords of diffuse_img, motion_img should be the same but scaled, so uv of diffuse and motion img are the same!
+	diffuse_img: Image,
+	motion_img:  Image,
+	texture:     q.MotionTextureHandle,
+}
+// currently only supports fixed size, no resizing
+motion_texture_allocator_create :: proc(
+	diffuse_size: IVec2,
+	motion_size: IVec2,
+) -> (
+	res: MotionTextureAllocator,
+) {
+	texture := q.motion_texture_create(diffuse_size, motion_size, ENGINE.platform.device)
+	q.atlas_init(&res.atlas, diffuse_size)
+	res.texture = q.assets_add_motion_texture(&ENGINE.platform.asset_manager, texture)
+	res.diffuse_img = q.image_create(diffuse_size)
+	res.motion_img = q.image_create(motion_size)
+	return res
+}
+
+DiffuseAndMotionImage :: struct {
+	diffuse: q.ImageView,
+	motion:  q.ImageView,
+}
+motion_texture_allocator_allocate_frames :: proc(
+	this: ^MotionTextureAllocator,
+	diffuse_images: []q.ImageView,
+	motion_images: []q.ImageView,
+	sync_to_texture: bool = true,
+) -> (
+	frames: q.MotionFramesData,
+	err: q.Error,
+) {
+
+	if len(diffuse_images) != len(motion_images) {
+		return {}, "needs to have same number of motion and diffuse images"
+	}
+	if len(diffuse_images) == 0 {
+		return {}, "needs at least 1 motion frame"
+	}
+	if len(diffuse_images) > q.MAX_N_MOTION_FRAMES {
+		return
+	}
+	n_frames := len(diffuse_images)
+
+	diffuse_size := diffuse_images[0].size
+	motion_size := motion_images[0].size
+	for idx in 0 ..< n_frames {
+		if diffuse_images[idx].size != diffuse_size || motion_images[idx].size != motion_size {
+			return {}, "all images for motion frames need to have same size!"
+		}
+	}
+	atlas_size_f := q.ivec2_to_vec2(this.atlas.size)
+	frames.uv_size = q.ivec2_to_vec2(diffuse_size) / atlas_size_f
+	frames.time = 0.0
+	frames.n = u32(n_frames)
+	for idx in 0 ..< n_frames {
+		diffuse := diffuse_images[idx]
+		motion := motion_images[idx]
+		assert(diffuse.size == motion.size)
+		pos_in_atlas, success := q.atlas_allocate(&this.atlas, diffuse_size)
+		if !success {
+			return {}, "no space for all motion frames in atlas!"
+		}
+		q.image_copy_into(&this.diffuse_img, diffuse, pos_in_atlas)
+		q.image_copy_into(&this.motion_img, motion, pos_in_atlas)
+		frames.start_uvs[idx] = q.ivec2_to_vec2(pos_in_atlas) / atlas_size_f
+	}
+	if sync_to_texture {
+		_motion_texture_allocator_sync(this)
+	}
+	return frames, nil
+}
+
+_motion_texture_allocator_sync :: proc(this: ^MotionTextureAllocator) {
+	texture := q.assets_get_motion_texture(ENGINE.platform.asset_manager, this.texture)
+	q.motion_texture_write(texture, this.diffuse_img, this.motion_img, ENGINE.platform.queue)
+}
+
+// motion_texture_allocator_bind_group :: proc(this: MotionTextureAllocator) -> wgpu.BindGroup {
+// 	return this.texture.bind_group
+// }
+
+
 TextureAllocatorSettings :: struct {
 	max_size:         IVec2,
 	max_n_atlases:    int,
