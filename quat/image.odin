@@ -45,9 +45,10 @@ depth_image_drop :: proc(this: ^DepthImage16) {
 }
 
 Image :: struct {
-	size:           IVec2,
-	pixels:         []Rgba `fmt:"-"`,
-	backed_by_stbi: bool,
+	size:                IVec2,
+	pixels:              []Rgba `fmt:"-"`,
+	backed_by_stbi:      bool,
+	premultiplied_alpha: bool,
 }
 StbiAllocation :: distinct rawptr // buffer containing the pixels allocated by stbi
 ArrayAllocation :: [dynamic]Rgba // buffer allocated by odin
@@ -71,6 +72,19 @@ image_load :: proc(path: string) -> (Image, Error) {
 		backed_by_stbi = true,
 	}
 	return img, nil
+}
+// multiplies rgb channels by alpha
+image_premultiply_alpha :: proc(this: ^Image) {
+	if this.premultiplied_alpha {
+		return
+	}
+	for &px in this.pixels {
+		a := u32(px[3])
+		px[0] = u8((u32(px[0]) * a) / 255)
+		px[1] = u8((u32(px[1]) * a) / 255)
+		px[2] = u8((u32(px[2]) * a) / 255)
+	}
+	this.premultiplied_alpha = true
 }
 image_load_from_memory :: proc(bytes: []u8) -> (Image, Error) {
 	x, y, c: i32
@@ -166,6 +180,15 @@ image_view :: proc(
 	view_size := max - min
 	return {view_size, rows}
 }
+image_from_view :: proc(view: ImageView) -> (res: Image) {
+	res = image_create(view.size)
+	for row, i in view.rows {
+		assert(len(row) == view.size.x)
+		mem.copy(&res.pixels[i * view.size.x], raw_data(row), view.size.x * 4)
+	}
+	return res
+}
+
 size_contains :: proc(size: IVec2, pt: IVec2) -> bool {
 	return pt.x >= 0 && pt.y >= 0 && pt.x <= size.x && pt.y <= size.y
 }

@@ -16,10 +16,9 @@ recorded_dt: [dynamic]f32
 
 main :: proc() {
 	settings := E.DEFAULT_ENGINE_SETTINGS
-	settings.debug_ui_gizmos = true
+	settings.debug_ui_gizmos = false
 	E.init(settings)
 	defer {E.deinit()}
-	E.set_bloom_enabled(false)
 
 	corn := E.load_texture_tile("./assets/corn.png")
 	sprite := E.load_texture_tile("./assets/can.png")
@@ -40,7 +39,7 @@ main :: proc() {
 	text_align: q.TextAlign
 
 	tonemapping: q.TonemappingMode
-	bloom_enabled := true
+	bloom_enabled := false
 	bloom_blend_factor: f64 = 0.2
 	snake_enabled := false
 
@@ -56,6 +55,7 @@ main :: proc() {
 		E.add_window(
 			"Example window",
 			{
+				E.button("I do nothing").ui,
 				E.enum_radio(&text_align, "Text Align"),
 				E.enum_radio(&tonemapping, "Tonemapping"),
 				E.color_picker(&background_color, "Background"),

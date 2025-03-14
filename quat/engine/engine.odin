@@ -1047,18 +1047,27 @@ get_wasd :: proc() -> Vec2 {
 	}
 	return {0, 0}
 }
-get_arrows :: proc() -> Vec2 {
-	mapping := [?]KeyVecPair{{.UP, {0, 1}}, {.LEFT, {-1, 0}}, {.DOWN, {0, -1}}, {.RIGHT, {1, 0}}}
-	dir: Vec2
-	for m in mapping {
-		if .Pressed in ENGINE.platform.keys[m.key] {
-			dir += m.dir
+get_arrows :: proc() -> (res: Vec2) {
+	keys := [4]q.Key{.LEFT, .RIGHT, .DOWN, .UP}
+	dirs := [4]Vec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+	for key, idx in keys {
+		if .Pressed in ENGINE.platform.keys[key] {
+			res += dirs[idx]
 		}
 	}
-	if dir != {0, 0} {
-		dir = linalg.normalize(dir)
+	return res
+}
+
+get_arrows_just_pressed_or_repeated :: proc() -> (res: IVec2) {
+	keys := [4]q.Key{.LEFT, .RIGHT, .DOWN, .UP}
+	dirs := [4]IVec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+	for key, idx in keys {
+		flags := ENGINE.platform.keys[key]
+		if .JustPressed in flags || .JustRepeated in flags {
+			res += dirs[idx]
+		}
 	}
-	return dir
+	return res
 }
 
 // call before initializing engine!

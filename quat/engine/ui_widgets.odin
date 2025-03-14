@@ -21,44 +21,50 @@ Text :: q.Text
 UiWithInteraction :: q.UiWithInteraction
 
 UiTheme :: struct {
-	font_size:               f32,
-	font_size_sm:            f32,
-	font_size_lg:            f32,
-	text_shadow:             f32,
-	disabled_opacity:        f32,
-	border_width:            q.BorderWidth,
-	border_radius:           q.BorderRadius,
-	border_radius_sm:        q.BorderRadius,
-	control_standard_height: f32,
-	text:                    Color,
-	text_secondary:          Color,
-	background:              Color,
-	success:                 Color,
-	highlight:               Color,
-	surface:                 Color,
-	surface_border:          Color,
-	surface_deep:            Color,
+	font_size:         f32,
+	font_size_lg:      f32,
+	text_shadow:       f32,
+	disabled_opacity:  f32,
+	border_width:      q.BorderWidth,
+	border_radius:     q.BorderRadius,
+	border_radius_sm:  q.BorderRadius,
+	control_width_lg:  f32,
+	control_width_sm:  f32,
+	control_height:    f32,
+	control_height_sm: f32,
+	control_height_lg: f32,
+	text:              Color,
+	text_secondary:    Color,
+	background:        Color,
+	success:           Color,
+	highlight:         Color,
+	surface:           Color,
+	surface_border:    Color,
+	surface_deep:      Color,
 }
 
 // not a constant, so can be switched out.
 THEME: UiTheme = UiTheme {
-	font_size               = 22,
-	font_size_sm            = 18,
-	font_size_lg            = 28,
-	text_shadow             = 0.4,
-	disabled_opacity        = 0.4,
-	border_width            = q.BorderWidth{2.0, 2.0, 2.0, 2.0},
-	border_radius           = q.BorderRadius{8.0, 8.0, 8.0, 8.0},
-	border_radius_sm        = q.BorderRadius{4.0, 4.0, 4.0, 4.0},
-	control_standard_height = 36.0,
-	text                    = color_from_hex("#EFF4F7"),
-	text_secondary          = color_from_hex("#777F8B"),
-	background              = color_from_hex("#252833"),
-	success                 = color_from_hex("#68B767"),
-	highlight               = color_from_hex("#F7EFB2"),
-	surface                 = color_from_hex("#577383"),
-	surface_border          = color_from_hex("#8CA6BE"),
-	surface_deep            = color_from_hex("#16181D"),
+	font_size         = 18,
+	font_size_lg      = 24,
+	text_shadow       = 0.8,
+	disabled_opacity  = 0.4,
+	border_width      = q.BorderWidth{2.0, 2.0, 2.0, 2.0},
+	border_radius     = q.BorderRadius{8.0, 8.0, 8.0, 8.0},
+	border_radius_sm  = q.BorderRadius{4.0, 4.0, 4.0, 4.0},
+	control_width_lg  = 196,
+	control_width_sm  = 48,
+	control_height    = 24,
+	control_height_sm = 18,
+	control_height_lg = 30,
+	text              = color_from_hex("#EFF4F7"),
+	text_secondary    = color_from_hex("#777F8B"),
+	background        = color_from_hex("#252833"),
+	success           = color_from_hex("#68B767"),
+	highlight         = color_from_hex("#F7EFB2"),
+	surface           = color_from_hex("#577383"),
+	surface_border    = color_from_hex("#8CA6BE"),
+	surface_deep      = color_from_hex("#16181D"),
 }
 
 child :: #force_inline proc(parent: UiDiv, ch: Ui) {
@@ -103,13 +109,7 @@ text :: proc {
 
 text_from_string :: proc(s: string, id: UiId = 0) -> UiText {
 	return q.ui_text(
-		q.Text {
-			str = s,
-			font = 0,
-			color = THEME.text,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
-		},
+		q.Text{str = s, font = 0, color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
 	)
 }
 
@@ -201,7 +201,7 @@ button :: proc(title: string, id: string = "") -> UiWithInteraction {
 			lerp_speed = 16,
 			flags = {.CrossAlignCenter, .HeightPx, .AxisX, .LerpStyle},
 			padding = {12, 12, 0, 0},
-			height = THEME.control_standard_height,
+			height = THEME.control_height_lg,
 			color = color,
 			border_color = border_color,
 			border_radius = THEME.border_radius,
@@ -209,33 +209,12 @@ button :: proc(title: string, id: string = "") -> UiWithInteraction {
 		},
 		id,
 	)
-	child_text(
-		ui,
-		Text {
-			str = title,
-			font_size = THEME.font_size,
-			color = THEME.text,
-			shadow = THEME.text_shadow,
-		},
-	)
+	child_text(ui, Text{str = title, font_size = THEME.font_size, color = THEME.text, shadow = THEME.text_shadow})
 
 	return {ui, action}
 }
 
-
-ToggleProps :: struct {
-	height:      f32,
-	pill_width:  f32,
-	pill_height: f32,
-	font_size:   f32,
-}
-DEFAULT_TOGGLE_PROPS :: ToggleProps {
-	height      = 36,
-	pill_width  = 64,
-	pill_height = 32,
-	font_size   = 0,
-}
-toggle :: proc(value: ^bool, title: string, opt: ToggleProps = DEFAULT_TOGGLE_PROPS) -> Ui {
+toggle :: proc(value: ^bool, title: string) -> Ui {
 	id := u64(uintptr(value))
 	res := q.ui_interaction(id)
 	active := value^
@@ -244,7 +223,9 @@ toggle :: proc(value: ^bool, title: string, opt: ToggleProps = DEFAULT_TOGGLE_PR
 		value^ = active
 	}
 
-	ui := div(Div{height = opt.height, flags = {.AxisX, .CrossAlignCenter, .HeightPx}, gap = 8})
+	pill_height := THEME.control_height
+	pill_width := THEME.control_width_sm
+	ui := div(Div{height = pill_height, flags = {.AxisX, .CrossAlignCenter, .HeightPx}, gap = 8})
 
 	circle_color: Color = ---
 	pill_color: Color = ---
@@ -266,41 +247,35 @@ toggle :: proc(value: ^bool, title: string, opt: ToggleProps = DEFAULT_TOGGLE_PR
 	if active {
 		pill_flags |= {.MainAlignEnd}
 	}
-	pad := opt.pill_height / 8
-	rad := opt.pill_height / 2
+
+	pad := pill_height / 8
+	rad := pill_height / 2
 	pill := div(
 		Div {
 			color = pill_color,
-			width = opt.pill_width,
-			height = opt.pill_height,
+			width = pill_width,
+			height = pill_height,
 			padding = {pad, pad, pad, pad},
 			flags = pill_flags,
 			border_radius = {rad, rad, rad, rad},
 		},
 		id = id,
 	)
+	flags := q.DivFlags{.WidthPx, .HeightPx, .LerpStyle, .LerpTransform, .PointerPassThrough}
 	child_div(
 		pill,
 		Div {
 			color = circle_color,
-			width = 0.75 * opt.pill_height,
-			height = 0.75 * opt.pill_height,
+			width = 0.75 * pill_height,
+			height = 0.75 * pill_height,
 			lerp_speed = 10,
-			flags = {.WidthPx, .HeightPx, .LerpStyle, .LerpTransform, .PointerPassThrough},
+			flags = flags,
 			border_radius = {12, 12, 12, 12},
 		},
 		id = q.ui_id_next(id),
 	)
 	child(ui, pill)
-	child_text(
-		ui,
-		Text {
-			str = title,
-			color = text_color,
-			font_size = THEME.font_size if opt.font_size == 0 else opt.font_size,
-			shadow = THEME.text_shadow,
-		},
-	)
+	child_text(ui, Text{str = title, color = text_color, font_size = THEME.font_size, shadow = THEME.text_shadow})
 	return ui
 }
 
@@ -356,7 +331,7 @@ slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) -> Ui 
 	container := div(
 		Div {
 			width = slider_width,
-			height = THEME.control_standard_height,
+			height = THEME.control_height,
 			flags = {.WidthPx, .HeightPx, .AxisX, .CrossAlignCenter, .MainAlignCenter},
 		},
 	)
@@ -364,7 +339,7 @@ slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) -> Ui 
 		container,
 		Div {
 			width = 1,
-			height = 32,
+			height = THEME.control_height - 2,
 			color = THEME.text_secondary,
 			border_radius = THEME.border_radius_sm,
 			flags = {.WidthFraction, .HeightPx, .Absolute},
@@ -378,7 +353,7 @@ slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) -> Ui 
 		container,
 		Div {
 			width = knob_width,
-			height = THEME.control_standard_height,
+			height = THEME.control_height,
 			color = THEME.surface_deep,
 			border_width = THEME.border_width,
 			border_color = knob_border_color,
@@ -391,12 +366,7 @@ slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) -> Ui 
 	)
 	child_text(
 		container,
-		Text {
-			str = fmt.tprint(val),
-			color = THEME.text,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
-		},
+		Text{str = fmt.tprint(val), color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
 	)
 	return container
 }
@@ -411,14 +381,12 @@ slider_f64 :: proc(value: ^f64, min: f64 = 0, max: f64 = 1, id: UiId = 0) -> Ui 
 }
 
 
-slider_f32 :: proc(
-	value: ^f32,
-	min: f32 = 0,
-	max: f32 = 1,
-	id: UiId = 0,
-	slider_width: f32 = 192,
-) -> Ui {
-	knob_width: f32 = 24
+slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider_width: f32 = 0) -> Ui {
+	slider_width := slider_width
+	if slider_width == 0 {
+		slider_width = THEME.control_width_lg
+	}
+	knob_width: f32 = THEME.font_size
 	id := id if id != 0 else u64(uintptr(value))
 	val: f32 = value^
 
@@ -460,7 +428,7 @@ slider_f32 :: proc(
 	container := div(
 		Div {
 			width = slider_width,
-			height = THEME.control_standard_height,
+			height = THEME.control_height,
 			flags = {.WidthPx, .HeightPx, .AxisX, .CrossAlignCenter, .MainAlignCenter},
 		},
 	)
@@ -468,7 +436,7 @@ slider_f32 :: proc(
 		container,
 		Div {
 			width = 1,
-			height = THEME.control_standard_height - 2,
+			height = THEME.control_height - 4,
 			color = THEME.text_secondary,
 			border_radius = THEME.border_radius_sm,
 			flags = {.WidthFraction, .HeightPx, .Absolute},
@@ -481,7 +449,7 @@ slider_f32 :: proc(
 		container,
 		Div {
 			width = knob_width,
-			height = THEME.control_standard_height,
+			height = THEME.control_height,
 			color = THEME.surface_deep,
 			border_width = THEME.border_width,
 			border_color = knob_border_color,
@@ -495,12 +463,7 @@ slider_f32 :: proc(
 	text_str := fmt.aprintf("%f", val, allocator = context.temp_allocator)
 	child_text(
 		container,
-		Text {
-			str = text_str,
-			color = THEME.text,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
-		},
+		Text{str = text_str, color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
 	)
 
 	return container
@@ -524,87 +487,60 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 
 	assert(len(values) > 0)
 	id := id if id != 0 else u64(uintptr(current_idx))
-	tag := q.UiTag(id)
 
-
-	DROPDOWN_W :: 200
 	container := div(
-		Div {
-			width = DROPDOWN_W,
-			height = THEME.control_standard_height,
-			flags = {.WidthPx, .HeightPx},
-		},
+		Div{width = THEME.control_width_lg, height = THEME.control_height_lg, flags = {.WidthPx, .HeightPx}},
 	)
 
-	first_el, first_el_res := _field(
-		values[cur_idx],
-		q.ui_id_combined(id, q.ui_id(values[cur_idx])),
-		0,
-		true,
-	)
+	first_id := q.ui_id_combined(q.ui_id_combined(id, q.ui_id(values[cur_idx])), q.ui_id("first"))
+	first_el, first_el_res := _field(values[cur_idx], first_id, true)
 	child(container, first_el)
 
-	if first_el_res.focused || q.ui_tag_hovered(tag) {
+	print(first_el_res.just_unfocused)
+
+	if first_el_res.focused || first_el_res.just_unfocused {
 		new_cur_idx := cur_idx
 		for v, idx in values {
-			if idx != cur_idx {
-				field_id := q.ui_id_combined(id, q.ui_id(v))
-				field, field_res := _field(v, field_id, tag, false)
-				child(container, field)
-				if field_res.just_released {
-					new_cur_idx = idx
-				}
+			// if idx != cur_idx {
+			field_id := q.ui_id_combined(id, q.ui_id(v))
+			field, field_res := _field(v, field_id, false)
+			child(container, field)
+			if field_res.just_pressed {
+				new_cur_idx = idx
 			}
+			// }
 		}
 		current_idx^ = new_cur_idx
 	}
 
 	return container
 
-	_field :: proc(
-		str: string,
-		field_id: UiId,
-		tag: q.UiTag,
-		is_first: bool,
-	) -> (
-		^q.DivElement,
-		q.Interaction,
-	) {
+	_field :: proc(str: string, field_id: UiId, is_first: bool) -> (^q.DivElement, q.Interaction) {
 		action := q.ui_interaction(field_id)
-		color: Color = ---
-		border_color: Color = ---
-		if action.pressed {
+		color: Color = THEME.surface
+		border_color: Color = THEME.surface_border
+		if action.pressed || action.focused {
 			color = THEME.surface_deep
-			border_color = THEME.text
+			if action.pressed {
+				border_color = THEME.text
+			}
 		} else if action.hovered {
 			color = THEME.surface_border
 			border_color = THEME.text
-		} else {
-			color = THEME.surface
-			if is_first {
-				border_color = THEME.text
-			} else {
-				border_color = THEME.surface_border
-			}
 		}
 		field := div(
 			Div {
-				width = 200,
-				height = THEME.control_standard_height,
+				width = THEME.control_width_lg,
+				height = THEME.control_height_lg,
 				color = color,
 				border_color = border_color,
-				padding = {2, 2, 2, 2},
-				border_radius = {4, 4, 4, 4},
-				border_width = q.BorderWidth{3, 3, 3, 3} if is_first else {1, 1, 1, 1},
-				flags = {.WidthPx, .HeightPx, .CrossAlignCenter, .LerpStyle},
+				border_radius = THEME.border_radius,
+				border_width = THEME.border_width,
+				flags = {.WidthPx, .HeightPx, .CrossAlignCenter, .LerpStyle, .MainAlignCenter},
 			},
 			field_id,
 		)
-		q.ui_set_tag(field, tag)
-		child_text(
-			field,
-			Text{str = str, font_size = THEME.font_size, color = THEME.text, shadow = 0.5},
-		)
+		child_text(field, Text{str = str, font_size = THEME.font_size, color = THEME.text, shadow = 0.5})
 
 		return field, action
 	}
@@ -612,11 +548,7 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 
 
 @(private)
-_check_box_inner :: #force_inline proc(
-	checked: bool,
-	label: string,
-	id: UiId,
-) -> UiWithInteraction {
+_check_box_inner :: #force_inline proc(checked: bool, label: string, id: UiId) -> UiWithInteraction {
 	action := q.ui_interaction(id)
 	text_color: Color = ---
 	knob_inner_color: Color = ---
@@ -630,62 +562,41 @@ _check_box_inner :: #force_inline proc(
 		text_color = THEME.text_secondary
 		knob_inner_color = THEME.text_secondary
 	}
-	ui := div(
-		Div {
-			height = THEME.control_standard_height,
-			gap = 8,
-			flags = {.AxisX, .CrossAlignCenter, .HeightPx},
-		},
-		id = id,
-	)
+	ui := div(Div{height = THEME.control_height, gap = 8, flags = {.AxisX, .CrossAlignCenter, .HeightPx}}, id = id)
 	child_div(
 		ui,
 		Div {
-			width = 20,
-			height = 20,
+			width = THEME.control_height_sm,
+			height = THEME.control_height_sm,
 			color = knob_inner_color,
 			border_color = text_color,
 			flags = {.WidthPx, .HeightPx, .MainAlignCenter, .CrossAlignCenter},
 			border_radius = THEME.border_radius,
-			border_width = {4, 4, 4, 4},
+			border_width = {2, 2, 2, 2},
 		},
 	)
-	child_text(
-		ui,
-		Text {
-			str = label,
-			color = text_color,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
-		},
-	)
+	child_text(ui, Text{str = label, color = text_color, font_size = THEME.font_size, shadow = THEME.text_shadow})
 	return {ui, action}
 }
 
-enum_radio :: proc(
-	value: ^$T,
-	title: string = "",
-	horizontal := false,
-) -> Ui where intrinsics.type_is_enum(T) {
+enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui where intrinsics.type_is_enum(T) {
 
 	ui := div(Div{})
 	if horizontal {
 		ui.flags = q.DivFlags{.AxisX}
 		ui.gap = 16
+	} else {
+		ui.gap = 2
 	}
 
 
 	if title != "" {
 		child_text(
 			ui,
-			Text {
-				str = title,
-				color = THEME.text,
-				font_size = THEME.font_size_lg,
-				shadow = THEME.text_shadow,
-			},
+			Text{str = title, color = THEME.text, font_size = THEME.font_size_lg, shadow = THEME.text_shadow},
 		)
 	}
+	child_div(ui, Div{height = 2, flags = {.HeightPx}})
 
 	for variant in T {
 		str := fmt.aprint(variant, allocator = context.temp_allocator)
@@ -785,9 +696,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 			}
 		}
 
-		cached_hue_slider_pos, cached_hue_slider_size, h_ok := q.ui_get_cached_no_user_data(
-			hue_slider_id,
-		)
+		cached_hue_slider_pos, cached_hue_slider_size, h_ok := q.ui_get_cached_no_user_data(hue_slider_id)
 		if h_ok {
 			if res_hue_slider.pressed {
 				fract_in_slider: f32 = (cursor_pos.x - cached_square_pos.x) / cached_square_size.x
@@ -803,22 +712,15 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 	color := value^
 
 
-	ui := div(
-		Div {
-			height = THEME.control_standard_height,
-			gap = 8,
-			flags = {.AxisX, .CrossAlignCenter, .HeightPx},
-		},
-		id,
-	)
+	ui := div(Div{height = THEME.control_height, gap = 8, flags = {.AxisX, .CrossAlignCenter, .HeightPx}}, id)
 	knob := child_div(
 		ui,
 		Div {
 			color = color,
 			border_radius = THEME.border_radius,
 			border_width = THEME.border_width,
-			width = 48,
-			height = 32,
+			width = THEME.control_width_sm,
+			height = THEME.control_height,
 			flags = {.WidthPx, .HeightPx},
 		},
 		id = id,
@@ -832,12 +734,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 	if title != "" {
 		child_text(
 			ui,
-			Text {
-				str = title,
-				color = THEME.text_secondary,
-				font_size = THEME.font_size,
-				shadow = THEME.text_shadow,
-			},
+			Text{str = title, color = THEME.text_secondary, font_size = THEME.font_size, shadow = THEME.text_shadow},
 		)
 	}
 
@@ -952,11 +849,7 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 	set_size :: proc(data: ^ColorGradientRect, max_size: Vec2) -> (used_size: Vec2) {
 		return Vec2{data.width_px, data.height_px}
 	}
-	add_primitives :: proc(
-		data: ^ColorGradientRect,
-		pos: Vec2,
-		size: Vec2,
-	) -> []q.CustomPrimitives {
+	add_primitives :: proc(data: ^ColorGradientRect, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
 		n_x := data.colors_n_x
 		n_y := data.colors_n_y
 		border_width := q.BorderWidth{-10.0, -10.0, -10.0, -10.0}
@@ -1060,7 +953,7 @@ text_edit :: proc(
 	@(thread_local)
 	g_state: edit.State = {}
 	assert(value != nil, "text edit should not get a nil ptr as ^strings.Builder")
-	font_size := font_size if font_size != 0 else THEME.font_size_sm
+	font_size := font_size if font_size != 0 else THEME.font_size
 
 	id := id if id != 0 else u64(uintptr(value))
 	text_id := q.ui_id_next(id)
@@ -1163,7 +1056,7 @@ text_edit :: proc(
 		just_pressed    = res.just_pressed,
 		just_released   = res.just_released,
 		pressed         = res.pressed,
-		caret_width     = 4,
+		caret_width     = 3,
 		caret_color     = {THEME.text.r, THEME.text.g, THEME.text.b, caret_opacity},
 		selection_color = THEME.surface,
 		shift_pressed   = is_shift_pressed(),
@@ -1231,11 +1124,7 @@ text_edit :: proc(
 		return Vec2{0, 0}
 	}
 
-	add_markers_elements :: proc(
-		data: ^MarkersData,
-		pos: Vec2,
-		size: Vec2,
-	) -> []q.CustomPrimitives {
+	add_markers_elements :: proc(data: ^MarkersData, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
 		vertices: [dynamic]q.UiVertex = make([dynamic]q.UiVertex, context.temp_allocator)
 		tris: [dynamic]q.Triangle = make([dynamic]q.Triangle, context.temp_allocator)
 
@@ -1308,39 +1197,22 @@ text_edit :: proc(
 					continue
 				}
 				defer {is_first = false}
-				is_last :=
-					byte_idx_plus_one(text_ctx.byte_advances[:], line.byte_end_idx) >= right_idx // not correct!!
+				is_last := byte_idx_plus_one(text_ctx.byte_advances[:], line.byte_end_idx) >= right_idx // not correct!!
 				x_left: f32 = line.x_offset
 				if is_first {
-					x_left =
-						advance_at_byte_minus_one(text_ctx.byte_advances[:], left_idx) +
-						line.x_offset
+					x_left = advance_at_byte_minus_one(text_ctx.byte_advances[:], left_idx) + line.x_offset
 				}
 				x_right: f32 = ---
 				if is_last {
-					x_right =
-						advance_at_byte_minus_one(text_ctx.byte_advances[:], right_idx) +
-						line.x_offset
+					x_right = advance_at_byte_minus_one(text_ctx.byte_advances[:], right_idx) + line.x_offset
 				} else {
-					x_right =
-						advance_at_byte_minus_one(text_ctx.byte_advances[:], line.byte_end_idx) +
-						line.x_offset
+					x_right = advance_at_byte_minus_one(text_ctx.byte_advances[:], line.byte_end_idx) + line.x_offset
 				}
 				rect_pos := Vec2{pos.x + x_left, pos.y + line.baseline_y - line.metrics.ascent}
 				rect_size := Vec2{x_right - x_left, line.metrics.ascent - line.metrics.descent}
 
 
-				q.add_rect(
-					&vertices,
-					&tris,
-					rect_pos,
-					rect_size,
-					data.selection_color,
-					{},
-					{},
-					{2, 2, 2, 2},
-					{},
-				)
+				q.add_rect(&vertices, &tris, rect_pos, rect_size, data.selection_color, {}, {}, {2, 2, 2, 2}, {})
 				if is_last {
 					break
 				}
@@ -1360,27 +1232,13 @@ text_edit :: proc(
 				}
 			}
 			caret_advance: f32 =
-				advance_at_byte_minus_one(text_ctx.byte_advances[:], caret_byte_idx) +
-				care_line.x_offset
+				advance_at_byte_minus_one(text_ctx.byte_advances[:], caret_byte_idx) + care_line.x_offset
 			pipe_pos := Vec2 {
 				pos.x + caret_advance - data.caret_width / 2,
 				pos.y + care_line.baseline_y - care_line.metrics.ascent,
 			}
-			pipe_size := Vec2 {
-				data.caret_width,
-				care_line.metrics.ascent - care_line.metrics.descent,
-			}
-			q.add_rect(
-				&vertices,
-				&tris,
-				pipe_pos,
-				pipe_size,
-				data.caret_color,
-				{},
-				{},
-				{2, 2, 2, 2},
-				{},
-			)
+			pipe_size := Vec2{data.caret_width, care_line.metrics.ascent - care_line.metrics.descent}
+			q.add_rect(&vertices, &tris, pipe_pos, pipe_size, data.caret_color, {}, {}, {2, 2, 2, 2}, {})
 		}
 
 		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
@@ -1446,19 +1304,11 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 	knob_rel_pos := A_REL_POS * weights[0] + B_REL_POS * weights[1] + C_REL_POS * weights[2]
 	ui := div(Div{flags = {.MainAlignCenter, .CrossAlignCenter}, padding = {8, 8, 8, 8}, gap = 8})
 	tri_container := child_div(ui, Div{}, id)
-	child(
-		tri_container,
-		equilateral_triangle(side_len, THEME.surface_border if res.pressed else THEME.surface),
-	)
+	child(tri_container, equilateral_triangle(side_len, THEME.surface_border if res.pressed else THEME.surface))
 	knob_zero_size_container := child_div(
 		tri_container,
 		Div {
-			flags = {
-				.ZeroSizeButInfiniteSizeForChildren,
-				.Absolute,
-				.MainAlignCenter,
-				.CrossAlignCenter,
-			},
+			flags = {.ZeroSizeButInfiniteSizeForChildren, .Absolute, .MainAlignCenter, .CrossAlignCenter},
 			absolute_unit_pos = knob_rel_pos,
 		},
 	)
@@ -1476,12 +1326,7 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 	)
 	child_text(
 		ui,
-		Text {
-			str = text_to_show,
-			color = q.ColorLightGrey,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
-		},
+		Text{str = text_to_show, color = q.ColorLightGrey, font_size = THEME.font_size, shadow = THEME.text_shadow},
 	)
 	return ui
 }
@@ -1547,11 +1392,7 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 	set_size :: proc(data: ^RoundedEquilateralTriangle, max_size: Vec2) -> Vec2 {
 		return Vec2{data.side_length, math.SQRT_THREE / 2 * data.side_length}
 	}
-	add_primitives :: proc(
-		data: ^RoundedEquilateralTriangle,
-		pos: Vec2,
-		size: Vec2,
-	) -> []q.CustomPrimitives {
+	add_primitives :: proc(data: ^RoundedEquilateralTriangle, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
 		// triangle:
 		//      
 		//      ^ c

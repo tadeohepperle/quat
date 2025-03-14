@@ -76,27 +76,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // inspired by: https://www.klemenlozar.com/frame-blending-with-motion-vectors/
     let motion_rg = textureSample(t_motion, s_sampler, in.uv_two).rg;
     var motion: vec2<f32> = (motion_rg - 0.5) * 2.0;
-    motion *= flipbook.uv_tile_size * 0.05; // the 0.05 here is kinda dubious but seems to work. 0.5 comes from normalizing the 2.0 above?? and then maybe texture has made to have a a shift of 1/10 of image uv to be full 0 or 255 already?? or 1/20th?
+    motion *= flipbook.uv_tile_size * 0.25 ; // the 0.05 here is kinda dubious but seems to work. 0.5 comes from normalizing the 2.0 above?? and then maybe texture has made to have a a shift of 1/10 of image uv to be full 0 or 255 already?? or 1/20th?
 
 
     let f = in.uv_two_factor; // globals.xxx.x; // 
     
-    let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one + f * -motion);
-    let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two + (1.0 -f) * motion);
-    let tex_color = mix(tex_color_one, tex_color_two, f);
-    return tex_color * in.color;
+    // let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one + f * -motion);
+    // let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two + (1.0 -f) * motion);
+    // let tex_color = mix(tex_color_one, tex_color_two, f);
+    // return tex_color * in.color;
 
-    // if globals.xxx.x < 0.33 {
-    //     let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one + f * -motion);
-    //     let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two + (1.0 -f) * motion);
-    //     let tex_color = mix(tex_color_one, tex_color_two, f);
-    //     return tex_color;
-    // } else if globals.xxx.x < 0.9 {
-    //     let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one);
-    //     let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two);
-    //     let tex_color = mix(tex_color_one, tex_color_two, f);
-    //     return tex_color;
-    // } else {
-    //     return textureSample(t_diffuse, s_sampler, in.uv_one);
-    // }
+    if globals.xxx.x < 0.33 {
+        let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one + f * -motion);
+        let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two + (1.0 -f) * motion);
+        let tex_color = mix(tex_color_one, tex_color_two, f);
+        return tex_color;
+    } else if globals.xxx.x < 0.9 {
+        let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one);
+        let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two);
+        let tex_color = mix(tex_color_one, tex_color_two, f);
+        return tex_color;
+    } else {
+        return textureSample(t_diffuse, s_sampler, in.uv_one);
+    }
 }
