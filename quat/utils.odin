@@ -16,6 +16,9 @@ Error :: union {
 	string,
 }
 print :: fmt.println
+// print :: proc(args: ..any, loc := #caller_location) {
+// 	fmt.println(loc, args)
+// }
 tprint :: fmt.tprint
 tmp_arr :: proc($T: typeid, cap: int = 8) -> [dynamic]T {
 	return make([dynamic]T, 0, cap, context.temp_allocator)
@@ -60,12 +63,7 @@ aabb_center :: proc "contextless" (aabb: Aabb) -> Vec2 {
 	return (aabb.min + aabb.max) / 2
 }
 aabb_fully_contains :: proc "contextless" (big: Aabb, small: Aabb) -> bool {
-	return(
-		big.min.x <= small.min.x &&
-		big.min.y <= small.min.y &&
-		big.max.x >= small.max.x &&
-		big.max.y >= small.max.y \
-	)
+	return big.min.x <= small.min.x && big.min.y <= small.min.y && big.max.x >= small.max.x && big.max.y >= small.max.y
 }
 aabb_intersection :: proc "contextless" (a: Aabb, b: Aabb) -> (res: Aabb, intersects: bool) {
 	res = Aabb {
@@ -77,10 +75,7 @@ aabb_intersection :: proc "contextless" (a: Aabb, b: Aabb) -> (res: Aabb, inters
 }
 
 aabb_intersects :: proc "contextless" (a: Aabb, b: Aabb) -> bool {
-	return(
-		min(a.max.x, b.max.x) >= max(a.min.x, b.min.x) &&
-		min(a.max.y, b.max.y) >= max(a.min.y, b.min.y) \
-	)
+	return min(a.max.x, b.max.x) >= max(a.min.x, b.min.x) && min(a.max.y, b.max.y) >= max(a.min.y, b.min.y)
 }
 DVec2 :: [2]f64
 Vec2 :: [2]f32
@@ -107,11 +102,7 @@ transform_test :: proc(t: ^testing.T) {
 	P := affine_from_vectors({0, 0}, {0, 2}, {0, 0}, {1, 2}) // parent
 	C := affine_from_vectors({0, 0}, {0, 1}, {1, 1}, {1, 2}) // child
 	for p in ([]Vec2{{0, 1}, {1, 0}, {-2, 3}}) {
-		testing.expect_value(
-			t,
-			affine_apply(affine_combine(P, C), p),
-			affine_apply(P, affine_apply(C, p)),
-		)
+		testing.expect_value(t, affine_apply(affine_combine(P, C), p), affine_apply(P, affine_apply(C, p)))
 	}
 }
 AFFINE2_UNIT :: Affine2{{1, 0, 0, 1}, {0, 0}}
@@ -165,11 +156,7 @@ affine_from_vectors :: proc(a_old: Vec2, b_old: Vec2, a_new: Vec2, b_new: Vec2) 
 }
 
 // todo: affine_from_rotation does not support NO_SIDE_SCALING yet
-affine_from_rotation :: proc(
-	rotation: f32,
-	around: Vec2 = {0, 0},
-	offset := Vec2{0, 0},
-) -> Affine2 {
+affine_from_rotation :: proc(rotation: f32, around: Vec2 = {0, 0}, offset := Vec2{0, 0}) -> Affine2 {
 	co := math.cos(rotation)
 	si := math.sin(rotation)
 
@@ -206,10 +193,7 @@ dump :: proc(args: ..any, filename := "log.txt") {
 }
 print_line :: proc(message: string = "") {
 	if message != "" {
-		fmt.printfln(
-			"-------------------- %s ---------------------------------------------",
-			message,
-		)
+		fmt.printfln("-------------------- %s ---------------------------------------------", message)
 	} else {
 		fmt.println("------------------------------------------------------------------------")
 	}
@@ -284,14 +268,7 @@ slotmap_to_tmp_slice :: proc(self: SlotMap($T)) -> []T {
 }
 
 // set i to 0 initially
-slotmap_iter :: proc "contextless" (
-	self: ^SlotMap($T),
-	i: ^int,
-) -> (
-	element: ^T,
-	handle: u32,
-	ok: bool,
-) {
+slotmap_iter :: proc "contextless" (self: ^SlotMap($T), i: ^int) -> (element: ^T, handle: u32, ok: bool) {
 	idx := i^
 	for idx < len(self.slots) {
 		el := &self.slots[idx]

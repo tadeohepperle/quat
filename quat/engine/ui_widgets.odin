@@ -2,6 +2,7 @@ package engine
 
 import q "../"
 import "base:intrinsics"
+import "base:runtime"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
@@ -495,9 +496,6 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 	first_id := q.ui_id_combined(q.ui_id_combined(id, q.ui_id(values[cur_idx])), q.ui_id("first"))
 	first_el, first_el_res := _field(values[cur_idx], first_id, true)
 	child(container, first_el)
-
-	print(first_el_res.just_unfocused)
-
 	if first_el_res.focused || first_el_res.just_unfocused {
 		new_cur_idx := cur_idx
 		for v, idx in values {
@@ -936,41 +934,83 @@ colored_triangle :: proc() -> Ui {
 }
 
 
+StringOrBuilderPtr :: union #no_nil {
+	^string, // should be nil or allocated in context.allocator
+	^strings.Builder,
+}
+
+TextEditUiWithInteraction :: struct {
+	ui:          Ui,
+	res:         q.Interaction,
+	just_edited: bool,
+}
+
+
+// todo: still some bug when typing exactly 1 character more than fit in line and then hitting ctrl+A -> selection wrong, only covers first letter of first line instead of both lines
 text_edit :: proc(
-	value: ^strings.Builder,
+	value: StringOrBuilderPtr,
 	id: UiId = 0,
-	width_px: f32 = 240,
+	width_px: f32 = THEME.control_width_lg,
 	max_characters: int = 10000,
 	font_size: f32 = THEME.font_size,
 	align: q.TextAlign = .Left,
 	placeholder: string = "Type something...",
 	line_break: q.LineBreak = .OnCharacter,
-) -> Ui {
+) -> TextEditUiWithInteraction {
 	@(thread_local)
 	g_id: UiId = 0
 	@(thread_local)
 	g_state_initialized: bool
 	@(thread_local)
 	g_state: edit.State = {}
-	assert(value != nil, "text edit should not get a nil ptr as ^strings.Builder")
-	font_size := font_size if font_size != 0 else THEME.font_size
+	@(thread_local)
+	string_builder_if_val_is_string: strings.Builder = {}
 
-	id := id if id != 0 else u64(uintptr(value))
+	id := id
+
+
+	if id == 0 {
+		switch value in value {
+		case ^strings.Builder:
+			id = u64(uintptr(value))
+		case ^string:
+			assert(value != nil, "text edit should not get a nil ptr as ^strings.Builder")
+			id = u64(uintptr(value))
+		}
+	}
+
+	font_size := font_size if font_size != 0 else THEME.font_size
 	text_id := q.ui_id_next(id)
 	res := q.ui_interaction(id)
+	just_edited := false
 
+	display_str: string = "INVALID!"
 	if res.focused {
+
+		builder: ^strings.Builder
+		switch value in value {
+		case ^strings.Builder:
+			assert(value != nil, "text edit should not get a nil ptr as ^strings.Builder")
+			builder = value
+		case ^string:
+			assert(value != nil, "text edit should not get a nil ptr as ^strings.Builder")
+			builder = &string_builder_if_val_is_string
+			strings.builder_reset(builder)
+			strings.write_string(builder, value^)
+		}
+
 		if id != g_id {
 			g_id = id
 			if !g_state_initialized {
 				g_state_initialized = true
 				edit.init(&g_state, context.allocator, context.allocator)
 			}
-			edit.begin(&g_state, id, value)
+			edit.begin(&g_state, id, builder)
 		}
 		for c in get_input_chars() {
-			if strings.rune_count(strings.to_string(value^)) < max_characters {
+			if strings.rune_count(strings.to_string(builder^)) < max_characters {
 				edit.input_rune(&g_state, c)
+				just_edited = true
 			}
 		}
 
@@ -979,9 +1019,11 @@ text_edit :: proc(
 
 		if is_key_just_pressed_or_repeated(.BACKSPACE) {
 			edit.delete_to(&g_state, .Left)
+			just_edited = true
 		}
 		if is_key_just_pressed_or_repeated(.DELETE) {
 			edit.delete_to(&g_state, .Right)
+			just_edited = true
 		}
 		if is_key_just_pressed_or_repeated(.ENTER) {
 			edit.perform_command(&g_state, .New_Line)
@@ -1002,9 +1044,11 @@ text_edit :: proc(
 			if is_key_just_pressed(.X) {
 				set_clipboard(edit.current_selected_text(&g_state))
 				edit.selection_delete(&g_state)
+				just_edited = true
 			}
 			if is_key_just_pressed(.V) {
 				edit.input_text(&g_state, get_clipboard())
+				just_edited = true
 			}
 		}
 		if is_key_just_pressed_or_repeated(.LEFT) {
@@ -1038,13 +1082,24 @@ text_edit :: proc(
 				}
 			}
 		}
+		display_str = strings.to_string(builder^)
+		if just_edited {
+			if str_ptr, ok := value.(^string); ok {
+				delete(str_ptr^)
+				str_ptr^ = strings.clone(display_str, context.allocator)
+			}
+		}
 	} else {
 		if g_id == id {
 			g_id = 0
 		}
+		switch value in value {
+		case ^strings.Builder:
+			display_str = strings.to_string(value^)
+		case ^string:
+			display_str = value^
+		}
 	}
-
-	str := strings.to_string(value^)
 
 
 	border_color: Color = THEME.surface_border if res.focused else THEME.surface
@@ -1077,7 +1132,7 @@ text_edit :: proc(
 	if res.focused {
 		child(ui, q.ui_custom(markers_data, set_markers_size, add_markers_elements))
 	}
-	if !res.focused && len(str) == 0 {
+	if !res.focused && len(display_str) == 0 {
 		child_text(
 			ui,
 			Text {
@@ -1095,7 +1150,7 @@ text_edit :: proc(
 		child_text(
 			ui,
 			Text {
-				str = str,
+				str = display_str,
 				font_size = font_size,
 				color = THEME.text,
 				shadow = THEME.text_shadow,
@@ -1106,7 +1161,7 @@ text_edit :: proc(
 			text_id,
 		)
 	}
-	return ui
+	return TextEditUiWithInteraction{ui, res, just_edited}
 
 	// the job of this markers element is to read the TextEditCached from local 
 	// markers = caret and selection rectangles

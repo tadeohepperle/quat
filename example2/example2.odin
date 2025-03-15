@@ -47,11 +47,16 @@ main :: proc() {
 	drop_down_idx := 0
 	drop_down_values := []string{"English", "German", "French"}
 
+	allocated_str := strings.clone("")
 	for E.next_frame() {
 		E.camera_controller_update(&cam)
 		append(&recorded_dt, E.get_delta_secs() * 1000.0)
 
 
+		allocated_str_edit := E.text_edit(&allocated_str, align = .Center, font_size = E.THEME.font_size)
+		if allocated_str_edit.just_edited {
+			fmt.println("Edited allocated string:", allocated_str)
+		}
 		E.add_window(
 			"Example window",
 			{
@@ -65,8 +70,9 @@ main :: proc() {
 				E.toggle(&snake_enabled, "Render Snake"),
 				E.text("Bloom blend factor:"),
 				E.slider(&bloom_blend_factor),
-				E.text_edit(&text_to_edit, align = .Center, font_size = E.THEME.font_size),
+				E.text_edit(&text_to_edit, align = .Center, font_size = E.THEME.font_size).ui,
 				E.dropdown(drop_down_values, &drop_down_idx),
+				allocated_str_edit.ui,
 			},
 		)
 		E.draw_annotation({2, -1}, "Hello from the engine!")
@@ -84,25 +90,11 @@ main :: proc() {
 			E.draw_gizmos_line(Vec2{f32(x), -5}, Vec2{f32(x), 5}, color2)
 		}
 
-		E.draw_sprite(
-			q.Sprite {
-				texture = sprite,
-				pos = {-3, 5},
-				size = {1, 2.2},
-				rotation = 0,
-				color = q.ColorWhite,
-			},
-		)
+		E.draw_sprite(q.Sprite{texture = sprite, pos = {-3, 5}, size = {1, 2.2}, rotation = 0, color = q.ColorWhite})
 
 		for pos, i in forest {
 			E.draw_sprite(
-				q.Sprite {
-					texture = corn,
-					pos = pos,
-					size = {1, 2},
-					rotation = E.get_osc(2),
-					color = {1, 1, 1, 1},
-				},
+				q.Sprite{texture = corn, pos = pos, size = {1, 2}, rotation = E.get_osc(2), color = {1, 1, 1, 1}},
 			)
 		}
 
