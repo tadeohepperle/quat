@@ -180,9 +180,11 @@ affine_around_and_offset :: proc(affine: Affine2) -> (around: Vec2, offset: Vec2
 next_power_of_two :: math.next_power_of_two
 is_power_of_two :: math.is_power_of_two
 
-lerp :: proc "contextless" (a: $T, b: T, t: f32) -> T {
-	return a + (b - a) * t
-}
+// lerp :: proc "contextless" (a: $T, b: T, t: f32) -> T {
+// 	return a + (b - a) * t
+// }
+
+lerp :: lerp_clamped
 lerp_clamped :: proc "contextless" (a: $T, b: T, t: f32) -> T {
 	return a + (b - a) * clamp(t, 0, 1)
 }

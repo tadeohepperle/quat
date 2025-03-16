@@ -3,11 +3,13 @@ package quat
 import "base:runtime"
 import "core:fmt"
 import "core:hash"
+import "core:log"
 import "core:math"
 import "core:math/rand"
 import "core:mem"
 import "core:os"
 import "core:slice"
+import "core:unicode/utf8"
 
 NO_ID: UiId = 0
 UiId :: u64
@@ -486,6 +488,16 @@ ui_ctx_create :: proc(platform: ^Platform) -> (ctx: UiCtx) {
 	ctx.temp_alloc = context.temp_allocator
 	ctx.cache.platform = platform
 	return ctx
+}
+
+UiElementCounts :: struct {
+	divs:       int,
+	texts:      int,
+	glyphs:     int,
+	custom_uis: int,
+}
+_ui_ctx_ptr :: proc() -> ^UiCtx {
+	return UI_CTX_PTR
 }
 
 ui_ctx_drop :: proc(ctx: ^UiCtx) {
@@ -1106,7 +1118,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 	)
 	text.glyphs_start_idx = UI_CTX_PTR.glyphs_len
 	resize(&ctx.byte_advances, len(ctx.byte_advances) + len(text.str))
-	for ch, ch_byte_idx in text.str {
+	ch_loop: for ch, ch_byte_idx in text.str {
 		ctx.last_byte_idx = ch_byte_idx
 		g := get_or_add_glyph(font.sdf_font, ch)
 		if g.kind == .NotContained {
@@ -1157,6 +1169,11 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 			x_offset := g.xmin
 			y_offset := -g.ymin
 			height := g.height
+			if UI_CTX_PTR.glyphs_len >= GLYPHS_MAX_COUNT {
+				log.warn("Too many glyphs! Rest will be cut off.")
+				break ch_loop
+			}
+
 			UI_CTX_PTR.glyphs[UI_CTX_PTR.glyphs_len] = ComputedGlyph {
 				pos  = Vec2{ctx.current_line.advance + x_offset, -height + y_offset},
 				size = Vec2{g.width, g.height},
