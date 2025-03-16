@@ -52,10 +52,7 @@ asset_manager_create :: proc(
 	assert(default_texture_handle == 0) // is the first one
 
 	default_motion_texture := _motion_texture_create_1px_white(device, queue)
-	default_motion_texture_handle := slotmap_insert(
-		&assets.motion_textures,
-		default_motion_texture,
-	)
+	default_motion_texture_handle := slotmap_insert(&assets.motion_textures, default_motion_texture)
 	assert(default_motion_texture_handle == 0) // is the first one
 
 	default_font: Font
@@ -80,13 +77,13 @@ asset_manager_update_changed_font_atlas_textures :: proc(assets: ^AssetManager) 
 			atlas_image := sdffont.font_get_atlas_image(font.sdf_font)
 			texture := slotmap_get(assets.textures, u32(font.texture_handle))
 			size := texture.info.size
-			image_copy := wgpu.ImageCopyTexture {
+			image_copy := wgpu.TexelCopyTextureInfo {
 				texture  = texture.texture,
 				mipLevel = 0,
 				origin   = {0, 0, 0},
 				aspect   = .All,
 			}
-			data_layout := wgpu.TextureDataLayout {
+			data_layout := wgpu.TexelCopyBufferLayout {
 				offset       = 0,
 				bytesPerRow  = size.x,
 				rowsPerImage = size.y,
@@ -121,25 +118,16 @@ asset_manager_destroy :: proc(assets: ^AssetManager) {
 		_skinned_mesh_drop(mesh)
 	}
 }
-assets_get_texture_array_bind_group :: proc(
-	assets: AssetManager,
-	handle: TextureArrayHandle,
-) -> wgpu.BindGroup {
+assets_get_texture_array_bind_group :: proc(assets: AssetManager, handle: TextureArrayHandle) -> wgpu.BindGroup {
 	texture := slotmap_get(assets.textures, u32(handle))
 	return texture.bind_group
 }
-assets_get_texture_bind_group :: proc(
-	assets: AssetManager,
-	handle: TextureHandle,
-) -> wgpu.BindGroup {
+assets_get_texture_bind_group :: proc(assets: AssetManager, handle: TextureHandle) -> wgpu.BindGroup {
 	texture := slotmap_get(assets.textures, u32(handle))
 	return texture.bind_group
 }
 
-assets_get_font_texture_bind_group :: proc(
-	assets: AssetManager,
-	handle: FontHandle,
-) -> wgpu.BindGroup {
+assets_get_font_texture_bind_group :: proc(assets: AssetManager, handle: FontHandle) -> wgpu.BindGroup {
 	font := slotmap_get(assets.fonts, u32(handle))
 	texture := slotmap_get(assets.textures, u32(font.texture_handle))
 	return texture.bind_group
@@ -153,10 +141,7 @@ assets_get_texture :: proc(assets: AssetManager, handle: TextureHandle) -> Textu
 	texture := slotmap_get(assets.textures, u32(handle))
 	return texture
 }
-assets_get_motion_texture :: proc(
-	assets: AssetManager,
-	handle: MotionTextureHandle,
-) -> MotionTexture {
+assets_get_motion_texture :: proc(assets: AssetManager, handle: MotionTextureHandle) -> MotionTexture {
 	texture := slotmap_get(assets.motion_textures, u32(handle))
 	return texture
 }
@@ -179,10 +164,7 @@ assets_add_texture :: proc(assets: ^AssetManager, texture: Texture) -> TextureHa
 	handle := TextureHandle(slotmap_insert(&assets.textures, texture))
 	return handle
 }
-assets_add_motion_texture :: proc(
-	assets: ^AssetManager,
-	texture: MotionTexture,
-) -> MotionTextureHandle {
+assets_add_motion_texture :: proc(assets: ^AssetManager, texture: MotionTexture) -> MotionTextureHandle {
 	handle := MotionTextureHandle(slotmap_insert(&assets.motion_textures, texture))
 	return handle
 }
@@ -213,13 +195,7 @@ assets_load_texture_array :: proc(
 	return texture_handle
 }
 
-assets_load_font :: proc(
-	assets: ^AssetManager,
-	ttf_path: string,
-) -> (
-	handle: FontHandle,
-	err: Error,
-) {
+assets_load_font :: proc(assets: ^AssetManager, ttf_path: string) -> (handle: FontHandle, err: Error) {
 	font := font_from_path(ttf_path, assets) or_return
 	font_handle := FontHandle(slotmap_insert(&assets.fonts, font))
 	return font_handle, nil

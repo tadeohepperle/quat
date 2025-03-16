@@ -111,18 +111,11 @@ ShaderGlobals :: struct {
 	_pad_4:                  f32,
 	xxx:                     Vec4, // some floats for testing purposes
 }
-platform_create :: proc(
-	platform: ^Platform,
-	settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT,
-) {
+platform_create :: proc(platform: ^Platform, settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	platform.settings = settings
 	_init_glfw_window(platform)
 	_init_wgpu(platform)
-	platform.hdr_screen_texture = texture_create(
-		platform.device,
-		platform.screen_size,
-		HDR_SCREEN_TEXTURE_SETTINGS,
-	)
+	platform.hdr_screen_texture = texture_create(platform.device, platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
 	platform.shader_registry = shader_registry_create(
 		platform.device,
@@ -139,12 +132,7 @@ platform_create :: proc(
 		&platform.shader_registry,
 		tonemapping_pipeline_config(platform.device),
 	)
-	asset_manager_create(
-		&platform.asset_manager,
-		settings.default_font_path,
-		platform.device,
-		platform.queue,
-	)
+	asset_manager_create(&platform.asset_manager, settings.default_font_path, platform.device, platform.queue)
 }
 globals_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
@@ -254,10 +242,7 @@ platform_end_render :: proc(
 	wgpu.CommandBufferRelease(command_buffer)
 }
 
-platform_start_hdr_pass :: proc(
-	platform: Platform,
-	command_encoder: wgpu.CommandEncoder,
-) -> wgpu.RenderPassEncoder {
+platform_start_hdr_pass :: proc(platform: Platform, command_encoder: wgpu.CommandEncoder) -> wgpu.RenderPassEncoder {
 	hdr_pass := wgpu.CommandEncoderBeginRenderPass(
 		command_encoder,
 		&wgpu.RenderPassDescriptor {
@@ -293,7 +278,7 @@ platform_start_render :: proc(
 	surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
 
 	switch surface_texture.status {
-	case .Success:
+	case .SuccessOptimal, .SuccessSuboptimal:
 	// All good, could check for `surface_texture.suboptimal` here.
 	case .Timeout, .Outdated, .Lost:
 		// Skip this frame, and re-configure surface.
@@ -302,8 +287,8 @@ platform_start_render :: proc(
 		}
 		platform_resize(platform)
 		surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
-		assert(surface_texture.status == .Success)
-	case .OutOfMemory, .DeviceLost:
+		assert(surface_texture.status == .SuccessOptimal || surface_texture.status == .SuccessSuboptimal)
+	case .OutOfMemory, .DeviceLost, .Error:
 		// Fatal error
 		fmt.panicf("Fatal error in wgpu.SurfaceGetCurrentTexture, status=", surface_texture.status)
 	}
@@ -364,11 +349,7 @@ platform_resize :: proc(platform: ^Platform) {
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
 	texture_destroy(&platform.hdr_screen_texture)
 	texture_destroy(&platform.depth_screen_texture)
-	platform.hdr_screen_texture = texture_create(
-		platform.device,
-		platform.screen_size,
-		HDR_SCREEN_TEXTURE_SETTINGS,
-	)
+	platform.hdr_screen_texture = texture_create(platform.device, platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
 }
 
@@ -382,10 +363,7 @@ _platform_receive_glfw_char_event :: proc(platform: ^Platform, char: rune) {
 }
 
 
-_platform_receive_glfw_key_event :: proc "contextless" (
-	platform: ^Platform,
-	glfw_key, action: i32,
-) {
+_platform_receive_glfw_key_event :: proc "contextless" (platform: ^Platform, glfw_key, action: i32) {
 	switch key in glfw_int_to_key(glfw_key) {
 	case Key:
 		switch action {
@@ -399,10 +377,7 @@ _platform_receive_glfw_key_event :: proc "contextless" (
 	}
 }
 
-_platform_receive_glfw_mouse_btn_event :: proc "contextless" (
-	platform: ^Platform,
-	glfw_button, action: i32,
-) {
+_platform_receive_glfw_mouse_btn_event :: proc "contextless" (platform: ^Platform, glfw_button, action: i32) {
 	switch button in glfw_int_to_mouse_button(glfw_button) {
 	case MouseButton:
 		switch action {
@@ -501,9 +476,7 @@ _init_wgpu :: proc(platform: ^Platform) {
 		chain = {next = nil, sType = wgpu.SType.InstanceExtras},
 		backends = wgpu.InstanceBackendFlags_All,
 	}
-	platform.instance = wgpu.CreateInstance(
-		&wgpu.InstanceDescriptor{nextInChain = &instance_extras.chain},
-	)
+	platform.instance = wgpu.CreateInstance(&wgpu.InstanceDescriptor{nextInChain = &instance_extras.chain})
 	platform.surface = wgpu_glfw.GetSurface(platform.instance, platform.window)
 
 	AwaitStatus :: enum {
@@ -515,28 +488,30 @@ _init_wgpu :: proc(platform: ^Platform) {
 	AdapterResponse :: struct {
 		adapter: wgpu.Adapter,
 		status:  wgpu.RequestAdapterStatus,
-		message: cstring,
+		message: string,
 	}
 	adapter_res: AdapterResponse
-	wgpu.InstanceRequestAdapter(
+	adapter_future := wgpu.InstanceRequestAdapter(
 		platform.instance,
 		&wgpu.RequestAdapterOptions {
 			powerPreference = platform.settings.power_preference,
 			compatibleSurface = platform.surface,
 		},
-		proc "c" (
-			status: wgpu.RequestAdapterStatus,
-			adapter: wgpu.Adapter,
-			message: cstring,
-			userdata: rawptr,
-		) {
-			adapter_res: ^AdapterResponse = auto_cast userdata
-			adapter_res.status = status
-			adapter_res.adapter = adapter
-			adapter_res.message = message
-		},
-		&adapter_res,
+		wgpu.RequestAdapterCallbackInfo{callback = on_adapter, userdata1 = &adapter_res},
 	)
+	on_adapter :: proc "c" (
+		status: wgpu.RequestAdapterStatus,
+		adapter: wgpu.Adapter,
+		message: string,
+		userdata1: rawptr,
+		userdata2: rawptr,
+	) {
+		adapter_res := cast(^AdapterResponse)userdata1
+		adapter_res.status = status
+		adapter_res.adapter = adapter
+		adapter_res.message = message
+	}
+
 	if adapter_res.status != .Success {
 		panic(tprint("Failed to get wgpu adapter: %s", adapter_res.message))
 	}
@@ -545,23 +520,18 @@ _init_wgpu :: proc(platform: ^Platform) {
 	DeviceRes :: struct {
 		status:  wgpu.RequestDeviceStatus,
 		device:  wgpu.Device,
-		message: cstring,
+		message: string,
 	}
 	device_res: DeviceRes
 
-	required_features := [?]wgpu.FeatureName {
-		.PushConstants,
-		.TimestampQuery,
-		.TextureFormat16bitNorm,
+	required_features := [?]wgpu.FeatureName{.PushConstants, .TimestampQuery, .TextureFormat16bitNorm}
+	required_limits_extras := wgpu.NativeLimits {
+		chain = {sType = .NativeLimits},
+		maxPushConstantSize = 128,
+		maxNonSamplerBindings = 1_000_000,
 	}
-	required_limits_extras := wgpu.RequiredLimitsExtras {
-		chain = {sType = .RequiredLimitsExtras},
-		limits = wgpu.NativeLimits{maxPushConstantSize = 128, maxNonSamplerBindings = 1_000_000},
-	}
-	required_limits := wgpu.RequiredLimits {
-		nextInChain = &required_limits_extras.chain,
-		limits      = WGPU_DEFAULT_LIMITS,
-	}
+	required_limits := WGPU_DEFAULT_LIMITS
+	required_limits.nextInChain = &required_limits_extras
 	wgpu.AdapterRequestDevice(
 		platform.adapter,
 		&wgpu.DeviceDescriptor {
@@ -569,23 +539,25 @@ _init_wgpu :: proc(platform: ^Platform) {
 			requiredFeatures = &required_features[0],
 			requiredLimits = &required_limits,
 		},
-		proc "c" (
-			status: wgpu.RequestDeviceStatus,
-			device: wgpu.Device,
-			message: cstring,
-			userdata: rawptr,
-		) {
-			context = runtime.default_context()
-			if status != .Success {
-				print("AdapterRequestDevice Error: ", message)
-			}
-			device_res: ^DeviceRes = auto_cast userdata
-			device_res.status = status
-			device_res.device = device
-			device_res.message = message
-		},
-		&device_res,
+		wgpu.RequestDeviceCallbackInfo{callback = on_device, userdata1 = &device_res},
 	)
+
+	on_device :: proc "c" (
+		status: wgpu.RequestDeviceStatus,
+		device: wgpu.Device,
+		message: string,
+		userdata1: rawptr,
+		userdata2: rawptr,
+	) {
+		context = runtime.default_context()
+		if status != .Success {
+			print("AdapterRequestDevice Error: ", message)
+		}
+		device_res := cast(^DeviceRes)userdata1
+		device_res.status = status
+		device_res.device = device
+		device_res.message = message
+	}
 	if device_res.status != .Success {
 		fmt.panicf("Failed to get wgpu device: %s", device_res.message)
 	}
@@ -616,14 +588,15 @@ _init_wgpu :: proc(platform: ^Platform) {
 	// wgpu.DeviceSetUncapturedErrorCallback(platform.device, wgpu_error_callback, nil)
 
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
-
 }
 
 
 platform_set_clipboard :: proc(platform: ^Platform, str: string) {
 	builder := strings.builder_make(allocator = context.temp_allocator)
 	strings.write_string(&builder, str)
-	glfw.SetClipboardString(platform.window, strings.to_cstring(&builder))
+	c_str, err := strings.to_cstring(&builder)
+	assert(err == .None)
+	glfw.SetClipboardString(platform.window, c_str)
 }
 platform_get_clipboard :: proc(platform: ^Platform) -> string {
 	return glfw.GetClipboardString(platform.window)

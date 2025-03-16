@@ -56,11 +56,7 @@ InteractionState :: struct($ID: typeid) {
 	just_released:  ID,
 	just_unfocused: ID,
 }
-update_interaction_state :: proc(
-	using state: ^InteractionState($T),
-	new_hovered: T,
-	press: PressFlags,
-) {
+update_interaction_state :: proc(using state: ^InteractionState($T), new_hovered: T, press: PressFlags) {
 	// todo! just_hovered, just_unhovered...
 	hovered = new_hovered
 	state.just_pressed = {}
@@ -110,16 +106,17 @@ ui_get_cached :: proc(
 ) -> (
 	pos: Vec2,
 	size: Vec2,
+	is_world_ui: bool,
 	user_data: ^USER_DATA_TY,
 	ok: bool,
 ) where size_of(CachedUserData) >=
 	size_of(USER_DATA_TY) {
 	cached, _ok := &UI_CTX_PTR.cache.cached[id]
 	if !_ok {
-		return {}, {}, nil, false
+		return {}, {}, false, nil, false
 	}
 	user_data = cast(^USER_DATA_TY)(&cached.user_data)
-	return cached.pos, cached.size, user_data, true
+	return cached.pos, cached.size, cached.is_world_ui, user_data, true
 }
 
 ui_get_cached_no_user_data :: proc(id: UiId) -> (pos, size: Vec2, ok: bool) {
@@ -131,8 +128,13 @@ ui_get_cached_no_user_data :: proc(id: UiId) -> (pos, size: Vec2, ok: bool) {
 }
 
 // cursor pos scaled to the UI layout extent {1920,1080}
-ui_cursor_pos :: proc() -> (cursor_pos: Vec2, cursor_pos_start_press: Vec2) {
-	return UI_CTX_PTR.cache.cursor_pos, UI_CTX_PTR.cache.cursor_pos_start_press
+ui_cursor_pos :: proc(world := false) -> (cursor_pos: Vec2, cursor_pos_start_press: Vec2) {
+	if world {
+		return UI_CTX_PTR.cache.cursor_pos_world, UI_CTX_PTR.cache.cursor_pos_world_start_press
+	} else {
+		return UI_CTX_PTR.cache.cursor_pos, UI_CTX_PTR.cache.cursor_pos_start_press
+	}
+
 }
 ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	for id in ids {
@@ -147,15 +149,16 @@ ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 UiTag :: u64
 // stuff that should survive the frame boundary is stored here, e.g. previous aabb for divs that had ids
 UiCache :: struct {
-	cached:                 map[UiId]CachedElement,
-	new_cached:             map[UiId]CachedElement,
-	state:                  InteractionState(UiId),
-	tag_state:              InteractionState(UiTag),
-	cursor_pos_start_press: Vec2,
-	delta_secs:             f32,
-	platform:               ^Platform,
-	cursor_pos:             Vec2, // (scaled to reference cursor pos)
-	cursor_pos_world:       Vec2,
+	cached:                       map[UiId]CachedElement,
+	new_cached:                   map[UiId]CachedElement,
+	state:                        InteractionState(UiId),
+	tag_state:                    InteractionState(UiTag),
+	cursor_pos_start_press:       Vec2,
+	cursor_pos_world_start_press: Vec2,
+	delta_secs:                   f32,
+	platform:                     ^Platform,
+	cursor_pos:                   Vec2, // (scaled to reference cursor pos)
+	cursor_pos_world:             Vec2,
 }
 
 // Z position in made up of the following components:
@@ -567,8 +570,7 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 		platform.settings.screen_ui_reference_size,
 		screen_size,
 	)
-	cache.cursor_pos_world =
-		Vec2{world_hit_pos.x, -world_hit_pos.y} * platform.settings.world_ui_px_per_unit
+	cache.cursor_pos_world = Vec2{world_hit_pos.x, -world_hit_pos.y} * platform.settings.world_ui_px_per_unit
 
 	_ui_ctx_clear_arrays(UI_CTX_PTR)
 	// todo: this could probably also be done, by using the div tree as a space partitioning structure 
@@ -609,6 +611,7 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 
 	if cache.state.just_pressed != 0 {
 		cache.cursor_pos_start_press = cache.cursor_pos
+		cache.cursor_pos_world_start_press = cache.cursor_pos_world
 	}
 }
 _ui_ctx_clear_arrays :: proc(ctx: ^UiCtx) {
@@ -1040,11 +1043,7 @@ DivAndLineIdx :: struct {
 	line_idx: int,
 }
 
-tmp_text_layout_ctx :: proc(
-	max_size: Vec2,
-	additional_line_gap: f32,
-	align: TextAlign,
-) -> ^TextLayoutCtx {
+tmp_text_layout_ctx :: proc(max_size: Vec2, additional_line_gap: f32, align: TextAlign) -> ^TextLayoutCtx {
 	ctx := new(TextLayoutCtx, allocator = context.temp_allocator)
 	start_idx := UI_CTX_PTR.glyphs_len
 	ctx^ = TextLayoutCtx {
@@ -1055,15 +1054,8 @@ tmp_text_layout_ctx :: proc(
 		glyphs_end_idx = start_idx,
 		lines = make([dynamic]LineRun, allocator = context.temp_allocator),
 		current_line = {glyphs_start_idx = start_idx},
-		last_non_whitespace_advances = make(
-			[dynamic]XOffsetAndAdvance,
-			4,
-			allocator = context.temp_allocator,
-		),
-		divs_and_their_line_idxs = make(
-			[dynamic]DivAndLineIdx,
-			allocator = context.temp_allocator,
-		),
+		last_non_whitespace_advances = make([dynamic]XOffsetAndAdvance, 4, allocator = context.temp_allocator),
+		divs_and_their_line_idxs = make([dynamic]DivAndLineIdx, allocator = context.temp_allocator),
 		align = align,
 		byte_advances = make([dynamic]f32, allocator = context.temp_allocator),
 	}
@@ -1130,8 +1122,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 			break_line(ctx)
 			continue
 		}
-		needs_line_break :=
-			text.line_break != .Never && ctx.current_line.advance + g.advance > ctx.max_width
+		needs_line_break := text.line_break != .Never && ctx.current_line.advance + g.advance > ctx.max_width
 		if needs_line_break {
 			break_line(ctx)
 			if g.kind == .Whitespace {
@@ -1173,10 +1164,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 			}
 			UI_CTX_PTR.glyphs_len += 1
 			ctx.current_line.glyphs_end_idx = UI_CTX_PTR.glyphs_len // ??? idk if we should do this all the time...
-			append(
-				&ctx.last_non_whitespace_advances,
-				XOffsetAndAdvance{offset = x_offset, advance = g.advance},
-			)
+			append(&ctx.last_non_whitespace_advances, XOffsetAndAdvance{offset = x_offset, advance = g.advance})
 		}
 		ctx.current_line.advance += g.advance
 		ctx.byte_advances[ch_byte_idx] = ctx.current_line.advance
@@ -1284,11 +1272,7 @@ PreBatch :: struct {
 
 // WARNING: calls this at the end of the frame AFTER update_ui_cache!
 // writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
-build_ui_batches_and_attach_z_info :: proc(
-	top_level_elements: []Ui,
-	out_batches: ^UiBatches,
-	is_world_ui: bool,
-) {
+build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches: ^UiBatches, is_world_ui: bool) {
 	cached: ^map[UiId]CachedElement = &UI_CTX_PTR.cache.new_cached
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
@@ -1324,11 +1308,7 @@ build_ui_batches_and_attach_z_info :: proc(
 		}
 		inject_at(z_regions, insert_idx, region)
 	}
-	_batcher_create :: proc(
-		top_level_elements: []Ui,
-		out_batches: ^UiBatches,
-		is_world_ui: bool,
-	) -> Batcher {
+	_batcher_create :: proc(top_level_elements: []Ui, out_batches: ^UiBatches, is_world_ui: bool) -> Batcher {
 		elements_count := len(top_level_elements)
 		z_regions := make([dynamic]ZRegion, allocator = context.temp_allocator)
 		_clear_batches(out_batches)
@@ -1418,10 +1398,7 @@ build_ui_batches_and_attach_z_info :: proc(
 				if child_div, ok := ch.(^DivElement); ok && child_div.z_layer != 0 {
 					// handle this child later (on top of the other ui elements with lower z)
 					child_z_layer := child_div.z_layer + b.current_z_layer
-					_insert_z_region(
-						&b.z_regions,
-						ZRegion{ch, child_z_layer, b.current.clipped_to},
-					)
+					_insert_z_region(&b.z_regions, ZRegion{ch, child_z_layer, b.current.clipped_to})
 				} else {
 					// add the batches for this child and all of its children recursively
 					_add(b, ch)

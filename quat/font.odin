@@ -55,13 +55,13 @@ font_from_bytes :: proc(
 	texture := texture_create(assets.device, settings.atlas_size, TEXTURE_SETTINGS_SDF_FONT)
 
 	size := texture.info.size
-	image_copy := wgpu.ImageCopyTexture {
+	image_copy := wgpu.TexelCopyTextureInfo {
 		texture  = texture.texture,
 		mipLevel = 0,
 		origin   = {0, 0, 0},
 		aspect   = .All,
 	}
-	data_layout := wgpu.TextureDataLayout {
+	data_layout := wgpu.TexelCopyBufferLayout {
 		offset       = 0,
 		bytesPerRow  = size.x,
 		rowsPerImage = size.y,

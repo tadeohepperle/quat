@@ -18,7 +18,7 @@ MotionTexture :: struct {
 _motion_texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> MotionTexture {
 	texture := motion_texture_create({1, 1}, {1, 1}, device)
 	block_size: u32 = 4
-	data_layout := wgpu.TextureDataLayout {
+	data_layout := wgpu.TexelCopyBufferLayout {
 		offset       = 0,
 		bytesPerRow  = 4,
 		rowsPerImage = 1,
@@ -27,12 +27,7 @@ _motion_texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue)
 	motion_data := [4]u8{127, 127, 0, 255}
 	wgpu.QueueWriteTexture(
 		queue,
-		&wgpu.ImageCopyTexture {
-			texture = texture.diffuse_texture,
-			mipLevel = 0,
-			origin = {0, 0, 0},
-			aspect = .All,
-		},
+		&wgpu.TexelCopyTextureInfo{texture = texture.diffuse_texture, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
 		&diffuse_data,
 		4,
 		&data_layout,
@@ -40,12 +35,7 @@ _motion_texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue)
 	)
 	wgpu.QueueWriteTexture(
 		queue,
-		&wgpu.ImageCopyTexture {
-			texture = texture.motion_texture,
-			mipLevel = 0,
-			origin = {0, 0, 0},
-			aspect = .All,
-		},
+		&wgpu.TexelCopyTextureInfo{texture = texture.motion_texture, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
 		&motion_data,
 		4,
 		&data_layout,
@@ -55,11 +45,7 @@ _motion_texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue)
 }
 
 
-motion_texture_sizes_are_ok :: proc(
-	diffuse_size: IVec2,
-	motion_size: IVec2,
-	needs_to_be_pow_2: bool,
-) -> bool {
+motion_texture_sizes_are_ok :: proc(diffuse_size: IVec2, motion_size: IVec2, needs_to_be_pow_2: bool) -> bool {
 
 	if needs_to_be_pow_2 {
 		sizes_are_pow_2 :=
@@ -82,13 +68,7 @@ motion_texture_sizes_are_ok :: proc(
 }
 
 
-motion_texture_create :: proc(
-	diffuse_size: IVec2,
-	motion_size: IVec2,
-	device: wgpu.Device,
-) -> (
-	res: MotionTexture,
-) {
+motion_texture_create :: proc(diffuse_size: IVec2, motion_size: IVec2, device: wgpu.Device) -> (res: MotionTexture) {
 	assert(
 		motion_texture_sizes_are_ok(diffuse_size, motion_size, needs_to_be_pow_2 = true),
 		tprint(
@@ -110,11 +90,7 @@ motion_texture_create :: proc(
 		&wgpu.TextureDescriptor {
 			usage = {.TextureBinding, .CopyDst},
 			dimension = ._2D,
-			size = wgpu.Extent3D {
-				width = diffuse_size.x,
-				height = diffuse_size.y,
-				depthOrArrayLayers = 1,
-			},
+			size = wgpu.Extent3D{width = diffuse_size.x, height = diffuse_size.y, depthOrArrayLayers = 1},
 			format = DIFFUSE_FORMAT,
 			mipLevelCount = 1,
 			sampleCount = 1,
@@ -140,11 +116,7 @@ motion_texture_create :: proc(
 		&wgpu.TextureDescriptor {
 			usage = {.TextureBinding, .CopyDst},
 			dimension = ._2D,
-			size = wgpu.Extent3D {
-				width = motion_size.x,
-				height = motion_size.y,
-				depthOrArrayLayers = 1,
-			},
+			size = wgpu.Extent3D{width = motion_size.x, height = motion_size.y, depthOrArrayLayers = 1},
 			format = MOTION_FORMAT,
 			mipLevelCount = 1,
 			sampleCount = 1,
@@ -208,82 +180,49 @@ motion_texture_create_from_images :: proc(
 	return res
 }
 
-motion_texture_write :: proc(
-	this: MotionTexture,
-	diffuse: Image,
-	motion: Image,
-	queue: wgpu.Queue,
-) {
+motion_texture_write :: proc(this: MotionTexture, diffuse: Image, motion: Image, queue: wgpu.Queue) {
 	assert(UVec2{u32(diffuse.size.x), u32(diffuse.size.y)} == this.diffuse_size)
 	assert(UVec2{u32(motion.size.x), u32(motion.size.y)} == this.motion_size)
 
 	wgpu.QueueWriteTexture(
 		queue,
-		&wgpu.ImageCopyTexture {
-			texture = this.diffuse_texture,
-			mipLevel = 0,
-			origin = {0, 0, 0},
-			aspect = .All,
-		},
+		&wgpu.TexelCopyTextureInfo{texture = this.diffuse_texture, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
 		raw_data(diffuse.pixels),
 		uint(len(diffuse.pixels) * 4),
-		&wgpu.TextureDataLayout {
+		&wgpu.TexelCopyBufferLayout {
 			offset = 0,
 			bytesPerRow = 4 * this.diffuse_size.x,
 			rowsPerImage = 4 * this.diffuse_size.y,
 		},
-		&wgpu.Extent3D {
-			width = this.diffuse_size.x,
-			height = this.diffuse_size.y,
-			depthOrArrayLayers = 1,
-		},
+		&wgpu.Extent3D{width = this.diffuse_size.x, height = this.diffuse_size.y, depthOrArrayLayers = 1},
 	)
 	wgpu.QueueWriteTexture(
 		queue,
-		&wgpu.ImageCopyTexture {
-			texture = this.motion_texture,
-			mipLevel = 0,
-			origin = {0, 0, 0},
-			aspect = .All,
-		},
+		&wgpu.TexelCopyTextureInfo{texture = this.motion_texture, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
 		raw_data(motion.pixels),
 		uint(len(motion.pixels) * 4),
-		&wgpu.TextureDataLayout {
+		&wgpu.TexelCopyBufferLayout {
 			offset = 0,
 			bytesPerRow = 4 * this.motion_size.x,
 			rowsPerImage = 4 * this.motion_size.y,
 		},
-		&wgpu.Extent3D {
-			width = this.motion_size.x,
-			height = this.motion_size.y,
-			depthOrArrayLayers = 1,
-		},
+		&wgpu.Extent3D{width = this.motion_size.x, height = this.motion_size.y, depthOrArrayLayers = 1},
 	)
 }
 
-diffuse_and_motion_texture_bind_group_layout_cached :: proc(
-	device: wgpu.Device,
-) -> wgpu.BindGroupLayout {
+diffuse_and_motion_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
 	if layout == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .Float,
-					viewDimension = ._2D,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = ._2D, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 1,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .Float,
-					viewDimension = ._2D,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = ._2D, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 2,
@@ -293,10 +232,7 @@ diffuse_and_motion_texture_bind_group_layout_cached :: proc(
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
 			device,
-			&wgpu.BindGroupLayoutDescriptor {
-				entryCount = uint(len(entries)),
-				entries = &entries[0],
-			},
+			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return layout
@@ -344,13 +280,7 @@ motion_particles_render :: proc(
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
-	wgpu.RenderPassEncoderSetVertexBuffer(
-		render_pass,
-		0,
-		instance_buffer.buffer,
-		0,
-		instance_buffer.size,
-	)
+	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
 	for &cmd in commands {
 		motion_texture := assets_get_motion_texture(assets, cmd.texture)
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, motion_texture.bind_group)
@@ -388,11 +318,7 @@ motion_particles_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineC
 			motion_texture_bind_group_layout_cached(device),
 		),
 		push_constant_ranges = push_const_ranges(
-			wgpu.PushConstantRange {
-				stages = {.Vertex, .Fragment},
-				start = 0,
-				end = size_of(FlipbookData),
-			},
+			wgpu.PushConstantRange{stages = {.Vertex, .Fragment}, start = 0, end = size_of(FlipbookData)},
 		),
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -407,20 +333,12 @@ motion_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.Bin
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .Float,
-					viewDimension = ._2D,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = ._2D, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 1,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .Float,
-					viewDimension = ._2D,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = ._2D, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 2,
@@ -430,10 +348,7 @@ motion_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.Bin
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
 			device,
-			&wgpu.BindGroupLayoutDescriptor {
-				entryCount = uint(len(entries)),
-				entries = &entries[0],
-			},
+			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return layout

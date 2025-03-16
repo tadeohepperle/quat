@@ -31,11 +31,7 @@ _target_buffer_size :: #force_inline proc "contextless" (n_elements: int, size_o
 }
 
 
-dynamic_buffer_reserve :: proc(
-	this: ^DynamicBuffer($T),
-	for_n_total_elements: int,
-	loc := #caller_location,
-) {
+dynamic_buffer_reserve :: proc(this: ^DynamicBuffer($T), for_n_total_elements: int, loc := #caller_location) {
 	target_size := _target_buffer_size(for_n_total_elements, size_of(T))
 	if target_size > this.size {
 		if this.size != 0 {
@@ -45,11 +41,7 @@ dynamic_buffer_reserve :: proc(
 		assert(this.device != nil, tprint(loc))
 		this.buffer = wgpu.DeviceCreateBuffer(
 			this.device,
-			&wgpu.BufferDescriptor {
-				usage = this.usage,
-				size = target_size,
-				mappedAtCreation = false,
-			},
+			&wgpu.BufferDescriptor{usage = this.usage, size = target_size, mappedAtCreation = false},
 		)
 	}
 }
@@ -72,22 +64,12 @@ dynamic_buffer_write :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #ca
 
 // appends to the end of the buffer, but requires that the buffer has enough size allocated, for this to succeed.
 // use in combination with `dynamic_buffer_reserve`
-dynamic_buffer_append_no_resize :: proc(
-	this: ^DynamicBuffer($T),
-	elements: []T,
-	loc := #caller_location,
-) {
+dynamic_buffer_append_no_resize :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #caller_location) {
 	used_size := u64(this.length * size_of(T))
 	additional_size := u64(len(elements) * size_of(T))
 	assert(this.size >= used_size + additional_size)
 	this.length += len(elements)
-	wgpu.QueueWriteBuffer(
-		this.queue,
-		this.buffer,
-		used_size,
-		raw_data(elements),
-		uint(additional_size),
-	)
+	wgpu.QueueWriteBuffer(this.queue, this.buffer, used_size, raw_data(elements), uint(additional_size))
 }
 
 dynamic_buffer_write_many :: proc(
@@ -129,12 +111,7 @@ uniform_buffer_create_from_bind_group_layout :: proc(
 	)
 	buffer.bind_group_layout = bind_group_layout
 	bind_group_entries := [?]wgpu.BindGroupEntry {
-		wgpu.BindGroupEntry {
-			binding = 0,
-			buffer = buffer.buffer,
-			offset = 0,
-			size = u64(size_of(T)),
-		},
+		wgpu.BindGroupEntry{binding = 0, buffer = buffer.buffer, offset = 0, size = u64(size_of(T))},
 	}
 	buffer.bind_group = wgpu.DeviceCreateBindGroup(
 		device,
@@ -178,9 +155,9 @@ uniform_buffer_write :: proc(queue: wgpu.Queue, buffer: ^UniformBuffer($T), data
 RenderPipelineConfig :: struct {
 	debug_name:           string,
 	vs_shader:            string,
-	vs_entry_point:       cstring,
+	vs_entry_point:       string,
 	fs_shader:            string,
-	fs_entry_point:       cstring,
+	fs_entry_point:       string,
 	topology:             wgpu.PrimitiveTopology,
 	vertex:               VertLayout,
 	instance:             VertLayout,
@@ -204,11 +181,7 @@ DEPTH_IGNORE: Maybe(DepthConfig) = DepthConfig {
 }
 
 ALPHA_BLENDING :: wgpu.BlendState {
-	color = wgpu.BlendComponent {
-		srcFactor = .SrcAlpha,
-		dstFactor = .OneMinusSrcAlpha,
-		operation = .Add,
-	},
+	color = wgpu.BlendComponent{srcFactor = .SrcAlpha, dstFactor = .OneMinusSrcAlpha, operation = .Add},
 	alpha = BLEND_COMPONENT_OVER,
 }
 PREMULTIPLIED_ALPHA_BLENDING :: wgpu.BlendState {
@@ -270,17 +243,23 @@ wgpu_pop_error_scope :: proc(device: wgpu.Device) -> MaybeWgpuError {
 	error_res := ErrorRes {
 		state = .Pending,
 	}
-	error_callback :: proc "c" (type: wgpu.ErrorType, message: cstring, userdata: rawptr) {
+	on_error :: proc "c" (
+		status: wgpu.PopErrorScopeStatus,
+		type: wgpu.ErrorType,
+		message: string,
+		userdata1: rawptr,
+		userdata2: rawptr,
+	) {
 		context = runtime.default_context()
-		error_res: ^ErrorRes = auto_cast userdata
+		error_res := cast(^ErrorRes)userdata1
 		if type == .NoError {
 			error_res.state = .Success
 		} else {
 			error_res.state = .Error
-			error_res.error = WgpuError{type, strings.clone_from_cstring(message)}
+			error_res.error = WgpuError{type, message}
 		}
 	}
-	wgpu.DevicePopErrorScope(device, error_callback, &error_res)
+	wgpu.DevicePopErrorScope(device, wgpu.PopErrorScopeCallbackInfo{callback = on_error, userdata1 = &error_res})
 	for error_res.state == .Pending {}
 	if error_res.state == .Error {
 		return error_res.error
@@ -316,7 +295,6 @@ WGPU_DEFAULT_LIMITS :: wgpu.Limits {
 	maxBufferSize                             = 256 << 20, // (256 MiB)
 	maxVertexAttributes                       = 16,
 	maxVertexBufferArrayStride                = 2048,
-	maxInterStageShaderComponents             = 60,
 	maxInterStageShaderVariables              = 16,
 	maxColorAttachments                       = 8,
 	maxColorAttachmentBytesPerSample          = 32,
@@ -356,7 +334,6 @@ WGPU_DOWNLEVEL_LIMITS :: wgpu.Limits {
 	maxBufferSize                             = 256 << 20, // (256 MiB)
 	maxVertexAttributes                       = 16,
 	maxVertexBufferArrayStride                = 2048,
-	maxInterStageShaderComponents             = 60,
 	maxInterStageShaderVariables              = 16,
 	maxColorAttachments                       = 8,
 	maxColorAttachmentBytesPerSample          = 32,

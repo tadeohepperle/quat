@@ -148,14 +148,14 @@ SPRITE_KIND_DEPTH := [SpriteKind]DepthConfig {
 	.Simple = DepthConfig{depth_write_enabled = false, depth_compare = .Always},
 }
 @(rodata)
-SPRITE_KIND_FS_NAMES := [SpriteKind]cstring {
+SPRITE_KIND_FS_NAMES := [SpriteKind]string {
 	.Cutout      = "fs_cutout",
 	.Transparent = "fs_transparent",
 	.Shine       = "fs_shine",
 	.Simple      = "fs_simple",
 }
 @(rodata)
-SPRITE_KIND_VS_NAMES := [SpriteKind]cstring {
+SPRITE_KIND_VS_NAMES := [SpriteKind]string {
 	.Cutout      = "vs_depth",
 	.Transparent = "vs_depth",
 	.Shine       = "vs_depth",

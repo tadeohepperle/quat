@@ -23,7 +23,7 @@ ShaderSourceWgsl :: struct {
 }
 
 ShaderCompositedWgsl :: struct {
-	wgsl_code: StringAndCString,
+	wgsl_code: string,
 	imports:   [dynamic]string,
 }
 
@@ -31,12 +31,6 @@ Shader :: struct {
 	src:           ShaderSourceWgsl,
 	composited:    ShaderCompositedWgsl,
 	shader_module: wgpu.ShaderModule, // nullable, only shaders with entry points create modules, not some wgsl snippets.
-}
-
-/// Both pointing to the same backing storage
-StringAndCString :: struct {
-	c_str: cstring,
-	str:   string,
 }
 
 // shader_destroy :: proc(shader: ^Shader) {
@@ -83,19 +77,12 @@ shader_registry_get :: proc(reg: ^ShaderRegistry, shader_name: string) -> wgpu.S
 	return shader.shader_module
 }
 
-make_render_pipeline :: proc(
-	reg: ^ShaderRegistry,
-	config: RenderPipelineConfig,
-) -> ^RenderPipeline {
+make_render_pipeline :: proc(reg: ^ShaderRegistry, config: RenderPipelineConfig) -> ^RenderPipeline {
 	pipeline := new(RenderPipeline)
 	pipeline.config = config
 	err := _create_or_reload_render_pipeline(reg, pipeline)
 	if err != nil {
-		fmt.panicf(
-			"Failed to create Render Pipeline \"{}\": {}",
-			pipeline.config.debug_name,
-			err.(WgpuError).message,
-		)
+		fmt.panicf("Failed to create Render Pipeline \"{}\": {}", pipeline.config.debug_name, err.(WgpuError).message)
 	}
 	assert(pipeline.layout != nil)
 	assert(pipeline.pipeline != nil)
@@ -104,11 +91,12 @@ make_render_pipeline :: proc(
 }
 
 
+wgpu_optional_bool :: proc(b: bool) -> wgpu.OptionalBool {
+	return .True if b else .False
+}
+
 SHADERS_DIRECTORY: []runtime.Load_Directory_File = #load_directory("../shaders")
-_create_or_reload_render_pipeline :: proc(
-	reg: ^ShaderRegistry,
-	pipeline: ^RenderPipeline,
-) -> MaybeWgpuError {
+_create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^RenderPipeline) -> MaybeWgpuError {
 	config := &pipeline.config
 	wgpu.DevicePushErrorScope(reg.device, .Validation)
 	if pipeline.layout == nil {
@@ -118,8 +106,7 @@ _create_or_reload_render_pipeline :: proc(
 			pushConstantRangeCount = uint(len(push_consts)),
 			pushConstantRanges = nil if len(push_consts) == 0 else &push_consts[0],
 		}
-		bindGroupLayouts :=
-			nil if len(config.bind_group_layouts) == 0 else &config.bind_group_layouts[0]
+		bindGroupLayouts := nil if len(config.bind_group_layouts) == 0 else &config.bind_group_layouts[0]
 		layout_desc := wgpu.PipelineLayoutDescriptor {
 			nextInChain          = &extras.chain,
 			bindGroupLayoutCount = uint(len(config.bind_group_layouts)),
@@ -192,7 +179,7 @@ _create_or_reload_render_pipeline :: proc(
 		depth_stencil =
 		&wgpu.DepthStencilState {
 			format = DEPTH_TEXTURE_FORMAT,
-			depthWriteEnabled = b32(depth_config.depth_write_enabled),
+			depthWriteEnabled = wgpu_optional_bool(depth_config.depth_write_enabled),
 			depthCompare = depth_config.depth_compare,
 			stencilFront = STENCIL_IGNORE,
 			stencilBack = STENCIL_IGNORE,
@@ -200,7 +187,7 @@ _create_or_reload_render_pipeline :: proc(
 	}
 
 	pipeline_descriptor := wgpu.RenderPipelineDescriptor {
-		label = strings.clone_to_cstring(config.debug_name),
+		label = config.debug_name,
 		layout = pipeline.layout,
 		vertex = wgpu.VertexState {
 			module = vs_shader_module,
@@ -272,11 +259,8 @@ create_shader_module :: proc(device: wgpu.Device, shader: ^Shader) -> (err: stri
 	shader.shader_module = wgpu.DeviceCreateShaderModule(
 		device,
 		&wgpu.ShaderModuleDescriptor {
-			label = strings.clone_to_cstring(shader.src.path),
-			nextInChain = &wgpu.ShaderModuleWGSLDescriptor {
-				sType = .ShaderModuleWGSLDescriptor,
-				code = shader.composited.wgsl_code.c_str,
-			},
+			label = shader.src.path,
+			nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = shader.composited.wgsl_code},
 		},
 	)
 	switch create_shader_err in wgpu_pop_error_scope(device) {
@@ -288,7 +272,7 @@ create_shader_module :: proc(device: wgpu.Device, shader: ^Shader) -> (err: stri
 }
 
 composite_wgsl_code :: proc(reg: ^ShaderRegistry, shader: ^Shader) -> (err: string) {
-	wgsl_code: StringAndCString
+	wgsl_code: string
 	imports: [dynamic]string
 	// replace the #import statements in the code with contents of that shader.
 	lines := strings.split_lines(shader.src.wgsl_code, context.temp_allocator)
@@ -307,7 +291,7 @@ composite_wgsl_code :: proc(reg: ^ShaderRegistry, shader: ^Shader) -> (err: stri
 			}
 			append(&imports, import_shader_name)
 			// replace the import line by the wgsl code in the imported file:
-			strings.write_string(&b, import_shader.composited.wgsl_code.str)
+			strings.write_string(&b, import_shader.composited.wgsl_code)
 		} else {
 			strings.write_string(&b, line)
 			strings.write_rune(&b, '\n')
@@ -321,22 +305,13 @@ composite_wgsl_code :: proc(reg: ^ShaderRegistry, shader: ^Shader) -> (err: stri
 		// 	}
 		// }
 	}
-	wgsl_code = StringAndCString {
-		c_str = strings.to_cstring(&b),
-		str   = strings.to_string(b),
-	}
+	wgsl_code = strings.to_string(b)
 	shader.composited = ShaderCompositedWgsl{wgsl_code, imports}
 	return
 }
 
 /// Note: Does not create the actual shader module!
-load_shader_wgsl :: proc(
-	reg: ^ShaderRegistry,
-	shader_name: string,
-	shader: ^Shader,
-) -> (
-	err: string,
-) {
+load_shader_wgsl :: proc(reg: ^ShaderRegistry, shader_name: string, shader: ^Shader) -> (err: string) {
 	shader.src.path = fmt.aprintf("%s/%s.wgsl", reg.shaders_dir_path, shader_name)
 	src_time, src_err := os.last_write_time_by_name(shader.src.path)
 	if src_err != 0 {
@@ -359,11 +334,7 @@ load_shader_wgsl :: proc(
 	}
 	content, _ := os.read_entire_file(shader.src.path)
 	if len(content) == 0 {
-		err = fmt.aprintf(
-			"Empty shader file: %s",
-			shader.src.path,
-			allocator = context.temp_allocator,
-		)
+		err = fmt.aprintf("Empty shader file: %s", shader.src.path, allocator = context.temp_allocator)
 		return
 	}
 	shader.src.wgsl_code = string(content)
@@ -433,8 +404,7 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 			fmt.eprintfln("Error compositing wgsl for %s: %s", shader.src.path, composite_err)
 			return
 		}
-		if shader.shader_module != nil &&
-		   old_composited.wgsl_code.str != shader.composited.wgsl_code.str {
+		if shader.shader_module != nil && old_composited.wgsl_code != shader.composited.wgsl_code {
 			old_shader_module := shader.shader_module
 			create_err := create_shader_module(reg.device, shader)
 			if create_err != "" {

@@ -87,10 +87,7 @@ texture_from_image :: proc(
 	texture: Texture,
 ) {
 	// todo: remove this stupid restriction, but we currently only support rgba8 textures
-	assert(
-		settings.format == wgpu.TextureFormat.RGBA8UnormSrgb ||
-		settings.format == wgpu.TextureFormat.RGBA8Unorm,
-	)
+	assert(settings.format == wgpu.TextureFormat.RGBA8UnormSrgb || settings.format == wgpu.TextureFormat.RGBA8Unorm)
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
 	if size.x % 64 != 0 {
 		panic(
@@ -107,11 +104,9 @@ texture_write_from_image :: proc(queue: wgpu.Queue, texture: Texture, img: Image
 	assert(size.y == u32(img.size.y))
 
 	BLOCK_SIZE :: 4
-	bytes_per_row :=
-		((size.x * BLOCK_SIZE + COPY_BYTES_PER_ROW_ALIGNMENT - 1) &
-			~(COPY_BYTES_PER_ROW_ALIGNMENT - 1))
+	bytes_per_row := ((size.x * BLOCK_SIZE + COPY_BYTES_PER_ROW_ALIGNMENT - 1) & ~(COPY_BYTES_PER_ROW_ALIGNMENT - 1))
 	image_copy := texture_as_image_copy(texture)
-	data_layout := wgpu.TextureDataLayout {
+	data_layout := wgpu.TexelCopyBufferLayout {
 		offset       = 0,
 		bytesPerRow  = bytes_per_row,
 		rowsPerImage = size.y,
@@ -149,7 +144,7 @@ depth_texture_16bit_r_from_image_path :: proc(
 	block_size: u32 = 2
 	bytes_per_row := size.x * block_size
 	image_copy := texture_as_image_copy(texture)
-	data_layout := wgpu.TextureDataLayout {
+	data_layout := wgpu.TexelCopyBufferLayout {
 		offset       = 0,
 		bytesPerRow  = bytes_per_row,
 		rowsPerImage = size.y,
@@ -165,20 +160,15 @@ depth_texture_16bit_r_from_image_path :: proc(
 	return texture, {}
 }
 
-texture_as_image_copy :: proc(texture: Texture) -> wgpu.ImageCopyTexture {
-	return wgpu.ImageCopyTexture {
-		texture = texture.texture,
-		mipLevel = 0,
-		origin = {0, 0, 0},
-		aspect = .All,
-	}
+texture_as_image_copy :: proc(texture: Texture) -> wgpu.TexelCopyTextureInfo {
+	return wgpu.TexelCopyTextureInfo{texture = texture.texture, mipLevel = 0, origin = {0, 0, 0}, aspect = .All}
 }
 
 _texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> Texture {
 	texture := texture_create(device, {1, 1}, TEXTURE_SETTINGS_RGBA)
 	block_size: u32 = 4
 	image_copy := texture_as_image_copy(texture)
-	data_layout := wgpu.TextureDataLayout {
+	data_layout := wgpu.TexelCopyBufferLayout {
 		offset       = 0,
 		bytesPerRow  = 4,
 		rowsPerImage = 1,
@@ -261,11 +251,7 @@ depth_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.Bind
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .Depth,
-					viewDimension = ._2D,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Depth, viewDimension = ._2D, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 1,
@@ -275,10 +261,7 @@ depth_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.Bind
 		}
 		LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			device,
-			&wgpu.BindGroupLayoutDescriptor {
-				entryCount = uint(len(entries)),
-				entries = &entries[0],
-			},
+			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return LAYOUT
@@ -358,11 +341,7 @@ rgba_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayo
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .Float,
-					viewDimension = ._2D,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = ._2D, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 1,
@@ -372,10 +351,7 @@ rgba_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayo
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
 			device,
-			&wgpu.BindGroupLayoutDescriptor {
-				entryCount = uint(len(entries)),
-				entries = &entries[0],
-			},
+			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return layout
@@ -403,10 +379,7 @@ rgba_texture_array_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
 			device,
-			&wgpu.BindGroupLayoutDescriptor {
-				entryCount = uint(len(entries)),
-				entries = &entries[0],
-			},
+			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return layout
@@ -530,16 +503,14 @@ texture_array_from_images :: proc(
 
 	assert(settings.format == IMAGE_FORMAT)
 	block_size: u32 = 4
-	bytes_per_row :=
-		((size.x * block_size + COPY_BYTES_PER_ROW_ALIGNMENT - 1) &
-			~(COPY_BYTES_PER_ROW_ALIGNMENT - 1))
-	data_layout := wgpu.TextureDataLayout {
+	bytes_per_row := ((size.x * block_size + COPY_BYTES_PER_ROW_ALIGNMENT - 1) & ~(COPY_BYTES_PER_ROW_ALIGNMENT - 1))
+	data_layout := wgpu.TexelCopyBufferLayout {
 		offset       = 0,
 		bytesPerRow  = bytes_per_row,
 		rowsPerImage = size.y,
 	}
 	for img, i in images {
-		image_copy := wgpu.ImageCopyTexture {
+		image_copy := wgpu.TexelCopyTextureInfo {
 			texture  = array.texture,
 			mipLevel = 0,
 			origin   = {0, 0, u32(i)},

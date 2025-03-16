@@ -213,33 +213,15 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p[.SpriteSimple] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Simple))
 	p[.SpriteCutout] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Cutout))
 	p[.SpriteShine] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Shine))
-	p[.SpriteTransparent] = q.make_render_pipeline(
-		reg,
-		q.sprite_pipeline_config(device, .Transparent),
-	)
+	p[.SpriteTransparent] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Transparent))
 	p[.Mesh3d] = q.make_render_pipeline(reg, q.mesh_3d_pipeline_config(device))
-	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(
-		reg,
-		q.mesh_3d_hex_chunk_masked_pipeline_config(device),
-	)
+	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(reg, q.mesh_3d_hex_chunk_masked_pipeline_config(device))
 	p[.SkinnedCutout] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
 	p[.Tritex] = q.make_render_pipeline(reg, q.tritex_mesh_pipeline_config(device))
-	p[.ScreenUiGlyph] = q.make_render_pipeline(
-		reg,
-		q.ui_glyph_pipeline_config(device, in_world = false),
-	)
-	p[.ScreenUiRect] = q.make_render_pipeline(
-		reg,
-		q.ui_rect_pipeline_config(device, in_world = false),
-	)
-	p[.WorldUiGlyph] = q.make_render_pipeline(
-		reg,
-		q.ui_glyph_pipeline_config(device, in_world = true),
-	)
-	p[.WorldUiRect] = q.make_render_pipeline(
-		reg,
-		q.ui_rect_pipeline_config(device, in_world = true),
-	)
+	p[.ScreenUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, in_world = false))
+	p[.ScreenUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, in_world = false))
+	p[.WorldUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, in_world = true))
+	p[.WorldUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, in_world = true))
 	p[.MotionParticles] = q.make_render_pipeline(reg, q.motion_particles_pipeline_config(device))
 
 
@@ -306,11 +288,7 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 }
 
 _engine_recalculate_hit_info :: proc(engine: ^Engine) {
-	hit_pos := q.screen_to_world_pos(
-		engine.scene.camera,
-		engine.platform.cursor_pos,
-		engine.platform.screen_size_f32,
-	)
+	hit_pos := q.screen_to_world_pos(engine.scene.camera, engine.platform.cursor_pos, engine.platform.screen_size_f32)
 
 	highest_z_collider_hit: int = min(int)
 	hit_collider_idx := -1
@@ -382,11 +360,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 	// q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
 	world_uis, _ := soa_unzip(scene.world_ui[:])
 	q.ui_render_buffers_batch_and_prepare(&engine.world_ui_buffers, world_uis, is_world_ui = true)
-	q.ui_render_buffers_batch_and_prepare(
-		&engine.screen_ui_buffers,
-		scene.screen_ui[:],
-		is_world_ui = false,
-	)
+	q.ui_render_buffers_batch_and_prepare(&engine.screen_ui_buffers, scene.screen_ui[:], is_world_ui = false)
 
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
@@ -394,14 +368,8 @@ _engine_prepare :: proc(engine: ^Engine) {
 
 	sprite_buffers_batch_and_prepare(&engine.cutout_sprites, scene.cutout_sprites[:])
 	sprite_buffers_batch_and_prepare(&engine.shine_sprites, scene.shine_sprites[:])
-	sprite_buffers_batch_and_prepare(
-		&engine.transparent_sprites_low,
-		scene.transparent_sprites_low[:],
-	)
-	sprite_buffers_batch_and_prepare(
-		&engine.transparent_sprites_high,
-		scene.transparent_sprites_high[:],
-	)
+	sprite_buffers_batch_and_prepare(&engine.transparent_sprites_low, scene.transparent_sprites_low[:])
+	sprite_buffers_batch_and_prepare(&engine.transparent_sprites_high, scene.transparent_sprites_high[:])
 	// for the skinned mesh renderer, we currently let the user 
 	// do updates directly with `update_skinned_mesh_bones``
 
@@ -607,12 +575,7 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 			size := Vec2{v.size.x, -v.size.y} / engine.settings.world_ui_px_per_unit
 			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {pos, pos + size}, color, .WORLD)
 		} else {
-			q.gizmos_renderer_add_aabb(
-				&engine.gizmos_renderer,
-				{v.pos, v.pos + v.size},
-				color,
-				.UI,
-			)
+			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)
 		}
 	}
 }
@@ -620,11 +583,7 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 
 @(private)
 _engine_debug_collider_gizmos :: proc(engine: ^Engine) {
-	add_collider_gizmos :: #force_inline proc(
-		rend: ^q.GizmosRenderer,
-		shape: ^q.ColliderShape,
-		color: Color,
-	) {
+	add_collider_gizmos :: #force_inline proc(rend: ^q.GizmosRenderer, shape: ^q.ColliderShape, color: Color) {
 		switch c in shape {
 		case q.Circle:
 			q.gizmos_renderer_add_circle(rend, c.pos, c.radius, color)
@@ -764,10 +723,7 @@ draw_mesh_3d :: proc(mesh: q.Mesh3d) {
 	append(&ENGINE.scene.meshes_3d, mesh)
 }
 draw_mesh_3d_hex_chunk_masked :: proc(mesh: q.Mesh3d, hex_chunk_bind_group: wgpu.BindGroup) {
-	append(
-		&ENGINE.scene.meshes_3d_hex_chunk_masked,
-		q.Mesh3dHexChunkMasked{mesh, hex_chunk_bind_group},
-	)
+	append(&ENGINE.scene.meshes_3d_hex_chunk_masked, q.Mesh3dHexChunkMasked{mesh, hex_chunk_bind_group})
 }
 
 
@@ -786,13 +742,7 @@ create_skinned_mesh :: proc(
 	bone_count: int,
 	texture: q.TextureHandle = q.DEFAULT_TEXTURE,
 ) -> q.SkinnedMeshHandle {
-	return q.skinned_mesh_register(
-		&ENGINE.platform.asset_manager,
-		triangles,
-		vertices,
-		bone_count,
-		texture,
-	)
+	return q.skinned_mesh_register(&ENGINE.platform.asset_manager, triangles, vertices, bone_count, texture)
 }
 destroy_skinned_mesh :: proc(handle: q.SkinnedMeshHandle) {
 	q.skinned_mesh_deregister(&ENGINE.platform.asset_manager, handle)
@@ -801,27 +751,15 @@ destroy_skinned_mesh :: proc(handle: q.SkinnedMeshHandle) {
 set_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) {
 	q.skinned_mesh_update_bones(&ENGINE.platform.asset_manager, handle, bones)
 }
-draw_skinned_mesh :: proc(
-	handle: q.SkinnedMeshHandle,
-	pos: Vec2 = Vec2{0, 0},
-	color: Color = q.ColorWhite,
-) {
+draw_skinned_mesh :: proc(handle: q.SkinnedMeshHandle, pos: Vec2 = Vec2{0, 0}, color: Color = q.ColorWhite) {
 	append(&ENGINE.scene.skinned_render_commands, q.SkinnedRenderCommand{pos, color, handle})
 }
 // expected to be 8bit RGBA png
-load_texture :: proc(
-	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
-) -> q.TextureHandle {
+load_texture :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureHandle {
 	return q.assets_load_texture(&ENGINE.platform.asset_manager, path, settings)
 }
 create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
-	texture := q.texture_from_image(
-		ENGINE.platform.device,
-		ENGINE.platform.queue,
-		img,
-		q.TEXTURE_SETTINGS_RGBA,
-	)
+	texture := q.texture_from_image(ENGINE.platform.device, ENGINE.platform.queue, img, q.TEXTURE_SETTINGS_RGBA)
 	handle := q.assets_add_texture(&ENGINE.platform.asset_manager, texture)
 	return handle
 }
@@ -839,16 +777,10 @@ write_image_to_texture :: proc(img: q.Image, handle: q.TextureHandle) {
 load_depth_texture :: proc(path: string) -> q.TextureHandle {
 	return q.assets_load_depth_texture(&ENGINE.platform.asset_manager, path)
 }
-load_texture_tile :: proc(
-	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
-) -> q.TextureTile {
+load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureTile {
 	return q.TextureTile{load_texture(path, settings), q.UNIT_AABB}
 }
-load_texture_as_sprite :: proc(
-	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
-) -> q.Sprite {
+load_texture_as_sprite :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.Sprite {
 	texture_handle := load_texture(path, settings)
 	texture_tile := q.TextureTile{texture_handle, q.UNIT_AABB}
 	texture_info := q.assets_get_texture_info(ENGINE.platform.asset_manager, texture_handle)
@@ -884,8 +816,7 @@ draw_shine_sprite :: #force_inline proc(sprite: q.Sprite) {
 }
 // if high, above world ui layer (e.g. health bars), else below
 draw_transparent_sprite :: #force_inline proc(sprite: q.Sprite, above_world_ui: bool = false) {
-	buffer :=
-		&ENGINE.scene.transparent_sprites_high if above_world_ui else &ENGINE.scene.transparent_sprites_low
+	buffer := &ENGINE.scene.transparent_sprites_high if above_world_ui else &ENGINE.scene.transparent_sprites_low
 	append(buffer, sprite)
 }
 // above world ui layer (e.g. health bars)
@@ -916,15 +847,7 @@ draw_gizmos_circle :: proc(
 	segments: int = 12,
 	draw_inner_lines: bool = false,
 ) {
-	q.gizmos_renderer_add_circle(
-		&ENGINE.gizmos_renderer,
-		center,
-		radius,
-		color,
-		segments,
-		draw_inner_lines,
-		.WORLD,
-	)
+	q.gizmos_renderer_add_circle(&ENGINE.gizmos_renderer, center, radius, color, segments, draw_inner_lines, .WORLD)
 }
 // Can write directly into these, instead of using one of the `draw_color_mesh` procs.
 access_color_mesh_write_buffers :: #force_inline proc(
@@ -965,11 +888,7 @@ draw_color_mesh_vertices :: proc(vertices: []q.ColorMeshVertex) {
 draw_color_mesh_indexed :: proc(vertices: []q.ColorMeshVertex, triangles: []q.Triangle) {
 	q.color_mesh_add_indexed(&ENGINE.color_mesh_renderer, vertices, triangles)
 }
-draw_color_mesh_indexed_single_color :: proc(
-	positions: []Vec2,
-	triangles: []q.Triangle,
-	color := Color{1, 0, 0, 1},
-) {
+draw_color_mesh_indexed_single_color :: proc(positions: []Vec2, triangles: []q.Triangle, color := Color{1, 0, 0, 1}) {
 	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, triangles, color)
 }
 add_ui :: proc(ui: q.Ui) {
@@ -979,10 +898,7 @@ add_world_ui :: proc(world_pos: Vec2, ui: q.Ui) {
 	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos})
 }
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
-	append(
-		&ENGINE.scene.colliders,
-		q.Collider{shape = q.Circle{center, radius}, metadata = metadata, z = z},
-	)
+	append(&ENGINE.scene.colliders, q.Collider{shape = q.Circle{center, radius}, metadata = metadata, z = z})
 }
 add_rect_collider :: proc(quad: q.RotatedRect, metadata: q.ColliderMetadata, z: int) {
 	append(&ENGINE.scene.colliders, q.Collider{shape = quad, metadata = metadata, z = z})
@@ -1138,8 +1054,5 @@ draw_motion_particles :: proc(
 	flipbook: q.FlipbookData,
 	texture: q.MotionTextureHandle,
 ) {
-	append(
-		&ENGINE.scene.motion_particles_draw_commands,
-		_MotionParticleDrawCommand{particles, flipbook, texture},
-	)
+	append(&ENGINE.scene.motion_particles_draw_commands, _MotionParticleDrawCommand{particles, flipbook, texture})
 }

@@ -22,6 +22,7 @@ Text :: q.Text
 UiWithInteraction :: q.UiWithInteraction
 
 UiTheme :: struct {
+	font_size_sm:      f32,
 	font_size:         f32,
 	font_size_lg:      f32,
 	text_shadow:       f32,
@@ -46,6 +47,7 @@ UiTheme :: struct {
 
 // not a constant, so can be switched out.
 THEME: UiTheme = UiTheme {
+	font_size_sm      = 14,
 	font_size         = 18,
 	font_size_lg      = 24,
 	text_shadow       = 0.8,
@@ -128,7 +130,7 @@ text_from_any :: proc(text: any, id: UiId = 0) -> UiText {
 
 add_window :: proc(title: string, content: []Ui, window_width: f32 = 0) {
 	id := q.ui_id(title)
-	cached_pos, cached_size, window_pos_start_drag, ok := q.ui_get_cached(id, Vec2)
+	cached_pos, cached_size, _is_world_ui, window_pos_start_drag, ok := q.ui_get_cached(id, Vec2)
 	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
 	layout_extent := get_ui_layout_extent()
 
@@ -288,14 +290,17 @@ slider :: proc {
 }
 
 
-slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0) -> Ui {
-	slider_width: f32 = 192
-	knob_width: f32 = 24
+slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0, slider_width: f32 = 0) -> Ui {
+	slider_width := slider_width
+	if slider_width == 0 {
+		slider_width = THEME.control_width_lg
+	}
+	knob_width: f32 = THEME.font_size
 	id := id if id != 0 else u64(uintptr(value))
 	val: int = value^
 
-	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
-	cached_pos, cached_size, start_drag_slider_value, ok := q.ui_get_cached(id, int)
+	cached_pos, cached_size, is_world_ui, start_drag_slider_value, ok := q.ui_get_cached(id, int)
+	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos(is_world_ui)
 
 	f := (f32(val) - f32(min)) / (f32(max) - f32(min))
 	res := q.ui_interaction(id)
@@ -391,8 +396,8 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 	id := id if id != 0 else u64(uintptr(value))
 	val: f32 = value^
 
-	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
-	cached_pos, cached_size, start_drag_slider_value, ok := q.ui_get_cached(id, f32)
+	cached_pos, cached_size, is_world_ui, start_drag_slider_value, ok := q.ui_get_cached(id, f32)
+	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos(is_world_ui)
 
 
 	f := (val - min) / (max - min)
@@ -481,6 +486,28 @@ check_box :: proc(value: ^bool, title: string, id: UiId = 0) -> Ui {
 	return ineraction.ui
 }
 
+enum_dropdown :: proc(value: ^$T, id: UiId = 0) -> Ui where intrinsics.type_is_enum(T) {
+	ti := runtime.type_info_base(type_info_of(T))
+	ti_enum := ti.variant.(runtime.Type_Info_Enum)
+	variant_names := ti_enum.names
+	current_idx := 0
+	for var, idx in T {
+		if var == value^ {
+			current_idx = idx
+		}
+	}
+
+	id := id if id != 0 else u64(uintptr(value))
+	ui := dropdown(variant_names, &current_idx, id)
+
+	for var, idx in T {
+		if current_idx == idx {
+			value^ = var
+		}
+	}
+
+	return ui
+}
 
 dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 	action := q.ui_interaction(id)
@@ -489,31 +516,25 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 	assert(len(values) > 0)
 	id := id if id != 0 else u64(uintptr(current_idx))
 
-	container := div(
-		Div{width = THEME.control_width_lg, height = THEME.control_height_lg, flags = {.WidthPx, .HeightPx}},
-	)
+	container := div(Div{width = THEME.control_width_lg, height = THEME.control_height, flags = {.WidthPx, .HeightPx}})
 
 	first_id := q.ui_id_combined(q.ui_id_combined(id, q.ui_id(values[cur_idx])), q.ui_id("first"))
-	first_el, first_el_res := _field(values[cur_idx], first_id, true)
+	first_el, first_el_res := _field(values[cur_idx], first_id, false)
 	child(container, first_el)
 	if first_el_res.focused || first_el_res.just_unfocused {
-		new_cur_idx := cur_idx
 		for v, idx in values {
-			// if idx != cur_idx {
 			field_id := q.ui_id_combined(id, q.ui_id(v))
-			field, field_res := _field(v, field_id, false)
+			field, field_res := _field(v, field_id, true)
 			child(container, field)
 			if field_res.just_pressed {
-				new_cur_idx = idx
+				current_idx^ = idx
 			}
-			// }
 		}
-		current_idx^ = new_cur_idx
 	}
 
 	return container
 
-	_field :: proc(str: string, field_id: UiId, is_first: bool) -> (^q.DivElement, q.Interaction) {
+	_field :: proc(str: string, field_id: UiId, on_top: bool) -> (^q.DivElement, q.Interaction) {
 		action := q.ui_interaction(field_id)
 		color: Color = THEME.surface
 		border_color: Color = THEME.surface_border
@@ -528,8 +549,9 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 		}
 		field := div(
 			Div {
+				z_layer = 3 if on_top else 0,
 				width = THEME.control_width_lg,
-				height = THEME.control_height_lg,
+				height = THEME.control_height,
 				color = color,
 				border_color = border_color,
 				border_radius = THEME.border_radius,
@@ -569,8 +591,8 @@ _check_box_inner :: #force_inline proc(checked: bool, label: string, id: UiId) -
 			color = knob_inner_color,
 			border_color = text_color,
 			flags = {.WidthPx, .HeightPx, .MainAlignCenter, .CrossAlignCenter},
-			border_radius = THEME.border_radius,
-			border_width = {2, 2, 2, 2},
+			border_radius = THEME.border_radius_sm,
+			border_width = {3, 3, 3, 3},
 		},
 	)
 	child_text(ui, Text{str = label, color = text_color, font_size = THEME.font_size, shadow = THEME.text_shadow})
@@ -594,7 +616,9 @@ enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui wh
 			Text{str = title, color = THEME.text, font_size = THEME.font_size_lg, shadow = THEME.text_shadow},
 		)
 	}
-	child_div(ui, Div{height = 2, flags = {.HeightPx}})
+	if !horizontal {
+		child_div(ui, Div{height = 2, flags = {.HeightPx}})
+	}
 
 	for variant in T {
 		str := fmt.aprint(variant, allocator = context.temp_allocator)
