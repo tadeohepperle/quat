@@ -74,7 +74,6 @@ world_to_screen_pos :: proc(camera: Camera, world_pos: Vec2, screen_size: Vec2) 
 	return screen_pos + (screen_size / 2)
 }
 
-
 normalize :: linalg.normalize
 cross :: linalg.cross
 sin :: math.sin

@@ -897,6 +897,21 @@ add_ui :: proc(ui: q.Ui) {
 add_world_ui :: proc(world_pos: Vec2, ui: q.Ui) {
 	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos})
 }
+add_ui_next_to_world_point :: proc(
+	world_pos: Vec2,
+	ui: Ui,
+	px_offset: Vec2 = {0, 0},
+	additional_flags: q.DivFlags = q.DivFlags{.MainAlignCenter},
+) {
+	screen_size := get_screen_size_f32()
+	screen_pos := q.world_to_screen_pos(get_camera(), world_pos, screen_size)
+	screen_unit_pos := screen_pos / screen_size
+	flags := q.DivFlags{.Absolute, .ZeroSizeButInfiniteSizeForChildren} + additional_flags
+	at_ptr := div(Div{flags = flags, absolute_unit_pos = screen_unit_pos, offset = px_offset})
+	add_ui(at_ptr)
+	child(at_ptr, ui)
+}
+
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
 	append(&ENGINE.scene.colliders, q.Collider{shape = q.Circle{center, radius}, metadata = metadata, z = z})
 }
