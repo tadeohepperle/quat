@@ -116,10 +116,5 @@ ease_quad_in_out :: proc "contextless" (t: f32) -> f32 {
 cubic_spline_2d :: proc "contextless" (t: f32, p0: Vec2, m0: Vec2, p1: Vec2, m1: Vec2) -> Vec2 {
 	t2 := t * t
 	t3 := t2 * t
-	return(
-		(2 * t3 - 3 * t2 + 1) * p0 +
-		(t3 - 2 * t2 + t) * m0 +
-		(-2 * t3 + 3 * t2) * p1 +
-		(t3 - t2) * m1 \
-	)
+	return (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * m1
 }
