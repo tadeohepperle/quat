@@ -633,44 +633,59 @@ enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui wh
 	return ui
 }
 
-DisplayValuePos :: enum {
-	TopLeft,
-	BottomLeft,
-	TopRight,
-	BottomRight,
-	Top,
-	Left,
-	Bottom,
-	Right,
-	Center,
-}
-// just shows a value in some part of the screen
-display_value :: proc(values: ..any, pos: DisplayValuePos = .Bottom) {
-	UNIT_POS_TABLE: [DisplayValuePos]Vec2 = {
-		.TopLeft     = Vec2{0, 0},
-		.BottomLeft  = Vec2{0, 1},
-		.TopRight    = Vec2{1, 0},
-		.BottomRight = Vec2{1, 1},
-		.Top         = Vec2{0.5, 0},
-		.Left        = Vec2{0, 0.5},
-		.Bottom      = Vec2{0.5, 1},
-		.Right       = Vec2{1, 0.5},
-		.Center      = Vec2{0.5, 0.5},
-	}
-	str := fmt.tprint(values)
+// DisplayValuePos :: enum {
+// 	TopLeft,
+// 	BottomLeft,
+// 	TopRight,
+// 	BottomRight,
+// 	Top,
+// 	Left,
+// 	Bottom,
+// 	Right,
+// 	Center,
+// }
+// UNIT_POS_TABLE: [DisplayValuePos]Vec2 = {
+// 	.TopLeft     = Vec2{0, 0},
+// 	.BottomLeft  = Vec2{0, 1},
+// 	.TopRight    = Vec2{1, 0},
+// 	.BottomRight = Vec2{1, 1},
+// 	.Top         = Vec2{0.5, 0},
+// 	.Left        = Vec2{0, 0.5},
+// 	.Bottom      = Vec2{0.5, 1},
+// 	.Right       = Vec2{1, 0.5},
+// 	.Center      = Vec2{0.5, 0.5},
+// }
 
+
+DisplayValue :: struct {
+	label: string,
+	value: string,
+}
+
+// just shows a value in some part of the screen
+_display_values :: proc(values: []DisplayValue) {
+	if len(values) == 0 {
+		return
+	}
 	cover := div(q.COVER_DIV)
 	upos_div := child_div(
 		cover,
 		Div {
 			flags = {.Absolute, .PointerPassThrough},
-			absolute_unit_pos = UNIT_POS_TABLE[pos],
+			absolute_unit_pos = Vec2{0.5, 1},
 			color = {0, 0, 0, 0.6},
 			padding = {8, 8, 8, 8},
 			border_radius = {8, 8, 8, 8},
 		},
 	)
-	child_text(upos_div, Text{str = str, font_size = 16.0, color = {1, 1, 1, 1}, shadow = 0.4})
+	for val in values {
+		parent := upos_div
+		if val.label != "" {
+			parent = child_div(upos_div, Div{flags = {.AxisX, .CrossAlignCenter}, gap = 8})
+			child_text(parent, Text{str = val.label, font_size = 20.0, color = q.ColorLightBlue, shadow = 0.4})
+		}
+		child_text(parent, Text{str = val.value, font_size = 16.0, color = {1, 1, 1, 1}, shadow = 0.4})
+	}
 	add_ui(cover)
 }
 

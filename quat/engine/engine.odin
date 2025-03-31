@@ -5,6 +5,7 @@ package engine
 // and custom control from for each specific project. We do NOT attempt to make a one size fits all thing here.
 
 import q "../"
+import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import wgpu "vendor:wgpu"
@@ -127,6 +128,7 @@ Scene :: struct {
 	motion_particles_draw_commands: [dynamic]_MotionParticleDrawCommand,
 	annotations:                    [dynamic]Annotation, // put into ui_world_layer
 	hex_chunks:                     [dynamic]q.HexChunkUniform,
+	display_values:                 [dynamic]DisplayValue,
 }
 
 HitInfo :: struct {
@@ -160,6 +162,7 @@ _scene_destroy :: proc(scene: ^Scene) {
 	delete(scene.motion_particles_draw_commands)
 	delete(scene.annotations)
 	delete(scene.hex_chunks)
+	delete(scene.display_values)
 }
 
 _scene_clear :: proc(scene: ^Scene) {
@@ -182,6 +185,7 @@ _scene_clear :: proc(scene: ^Scene) {
 	clear(&scene.motion_particles_draw_commands)
 	clear(&scene.annotations)
 	clear(&scene.hex_chunks)
+	clear(&scene.display_values)
 }
 
 // global singleton
@@ -337,6 +341,7 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 	engine.platform.settings = engine.settings.platform
 	q.platform_reset_input_at_end_of_frame(&engine.platform)
+	_display_values(engine.scene.display_values[:])
 
 	// PREPARE
 	_engine_prepare(engine)
@@ -1016,6 +1021,9 @@ access_last_frame_colliders :: proc() -> []q.Collider {
 }
 get_aspect_ratio :: proc() -> f32 {
 	return ENGINE.platform.screen_size_f32.x / ENGINE.platform.screen_size_f32.y
+}
+display_value :: proc(values: ..any, label: string = "") {
+	append(&ENGINE.scene.display_values, DisplayValue{label = label, value = fmt.tprint(..values)})
 }
 Annotation :: struct {
 	pos:       Vec2,

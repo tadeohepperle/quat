@@ -32,8 +32,27 @@ ui_id_from_any :: proc(data: any) -> UiId {
 	bytes := slice.bytes_from_ptr(data.data, ty_info.size)
 	return hash.crc64_xz(bytes[:])
 }
+ui_id_from_labeled_any :: proc(label: string, data: any) -> UiId {
+	ty_info := type_info_of(data.id)
+	seed: u64 = 329332901
+	bytes := slice.bytes_from_ptr(data.data, ty_info.size)
+	seed = hash.crc64_xz(transmute([]u8)label, seed)
+	return hash.crc64_xz(bytes[:], seed)
+}
+ui_id_from_multiple_anys :: proc(data: ..any) -> UiId {
+	seed: u64 = 218129291
+	for data in data {
+		ty_info := type_info_of(data.id)
+		bytes := slice.bytes_from_ptr(data.data, ty_info.size)
+		seed = hash.crc64_xz(bytes[:], seed)
+	}
+	return seed
+}
 ui_interaction :: proc "contextless" (id: UiId) -> Interaction {
 	return interaction(id, &UI_CTX_PTR.cache.state)
+}
+ui_interaction_state :: proc "contextless" () -> InteractionState(UiId) {
+	return UI_CTX_PTR.cache.state
 }
 ui_tag_hovered :: proc "contextless" (tag: UiTag) -> bool {
 	return UI_CTX_PTR.cache.tag_state.hovered == tag
@@ -44,6 +63,20 @@ ui_hovered_tag :: proc "contextless" () -> UiTag {
 ui_set_tag :: proc "contextless" (ui: Ui, tag: UiTag) {
 	ptr := _element_base_ptr(ui)
 	ptr.tag = tag
+}
+
+ui_set_tag_recursive :: proc "contextless" (ui: Ui, tag: UiTag) {
+	switch ui in ui {
+	case ^DivElement:
+		ui.tag = tag
+		for ch in ui.children {
+			ui_set_tag_recursive(ch, tag)
+		}
+	case ^TextElement:
+		ui.tag = tag
+	case ^CustomUiElement:
+		ui.tag = tag
+	}
 }
 
 UiWithInteraction :: struct {
@@ -168,8 +201,8 @@ UiCache :: struct {
 // - layer of the UI, deliberately chosen, to render stuff earlier in the tree on top of stuff that comes later.
 // can be transmuted into a u64 to be compared with another ZInfo, layer in the high bits is most significant then
 ZInfo :: struct {
-	traversal_idx:     u32, // less significant
-	layer:             u16, // most significant
+	traversal_idx:     u32, // least significant
+	layer:             u16, // more significant
 	screen_or_world_z: u16, // most significant, world always infront of screen
 }
 SCREEN_UI_Z: u16 : 1

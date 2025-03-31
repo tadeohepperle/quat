@@ -127,12 +127,7 @@ rect :: #force_inline proc(center: Vec2, size: Vec2) -> RotatedRect {
 }
 
 
-point_in_triangle :: #force_inline proc "contextless" (
-	pt: Vec2,
-	a: Vec2,
-	b: Vec2,
-	c: Vec2,
-) -> bool {
+point_in_triangle :: #force_inline proc "contextless" (pt: Vec2, a: Vec2, b: Vec2, c: Vec2) -> bool {
 	sign :: #force_inline proc "contextless" (p1: Vec2, p2: Vec2, p3: Vec2) -> f32 {
 		return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
 	}
