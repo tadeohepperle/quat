@@ -52,7 +52,7 @@ Engine :: struct {
 	screen_ui_buffers:                q.UiRenderBuffers,
 	motion_particles_render_commands: [dynamic]q.MotionParticlesRenderCommand,
 	motion_particles_buffer:          q.DynamicBuffer(q.MotionParticleInstance),
-
+	top_level_elements_scratch:       [dynamic]q.TopLevelElement,
 
 	// sprite_pipeline:     Pipeline,
 	// tritex_pipeline:     Pipeline,
@@ -102,6 +102,7 @@ PipelineType :: enum {
 UiAtWorldPos :: struct {
 	ui:        q.Ui,
 	world_pos: Vec2,
+	transform: q.UiWorldTransform,
 }
 
 // roughly in render order
@@ -116,7 +117,7 @@ Scene :: struct {
 	cutout_sprites:                 [dynamic]q.Sprite,
 	// transparency layer 1:
 	transparent_sprites_low:        [dynamic]q.Sprite,
-	world_ui:                       #soa[dynamic]UiAtWorldPos, // ui elements that are rendered below transparent sprites and shine sprites
+	world_ui:                       [dynamic]UiAtWorldPos, // ui elements that are rendered below transparent sprites and shine sprites
 	// transparency layer 2:
 	transparent_sprites_high:       [dynamic]q.Sprite,
 	shine_sprites:                  [dynamic]q.Sprite, // rendered with inverse depth test to shine through walls
@@ -222,10 +223,10 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(reg, q.mesh_3d_hex_chunk_masked_pipeline_config(device))
 	p[.SkinnedCutout] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
 	p[.Tritex] = q.make_render_pipeline(reg, q.tritex_mesh_pipeline_config(device))
-	p[.ScreenUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, in_world = false))
-	p[.ScreenUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, in_world = false))
-	p[.WorldUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, in_world = true))
-	p[.WorldUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, in_world = true))
+	p[.ScreenUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, .Screen))
+	p[.ScreenUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, .Screen))
+	p[.WorldUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, .World))
+	p[.WorldUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, .World))
 	p[.MotionParticles] = q.make_render_pipeline(reg, q.motion_particles_pipeline_config(device))
 
 
@@ -259,6 +260,7 @@ _engine_destroy :: proc(engine: ^Engine) {
 
 	q.dynamic_buffer_destroy(&engine.motion_particles_buffer)
 	delete(engine.motion_particles_render_commands)
+	delete(engine.top_level_elements_scratch)
 }
 
 
@@ -316,10 +318,11 @@ _engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
 	engine.hit.is_on_screen_ui = false
 	if hovered_id != 0 {
 		cached_element := engine.ui_ctx.cache.cached[hovered_id]
-		if cached_element.is_world_ui {
-			engine.hit.is_on_world_ui = true
-		} else {
+		switch cached_element.transform.space {
+		case .Screen:
 			engine.hit.is_on_screen_ui = true
+		case .World:
+			engine.hit.is_on_world_ui = true
 		}
 	}
 }
@@ -356,16 +359,35 @@ _engine_prepare :: proc(engine: ^Engine) {
 	scene := &engine.scene
 	q.platform_prepare(&engine.platform, scene.camera)
 	q.assert_ui_ctx_ptr_is_set()
+	clear(&engine.top_level_elements_scratch)
 	for e in scene.world_ui {
-		q.layout_in_world_space(e.ui, e.world_pos, engine.platform.settings.world_ui_px_per_unit)
+		q.layout_in_world_space(
+			e.ui,
+			e.world_pos,
+			q.WORLD_UI_UNIT_TRANSFORM,
+			engine.platform.settings.world_ui_px_per_unit,
+		)
+		append(
+			&engine.top_level_elements_scratch,
+			q.TopLevelElement{e.ui, q.UiTransform{space = .World, data = {world_transform = e.transform}}},
+		)
 	}
 	for ui in scene.screen_ui {
 		q.layout_in_screen_space(ui, engine.platform.ui_layout_extent)
+		append(
+			&engine.top_level_elements_scratch,
+			q.TopLevelElement{ui, q.UiTransform{space = .Screen, data = {clipped_to = nil}}},
+		)
 	}
 	// q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
-	world_uis, _ := soa_unzip(scene.world_ui[:])
-	q.ui_render_buffers_batch_and_prepare(&engine.world_ui_buffers, world_uis, is_world_ui = true)
-	q.ui_render_buffers_batch_and_prepare(&engine.screen_ui_buffers, scene.screen_ui[:], is_world_ui = false)
+	q.ui_render_buffers_batch_and_prepare(
+		&engine.world_ui_buffers,
+		engine.top_level_elements_scratch[:len(scene.world_ui)],
+	)
+	q.ui_render_buffers_batch_and_prepare(
+		&engine.screen_ui_buffers,
+		engine.top_level_elements_scratch[len(scene.world_ui):],
+	)
 
 	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
@@ -575,12 +597,27 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 		if state.pressed == k {
 			color = q.ColorRed
 		}
-		if v.is_world_ui {
+		switch v.space {
+		case .Screen:
+			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)
+		case .World:
 			pos := Vec2{v.pos.x, -v.pos.y} / engine.settings.world_ui_px_per_unit
 			size := Vec2{v.size.x, -v.size.y} / engine.settings.world_ui_px_per_unit
-			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {pos, pos + size}, color, .WORLD)
-		} else {
-			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)
+			a := pos
+			b := pos + Vec2{0, size.y}
+			c := pos + size
+			d := pos + Vec2{size.x, 0}
+			trans := v.transform.data.world_transform
+			if trans != q.WORLD_UI_UNIT_TRANSFORM {
+				a = q.ui_world_transform_apply(trans, a)
+				b = q.ui_world_transform_apply(trans, b)
+				c = q.ui_world_transform_apply(trans, c)
+				d = q.ui_world_transform_apply(trans, d)
+			}
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, a, b, color, .WORLD)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, b, c, color, .WORLD)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, c, d, color, .WORLD)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, d, a, color, .WORLD)
 		}
 	}
 }
@@ -730,8 +767,6 @@ draw_mesh_3d :: proc(mesh: q.Mesh3d) {
 draw_mesh_3d_hex_chunk_masked :: proc(mesh: q.Mesh3d, hex_chunk_bind_group: wgpu.BindGroup) {
 	append(&ENGINE.scene.meshes_3d_hex_chunk_masked, q.Mesh3dHexChunkMasked{mesh, hex_chunk_bind_group})
 }
-
-
 draw_hex_chunk :: proc(chunk: q.HexChunkUniform) {
 	append(&ENGINE.scene.hex_chunks, chunk)
 }
@@ -900,7 +935,10 @@ add_ui :: proc(ui: q.Ui) {
 	append(&ENGINE.scene.screen_ui, ui)
 }
 add_world_ui :: proc(world_pos: Vec2, ui: q.Ui) {
-	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos})
+	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos, q.WORLD_UI_UNIT_TRANSFORM})
+}
+add_world_ui_at_transform :: proc(transform: q.UiWorldTransform, ui: q.Ui) {
+	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, Vec2{0, 0}, transform})
 }
 add_ui_next_to_world_point :: proc(
 	world_pos: Vec2,

@@ -51,13 +51,6 @@ fn ui_layout_pos_to_ndc(ui_layout_pos: vec2<f32>) -> vec4<f32> {
     return  vec4(ndc.x, -ndc.y, 0.0, 1.0);
 }
 
-fn ui_world_pos_to_ndc(ui_world_pos: vec2<f32>) -> vec4<f32> {
-    let w_pos = ui_world_pos / globals.world_ui_px_per_unit;
-    let extended_w_pos = vec3<f32>(w_pos.x, -w_pos.y, 1.0);
-	let ndc = globals.camera_proj * extended_w_pos;
-    return  vec4(ndc.x, ndc.y, 0.0, 1.0);
-}
-
 const RED : vec4<f32> = vec4<f32>(1.0, 0.0, 0.0, 1.0);
 const GREEN : vec4<f32> = vec4<f32>(0.0, 1.0, 0.0, 1.0);
 const BLUE : vec4<f32> = vec4<f32>(0.0, 0.0, 1.0, 1.0);

@@ -16,7 +16,7 @@ recorded_dt: [dynamic]f32
 
 main :: proc() {
 	settings := E.DEFAULT_ENGINE_SETTINGS
-	settings.debug_ui_gizmos = false
+	settings.debug_ui_gizmos = true
 	E.init(settings)
 	defer {E.deinit()}
 
@@ -76,7 +76,14 @@ main :: proc() {
 			},
 		)
 		E.draw_annotation({2, -1}, "Hello from the engine!")
-		E.add_world_ui({2, 1}, E.button("Click me!", "abcde").ui)
+		E.add_world_ui({2, 1}, E.button("Click me!", "btn1").ui)
+		E.add_world_ui_at_transform(
+			q.UiWorldTransform {
+				offset = {0, 0},
+				rot_scale = E.get_osc(0.2, 0.4, 1.0) * q.rotation_mat_2d(E.get_osc(0.3)),
+			},
+			E.button("Click me too!", "btn2").ui,
+		)
 
 		E.set_tonemapping_mode(tonemapping)
 		E.set_bloom_enabled(bloom_enabled)

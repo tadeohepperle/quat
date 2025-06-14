@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:hash"
 import "core:log"
 import "core:math"
+import "core:math/linalg"
 import "core:math/rand"
 import "core:mem"
 import "core:os"
@@ -151,7 +152,7 @@ ui_get_cached :: proc(
 		return {}, {}, false, nil, false
 	}
 	user_data = cast(^USER_DATA_TY)(&cached.user_data)
-	return cached.pos, cached.size, cached.is_world_ui, user_data, true
+	return cached.pos, cached.size, cached.transform.space == .World, user_data, true
 }
 
 ui_get_cached_no_user_data :: proc(id: UiId) -> (pos, size: Vec2, ok: bool) {
@@ -221,10 +222,38 @@ CachedElement :: struct {
 	border_color:         Color,
 	color:                Color,
 	user_data:            CachedUserData,
-	is_world_ui:          bool,
 	z_info:               ZInfo,
-	clipped_to:           Maybe(Aabb),
+	using transform:      UiTransform,
 	tag:                  UiTag, // some tag set by the user explicitly
+}
+
+
+UiSpace :: enum {
+	Screen,
+	World,
+}
+UiTransform :: struct {
+	space: UiSpace,
+	data:  struct #raw_union {
+		clipped_to:      Maybe(Aabb),
+		world_transform: UiWorldTransform,
+	},
+}
+
+
+UiWorldTransform :: struct {
+	rot_scale: Mat2,
+	offset:    Vec2,
+}
+WORLD_UI_UNIT_TRANSFORM :: UiWorldTransform {
+	offset    = Vec2{0, 0},
+	rot_scale = Mat2{1, 0, 0, 1},
+}
+ui_world_transform_apply :: proc "contextless" (this: UiWorldTransform, p: Vec2) -> Vec2 {
+	return this.rot_scale * p + this.offset
+}
+ui_world_transform_reverse :: proc "contextless" (this: UiWorldTransform, q: Vec2) -> Vec2 {
+	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset)
 }
 
 ComputedGlyph :: struct {
@@ -252,11 +281,11 @@ Primitives :: struct {
 }
 
 UiBatch :: struct {
-	start_idx:  int, // either triangle idx (take *3 to get index for pipeline!) or glyph idx
-	end_idx:    int,
-	kind:       BatchKind,
-	handle:     TextureOrFontHandle,
-	clipped_to: Maybe(Aabb),
+	start_idx: int, // either triangle idx (take *3 to get index for pipeline!) or glyph idx
+	end_idx:   int,
+	kind:      BatchKind,
+	handle:    TextureOrFontHandle,
+	transform: UiTransform,
 }
 TextureOrFontHandle :: distinct (u32)
 BatchKind :: enum {
@@ -629,7 +658,20 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 			continue
 		}
 		if z_gte(cached.z_info, highest_z) {
-			cursor_pos := cache.cursor_pos_world if cached.is_world_ui else cache.cursor_pos
+			cursor_pos: Vec2 = ---
+			switch cached.space {
+			case .Screen:
+				cursor_pos = cache.cursor_pos
+			case .World:
+				cursor_pos = cache.cursor_pos_world
+				if cached.transform.data.world_transform != WORLD_UI_UNIT_TRANSFORM {
+					// do this shit, because ui y direction and world y are opposed
+					cursor_pos.y = -cursor_pos.y
+					cursor_pos = ui_world_transform_reverse(cached.transform.data.world_transform, cursor_pos)
+					cursor_pos.y = -cursor_pos.y
+				}
+			}
+
 			cursor_in_bounds :=
 				cursor_pos.x >= cached.pos.x &&
 				cursor_pos.y >= cached.pos.y &&
@@ -637,9 +679,12 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 				cursor_pos.y <= cached.pos.y + cached.size.y
 
 			// for elements that are clipped by parent, the cursor also needs to be in the clipping rect! (hovering a clipped region should not trigger anything)
-			if clipped_to, ok := cached.clipped_to.(Aabb); cursor_in_bounds && ok {
-				cursor_in_bounds &= aabb_contains(clipped_to, cache.cursor_pos)
+			if cached.space == .Screen {
+				if clipped_to, ok := cached.transform.data.clipped_to.(Aabb); cursor_in_bounds && ok {
+					cursor_in_bounds &= aabb_contains(clipped_to, cache.cursor_pos)
+				}
 			}
+
 
 			if cursor_in_bounds {
 				highest_z = cached.z_info
@@ -695,15 +740,23 @@ layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
 	if div, ok := ui.(^DivElement); ok && DivFlag.Absolute in div.flags {
 		initial_pos = (layout_extent - used_size) * div.absolute_unit_pos
 	}
-	context.user_index = CONTEXT_USER_IDX_FOR_SCREEN_UI
+	transform := UiTransform {
+		space = .Screen,
+		data = {clipped_to = nil},
+	}
+	context.user_ptr = &transform
 	_set_position(ui, initial_pos)
 }
 
-layout_in_world_space :: proc(ui: Ui, world_pos: Vec2, pixels_per_world_unit: f32) {
+layout_in_world_space :: proc(ui: Ui, world_pos: Vec2, transform: UiWorldTransform, pixels_per_world_unit: f32) {
 	INFINITE_SIZE := Vec2{max(f32), max(f32)}
 	used_size := _set_size(ui, INFINITE_SIZE)
 	initial_pos := Vec2{world_pos.x, -world_pos.y} * pixels_per_world_unit - (used_size / 2)
-	context.user_index = CONTEXT_USER_IDX_FOR_WORLD_UI
+	transform := UiTransform {
+		space = .World,
+		data = {world_transform = transform},
+	}
+	context.user_ptr = &transform
 	_set_position(ui, initial_pos)
 }
 
@@ -839,9 +892,6 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 	}
 }
 
-CONTEXT_USER_IDX_FOR_WORLD_UI :: 9999
-CONTEXT_USER_IDX_FOR_SCREEN_UI :: 0
-
 // writes to ui.base.pos
 _set_position :: proc(ui: Ui, pos: Vec2) {
 	switch el in ui {
@@ -853,10 +903,10 @@ _set_position :: proc(ui: Ui, pos: Vec2) {
 		el.pos = pos
 		if el.id != NO_ID {
 			UI_CTX_PTR.cache.new_cached[el.id] = CachedElement {
-				pos         = el.pos,
-				size        = el.size,
-				is_world_ui = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
-				tag         = el.tag,
+				pos       = el.pos,
+				size      = el.size,
+				transform = (cast(^UiTransform)context.user_ptr)^,
+				tag       = el.tag,
 			}
 		}
 	}
@@ -874,7 +924,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 			color                = div.color,
 			border_color         = div.border_color,
 			pointer_pass_through = .PointerPassThrough in div.flags,
-			is_world_ui          = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+			transform            = (cast(^UiTransform)context.user_ptr)^,
 			tag                  = div.tag,
 		}
 
@@ -1041,7 +1091,7 @@ _set_position_for_text :: proc(text: ^TextElement, pos: Vec2) {
 			size                 = text.size,
 			color                = text.color,
 			pointer_pass_through = text.pointer_pass_through,
-			is_world_ui          = context.user_index == CONTEXT_USER_IDX_FOR_WORLD_UI,
+			transform            = (cast(^UiTransform)context.user_ptr)^,
 			tag                  = text.tag,
 		}
 	}
@@ -1320,32 +1370,36 @@ PreBatch :: struct {
 	handle:  TextureOrFontHandle,
 }
 
+TopLevelElement :: struct {
+	ui:        Ui,
+	transform: UiTransform,
+}
+
 // WARNING: calls this at the end of the frame AFTER update_ui_cache!
 // writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
-build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches: ^UiBatches, is_world_ui: bool) {
+build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches) {
 	cached: ^map[UiId]CachedElement = &UI_CTX_PTR.cache.new_cached
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {
-		ui:         Ui,
-		z_layer:    u16,
-		clipped_to: Maybe(Aabb),
+		ui:        Ui,
+		z_layer:   u16,
+		transform: UiTransform,
 	}
 	CurrentBatch :: struct {
-		start_idx:  int, // index into glyph instances or (vertex) indices array
-		kind:       BatchKind,
-		handle:     TextureOrFontHandle,
-		clipped_to: Maybe(Aabb),
+		start_idx: int, // index into glyph instances or (vertex) indices array
+		kind:      BatchKind,
+		handle:    TextureOrFontHandle,
+		transform: UiTransform,
 	}
 	// a new z region is added for each top level element and for each child div with a non-zero z-layer (offset)
 	Batcher :: struct {
-		traversal_idx:     u32,
-		current_z_layer:   u16,
-		screen_or_world_z: u16,
-		z_regions:         [dynamic]ZRegion, // kept sorted by region.z_info.layer
-		batches:           ^UiBatches,
-		current:           CurrentBatch,
-		cached:            ^map[UiId]CachedElement,
+		traversal_idx:   u32,
+		current_z_layer: u16,
+		z_regions:       [dynamic]ZRegion, // kept sorted by region.z_info.layer
+		batches:         ^UiBatches,
+		current:         CurrentBatch,
+		cached:          ^map[UiId]CachedElement,
 	}
 	_insert_z_region :: proc(z_regions: ^[dynamic]ZRegion, region: ZRegion) {
 		// search from the back to the front, adding when larger or equal to the highest layer up to now:
@@ -1358,33 +1412,29 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		}
 		inject_at(z_regions, insert_idx, region)
 	}
-	_batcher_create :: proc(top_level_elements: []Ui, out_batches: ^UiBatches, is_world_ui: bool) -> Batcher {
+	_batcher_create :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches) -> Batcher {
 		elements_count := len(top_level_elements)
 		z_regions := make([dynamic]ZRegion, allocator = context.temp_allocator)
 		_clear_batches(out_batches)
-		for ui, i in top_level_elements {
-			base := _element_base_ptr(ui)
+		for el, i in top_level_elements {
+			base := _element_base_ptr(el.ui)
 			z_layer: u16 = 0
-			if div, ok := ui.(^DivElement); ok {
+			if div, ok := el.ui.(^DivElement); ok {
 				z_layer = div.z_layer
 			}
-			_insert_z_region(&z_regions, ZRegion{ui, z_layer, nil})
+			_insert_z_region(&z_regions, ZRegion{el.ui, z_layer, el.transform})
 		}
-		return Batcher {
-			batches = out_batches,
-			z_regions = z_regions,
-			screen_or_world_z = WORLD_UI_Z if is_world_ui else SCREEN_UI_Z,
-		}
+		return Batcher{batches = out_batches, z_regions = z_regions}
 	}
 	// Note: currently no sorting by z here
-	b: Batcher = _batcher_create(top_level_elements, out_batches, is_world_ui)
+	b: Batcher = _batcher_create(top_level_elements, out_batches)
 	b.cached = cached
 	idx := 0
 	for ; idx < len(b.z_regions); idx += 1 {
 		reg: ZRegion = b.z_regions[idx]
 		b.current_z_layer = reg.z_layer
-		if reg.clipped_to != b.current.clipped_to {
-			_flush_and_apply_new_clipping_rect(&b, reg.clipped_to)
+		if reg.transform != b.current.transform {
+			_flush_and_apply_new_clipping_rect(&b, reg.transform)
 		}
 		_add(&b, reg.ui)
 	}
@@ -1406,8 +1456,9 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
 			cached, ok := &b.cached[base.id]
 			assert(ok)
-			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer, b.screen_or_world_z}
-			cached.clipped_to = b.current.clipped_to
+			screen_or_world_z := SCREEN_UI_Z if b.current.transform.space == .Screen else WORLD_UI_Z
+			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer, screen_or_world_z}
+			cached.transform = b.current.transform
 		}
 		b.traversal_idx += 1
 		write := &b.batches.primitives
@@ -1422,11 +1473,12 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 			all_children_are_clipped := 0
 			clips_content: bool = .ClipContent in e.flags && len(e.children) != 0
 			if clips_content {
-				prev_clip = b.current.clipped_to // save to restore later, when done with children
+				assert(b.current.transform.space == .Screen)
+				prev_clip = b.current.transform.data.clipped_to // save to restore later, when done with children
 				div_aabb := Aabb{base.pos, base.pos + base.size}
-				if current_clip, ok := b.current.clipped_to.(Aabb); !ok {
+				if current_clip, ok := prev_clip.(Aabb); !ok {
 					// no clipping currently applied, set the clipping to the area covered by this div
-					_flush_and_apply_new_clipping_rect(b, div_aabb)
+					_flush_and_apply_new_clipping_rect(b, UiTransform{space = .Screen, data = {clipped_to = div_aabb}})
 				} else {
 					intersection_clip, has_overlap := aabb_intersection(div_aabb, current_clip)
 					if !has_overlap {
@@ -1438,7 +1490,10 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 						// so it is like the div would not clip anything at all.
 						clips_content = false
 					} else {
-						_flush_and_apply_new_clipping_rect(b, intersection_clip)
+						_flush_and_apply_new_clipping_rect(
+							b,
+							UiTransform{space = .Screen, data = {clipped_to = intersection_clip}},
+						)
 					}
 				}
 			}
@@ -1448,7 +1503,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 				if child_div, ok := ch.(^DivElement); ok && child_div.z_layer != 0 {
 					// handle this child later (on top of the other ui elements with lower z)
 					child_z_layer := child_div.z_layer + b.current_z_layer
-					_insert_z_region(&b.z_regions, ZRegion{ch, child_z_layer, b.current.clipped_to})
+					_insert_z_region(&b.z_regions, ZRegion{ch, child_z_layer, b.current.transform})
 				} else {
 					// add the batches for this child and all of its children recursively
 					_add(b, ch)
@@ -1457,7 +1512,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 
 			// restore the clipping rect that was present before:
 			if clips_content {
-				_flush_and_apply_new_clipping_rect(b, prev_clip)
+				_flush_and_apply_new_clipping_rect(b, UiTransform{space = .Screen, data = {clipped_to = prev_clip}})
 			}
 		case ^TextElement:
 			_flush_if_mismatch(b, .Glyph, TextureOrFontHandle(e.font))
@@ -1501,10 +1556,10 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 		}
 	}
 
-	_flush_and_apply_new_clipping_rect :: proc(b: ^Batcher, new_clipping_rect: Maybe(Aabb)) {
+	_flush_and_apply_new_clipping_rect :: proc(b: ^Batcher, new_transform: UiTransform) {
 		_flush(b)
 		b.current.start_idx = _idx_for_batch_kind(&b.batches.primitives, b.current.kind)
-		b.current.clipped_to = new_clipping_rect
+		b.current.transform = new_transform
 	}
 
 	_flush_if_mismatch :: proc(b: ^Batcher, kind: BatchKind, handle: TextureOrFontHandle) {
@@ -1525,7 +1580,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []Ui, out_batches
 					end_idx = end_idx,
 					kind = b.current.kind,
 					handle = b.current.handle,
-					clipped_to = b.current.clipped_to,
+					transform = b.current.transform,
 				},
 			)
 		}

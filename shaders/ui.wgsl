@@ -5,6 +5,13 @@ var t_diffuse: texture_2d<f32>;
 @group(1) @binding(1)
 var s_diffuse: sampler;
 
+var<push_constant> world_transform: UiWorldTransform;
+
+struct UiWorldTransform {
+    rot_scale : mat2x2<f32>,
+    offset:        vec2<f32>,
+}
+
 struct GlyphInstance {
 	@location(0) pos:    vec2<f32>,
 	@location(1) size:   vec2<f32>,
@@ -216,4 +223,12 @@ fn fs_glyph(in: VsGlyphOut) -> @location(0) vec4<f32> {
     let shadow_color = vec4(0.0,0.0,0.0,shadow_alpha);
     let color = mix(shadow_color, in.color, inside_factor);
     return color; // + vec4(0.2,0.2,0.2,0.2); * vec4(1.0,1.0,1.0,5.0);
+}
+
+fn ui_world_pos_to_ndc(ui_world_pos: vec2<f32>) -> vec4<f32> {
+    let w_pos = ui_world_pos / globals.world_ui_px_per_unit;
+    let w_pos2 =  world_transform.rot_scale * vec2f(w_pos.x, -w_pos.y) + world_transform.offset;
+    let extended_w_pos = vec3<f32>(w_pos2.x, w_pos2.y, 1.0);
+	let ndc = globals.camera_proj * vec3<f32>(w_pos2.x, w_pos2.y, 1.0);
+    return  vec4(ndc.x, ndc.y, 0.0, 1.0);
 }

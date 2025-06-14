@@ -16,12 +16,7 @@ UiRenderBuffers :: struct {
 	index_buffer:          DynamicBuffer(Triangle),
 	glyph_instance_buffer: DynamicBuffer(UiGlyphInstance),
 }
-ui_render_buffers_create :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
-) -> (
-	this: UiRenderBuffers,
-) {
+ui_render_buffers_create :: proc(device: wgpu.Device, queue: wgpu.Queue) -> (this: UiRenderBuffers) {
 	dynamic_buffer_init(&this.vertex_buffer, {.Vertex}, device, queue)
 	dynamic_buffer_init(&this.index_buffer, {.Index}, device, queue)
 	dynamic_buffer_init(&this.glyph_instance_buffer, {.Vertex}, device, queue)
@@ -34,12 +29,8 @@ ui_render_buffers_destroy :: proc(this: ^UiRenderBuffers) {
 	dynamic_buffer_destroy(&this.glyph_instance_buffer)
 }
 
-ui_render_buffers_batch_and_prepare :: proc(
-	this: ^UiRenderBuffers,
-	top_level_elements: []Ui,
-	is_world_ui: bool,
-) {
-	build_ui_batches_and_attach_z_info(top_level_elements, this, is_world_ui)
+ui_render_buffers_batch_and_prepare :: proc(this: ^UiRenderBuffers, top_level_elements: []TopLevelElement) {
+	build_ui_batches_and_attach_z_info(top_level_elements, this)
 	dynamic_buffer_write(&this.vertex_buffer, this.primitives.vertices[:])
 	dynamic_buffer_write(&this.index_buffer, this.primitives.triangles[:])
 	dynamic_buffer_write(&this.glyph_instance_buffer, this.primitives.glyphs_instances[:])
@@ -60,45 +51,15 @@ ui_render :: proc(
 		return
 	}
 	last_kind := buffers.batches[0].kind
-	last_clipped_to: Maybe(Aabb) = Aabb{} // no batch will have this, so the first batch already fulfills batch.clipped_to != last_clipped_to
+	last_transform := UiTransform{.Screen, {clipped_to = nil}} // no batch will have this, so the first batch already fulfills batch.clipped_to != last_clipped_to
 	pipeline: wgpu.RenderPipeline = nil
-	for &batch in buffers.batches {
-		if batch.clipped_to != last_clipped_to {
-			if clipped_to, ok := batch.clipped_to.(Aabb); ok {
-				// convert clipping rect from layout to screen space and then set it:
-				min_f32 := layout_to_screen_space(
-					clipped_to.min,
-					screen_reference_size,
-					screen_size_f32,
-				)
-				max_f32 := layout_to_screen_space(
-					clipped_to.max,
-					screen_reference_size,
-					screen_size_f32,
-				)
-				min_x := min(u32(min_f32.x), screen_size.x)
-				min_y := min(u32(min_f32.y), screen_size.x)
-				max_x := min(u32(max_f32.x), screen_size.x)
-				max_y := min(u32(max_f32.y), screen_size.x)
-				wgpu.RenderPassEncoderSetScissorRect(
-					render_pass,
-					min_x,
-					min_y,
-					max_x - min_x,
-					max_y - min_y,
-				)
-			} else {
-				// remove scissor
-				wgpu.RenderPassEncoderSetScissorRect(
-					render_pass,
-					0,
-					0,
-					screen_size.x,
-					screen_size.y,
-				)
-			}
-		}
+	last_clipped_to: Maybe(Aabb) = nil
 
+	print("-----------------------------------")
+	for &batch in buffers.batches {
+		if batch.transform.space == .Screen {
+			print(batch.transform.data.clipped_to)
+		}
 		if batch.kind != last_kind || pipeline == nil {
 			last_kind = batch.kind
 			switch batch.kind {
@@ -136,29 +97,61 @@ ui_render :: proc(
 				)
 			}
 		}
+
+		if batch.transform != last_transform {
+			last_transform = batch.transform
+			clipped_to: Maybe(Aabb) = nil
+			switch batch.transform.space {
+			case .Screen:
+				clipped_to = batch.transform.data.clipped_to
+			case .World:
+				wgpu.RenderPassEncoderSetPushConstants(
+					render_pass,
+					{.Vertex},
+					0,
+					size_of(UiWorldTransform),
+					&batch.transform.data.world_transform,
+				)
+			}
+			if clipped_to != last_clipped_to {
+				last_clipped_to = clipped_to
+				if clipped_to, ok := clipped_to.(Aabb); ok {
+					// convert clipping rect from layout to screen space and then set it:
+					min_f32 := layout_to_screen_space(clipped_to.min, screen_reference_size, screen_size_f32)
+					max_f32 := layout_to_screen_space(clipped_to.max, screen_reference_size, screen_size_f32)
+					min_x := min(u32(min_f32.x), screen_size.x)
+					min_y := min(u32(min_f32.y), screen_size.x)
+					max_x := min(u32(max_f32.x), screen_size.x)
+					max_y := min(u32(max_f32.y), screen_size.x)
+					print("add scissor")
+					wgpu.RenderPassEncoderSetScissorRect(render_pass, min_x, min_y, max_x - min_x, max_y - min_y)
+				} else {
+					// remove scissor
+					print("Remove scissor")
+					wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size.x, screen_size.y)
+				}
+			}
+		}
+
 		switch batch.kind {
 		case .Rect:
-			texture_bind_group := assets_get_texture_bind_group(
-				assets,
-				TextureHandle(batch.handle),
-			)
+			texture_bind_group := assets_get_texture_bind_group(assets, TextureHandle(batch.handle))
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
 			// important: take *3 here to get from triangle_idx to index_idx
 			start_idx := u32(batch.start_idx) * 3
 			index_count := u32(batch.end_idx - batch.start_idx) * 3
 			wgpu.RenderPassEncoderDrawIndexed(render_pass, index_count, 1, start_idx, 0, 0)
 		case .Glyph:
-			font_texture_bind_group := assets_get_font_texture_bind_group(
-				assets,
-				FontHandle(batch.handle),
-			)
+			font_texture_bind_group := assets_get_font_texture_bind_group(assets, FontHandle(batch.handle))
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, font_texture_bind_group)
 			instance_count := u32(batch.end_idx - batch.start_idx)
 			wgpu.RenderPassEncoderDraw(render_pass, 4, instance_count, 0, u32(batch.start_idx))
 		}
+
+
 	}
 	// remove scissor again after all batches are done if last batch was in scissor:
-	if last_clipped_to != nil {
+	if last_transform.space == .World || last_transform.data.clipped_to == nil {
 		// remove scissor
 		wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size.x, screen_size.y)
 	}
@@ -172,13 +165,13 @@ layout_to_screen_space :: proc(pt: Vec2, screen_reference_size: Vec2, screen_siz
 	return pt * (screen_size.y / f32(screen_reference_size.y))
 }
 
-ui_rect_pipeline_config :: proc(device: wgpu.Device, in_world: bool) -> RenderPipelineConfig {
+ui_rect_pipeline_config :: proc(device: wgpu.Device, space: UiSpace) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_rect",
 		vs_shader = "ui",
-		vs_entry_point = "vs_rect_world" if in_world else "vs_rect",
+		vs_entry_point = "vs_rect_world" if space == .World else "vs_rect",
 		fs_shader = "ui",
-		fs_entry_point = "fs_rect_world" if in_world else "fs_rect",
+		fs_entry_point = "fs_rect_world" if space == .World else "fs_rect",
 		topology = .TriangleList,
 		vertex = {
 			ty_id = UiVertex,
@@ -198,7 +191,7 @@ ui_rect_pipeline_config :: proc(device: wgpu.Device, in_world: bool) -> RenderPi
 			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
 		),
-		push_constant_ranges = {},
+		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiWorldTransform)}) if space == .World else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
@@ -210,11 +203,11 @@ UiPushConstants :: struct {
 	scale:  f32,
 	offset: Vec2,
 }
-ui_glyph_pipeline_config :: proc(device: wgpu.Device, in_world: bool) -> RenderPipelineConfig {
+ui_glyph_pipeline_config :: proc(device: wgpu.Device, space: UiSpace) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
 		vs_shader = "ui",
-		vs_entry_point = "vs_glyph_world" if in_world else "vs_glyph",
+		vs_entry_point = "vs_glyph_world" if space == .World else "vs_glyph",
 		fs_shader = "ui",
 		fs_entry_point = "fs_glyph",
 		topology = .TriangleStrip,
@@ -233,7 +226,7 @@ ui_glyph_pipeline_config :: proc(device: wgpu.Device, in_world: bool) -> RenderP
 			globals_bind_group_layout_cached(device),
 			rgba_bind_group_layout_cached(device),
 		),
-		push_constant_ranges = {},
+		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiWorldTransform)}) if space == .World else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
