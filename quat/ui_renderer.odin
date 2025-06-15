@@ -31,6 +31,12 @@ ui_render_buffers_destroy :: proc(this: ^UiRenderBuffers) {
 
 ui_render_buffers_batch_and_prepare :: proc(this: ^UiRenderBuffers, top_level_elements: []TopLevelElement) {
 	build_ui_batches_and_attach_z_info(top_level_elements, this)
+	// for b in this.batches {
+	// 	print(b)
+	// 	if b.transform.space == .World {
+	// 		print("     W: ", b.transform.data.world_transform)
+	// 	}
+	// }
 	dynamic_buffer_write(&this.vertex_buffer, this.primitives.vertices[:])
 	dynamic_buffer_write(&this.index_buffer, this.primitives.triangles[:])
 	dynamic_buffer_write(&this.glyph_instance_buffer, this.primitives.glyphs_instances[:])
@@ -55,11 +61,8 @@ ui_render :: proc(
 	pipeline: wgpu.RenderPipeline = nil
 	last_clipped_to: Maybe(Aabb) = nil
 
-	print("-----------------------------------")
 	for &batch in buffers.batches {
-		if batch.transform.space == .Screen {
-			print(batch.transform.data.clipped_to)
-		}
+		set_world_transform_push_const := false
 		if batch.kind != last_kind || pipeline == nil {
 			last_kind = batch.kind
 			switch batch.kind {
@@ -70,6 +73,7 @@ ui_render :: proc(
 			}
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_bind_group)
+
 			switch batch.kind {
 			case .Rect:
 				wgpu.RenderPassEncoderSetVertexBuffer(
@@ -96,22 +100,20 @@ ui_render :: proc(
 					u64(buffers.glyph_instance_buffer.size),
 				)
 			}
+			if batch.transform.space == .World {
+				set_world_transform_push_const = true
+			}
 		}
 
 		if batch.transform != last_transform {
+			if batch.transform.space == .World {
+				set_world_transform_push_const = true
+			}
+
 			last_transform = batch.transform
 			clipped_to: Maybe(Aabb) = nil
-			switch batch.transform.space {
-			case .Screen:
+			if batch.transform.space == .Screen {
 				clipped_to = batch.transform.data.clipped_to
-			case .World:
-				wgpu.RenderPassEncoderSetPushConstants(
-					render_pass,
-					{.Vertex},
-					0,
-					size_of(UiWorldTransform),
-					&batch.transform.data.world_transform,
-				)
 			}
 			if clipped_to != last_clipped_to {
 				last_clipped_to = clipped_to
@@ -123,14 +125,21 @@ ui_render :: proc(
 					min_y := min(u32(min_f32.y), screen_size.x)
 					max_x := min(u32(max_f32.x), screen_size.x)
 					max_y := min(u32(max_f32.y), screen_size.x)
-					print("add scissor")
 					wgpu.RenderPassEncoderSetScissorRect(render_pass, min_x, min_y, max_x - min_x, max_y - min_y)
 				} else {
 					// remove scissor
-					print("Remove scissor")
 					wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size.x, screen_size.y)
 				}
 			}
+		}
+		if set_world_transform_push_const {
+			wgpu.RenderPassEncoderSetPushConstants(
+				render_pass,
+				{.Vertex},
+				0,
+				size_of(UiWorldTransform),
+				&batch.transform.data.world_transform,
+			)
 		}
 
 		switch batch.kind {

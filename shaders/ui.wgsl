@@ -32,7 +32,7 @@ struct Vertex {
 }
 
 // Vertex flags:
-const TEXTURED: u32 = 1u;
+// const TEXTURED: u32 = 1u; // not used anymore, just say all triangles are textured and set the white 1px texture as default
 const RIGHT_VERTEX: u32 = 2u;
 const BOTTOM_VERTEX: u32 = 4u;
 const BORDER: u32 = 8u;
@@ -128,13 +128,23 @@ fn fs_rect_both(in: VsRectOut, softness: f32) -> vec4<f32>{
 	let not_ext_factor = smoothstep(softness,-softness, external_distance);  //  //select(1.0 - step(0.0, border_distance), antialias(border_distance), external_distance < internal_distance);
 	let in_factor = smoothstep(softness, -softness, internal_distance);
 
-	var color  = mix(in.border_color, in.color, in_factor);
-    color.a = saturate(color.a * not_ext_factor);
-    let final_color = select(color, color * textureSample(t_diffuse, s_diffuse, in.uv), enabled(in.flags, TEXTURED));
+	var solid_color = mix(in.border_color, in.color, in_factor);
+    solid_color.a = saturate(solid_color.a * not_ext_factor);
+    let final_color = color_texture_mix(solid_color, texture_color);
 
 	return final_color;
 }
 
+
+fn color_texture_mix(color: vec4f, texture: vec4f) -> vec4f {
+
+    return color * texture;
+
+    // if texture.a is 1  -> color * texture
+    // if texture.a is 0  -> color
+    // let rbg : vec3f = mix(color.rgb, color.rgb * texture.rgb, texture.a);
+    // return vec4f(rbg, color.a);
+}
 
 fn enabled(flags: u32, mask: u32) -> bool {
     return (flags & mask) != 0u;

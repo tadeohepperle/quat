@@ -253,7 +253,7 @@ ui_world_transform_apply :: proc "contextless" (this: UiWorldTransform, p: Vec2)
 	return this.rot_scale * p + this.offset
 }
 ui_world_transform_reverse :: proc "contextless" (this: UiWorldTransform, q: Vec2) -> Vec2 {
-	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset)
+	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset) // 
 }
 
 ComputedGlyph :: struct {
@@ -664,10 +664,13 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 				cursor_pos = cache.cursor_pos
 			case .World:
 				cursor_pos = cache.cursor_pos_world
-				if cached.transform.data.world_transform != WORLD_UI_UNIT_TRANSFORM {
-					// do this shit, because ui y direction and world y are opposed
+				trans := cached.transform.data.world_transform
+				if trans != WORLD_UI_UNIT_TRANSFORM {
+					// do this shit, because ui y direction and world y are opposed and cursor_pos is scaled by px per world unit
+					cursor_pos /= platform.settings.world_ui_px_per_unit
 					cursor_pos.y = -cursor_pos.y
 					cursor_pos = ui_world_transform_reverse(cached.transform.data.world_transform, cursor_pos)
+					cursor_pos *= platform.settings.world_ui_px_per_unit
 					cursor_pos.y = -cursor_pos.y
 				}
 			}

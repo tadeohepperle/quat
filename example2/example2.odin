@@ -1,7 +1,7 @@
 package example
 
 import q "../quat"
-import E "../quat/engine"
+import engine "../quat/engine"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
@@ -15,14 +15,14 @@ Color :: [4]f32
 recorded_dt: [dynamic]f32
 
 main :: proc() {
-	settings := E.DEFAULT_ENGINE_SETTINGS
+	settings := engine.DEFAULT_ENGINE_SETTINGS
 	settings.debug_ui_gizmos = true
-	E.init(settings)
-	defer {E.deinit()}
+	engine.init(settings)
+	defer {engine.deinit()}
 
-	corn := E.load_texture_tile("./assets/corn.png")
-	sprite := E.load_texture_tile("./assets/can.png")
-	cam := E.camera_controller_create()
+	corn := engine.load_texture_tile("./assets/corn.png")
+	sprite := engine.load_texture_tile("./assets/can.png")
+	cam := engine.camera_controller_create()
 	cam.settings.move_with_wasd = false
 	cam.settings.min_size = 0.03
 	player_pos := Vec2{0, 0}
@@ -48,74 +48,76 @@ main :: proc() {
 	drop_down_values := []string{"English", "German", "French"}
 
 	allocated_str := strings.clone("")
-	for E.next_frame() {
-		E.camera_controller_update(&cam)
-		append(&recorded_dt, E.get_delta_secs() * 1000.0)
+	for engine.next_frame() {
+		engine.camera_controller_update(&cam)
+		append(&recorded_dt, engine.get_delta_secs() * 1000.0)
 
 
-		allocated_str_edit := E.text_edit(&allocated_str, align = .Center, font_size = E.THEME.font_size)
+		allocated_str_edit := engine.text_edit(&allocated_str, align = .Center, font_size = engine.THEME.font_size)
 		if allocated_str_edit.just_edited {
 			fmt.println("Edited allocated string:", allocated_str)
 		}
-		E.add_window(
-			"Example window",
-			{
-				E.button("I do nothing").ui,
-				E.enum_radio(&text_align, "Text Align"),
-				E.enum_radio(&tonemapping, "Tonemapping"),
-				E.color_picker(&background_color, "Background"),
-				E.color_picker(&color2, "Color 2"),
-				E.color_picker(&color3, "Color 3"),
-				E.toggle(&bloom_enabled, "Bloom"),
-				E.toggle(&snake_enabled, "Render Snake"),
-				E.text("Bloom blend factor:"),
-				E.slider(&bloom_blend_factor),
-				E.text_edit(&text_to_edit, align = .Center, font_size = E.THEME.font_size).ui,
-				E.dropdown(drop_down_values, &drop_down_idx),
-				allocated_str_edit.ui,
-			},
-		)
-		E.draw_annotation({2, -1}, "Hello from the engine!")
-		E.add_world_ui({2, 1}, E.button("Click me!", "btn1").ui)
-		E.add_world_ui_at_transform(
+		// engine.add_window(
+		// 	"Example window",
+		// 	{
+		// 		engine.button("I do nothing").ui,
+		// 		engine.enum_radio(&text_align, "Text Align"),
+		// 		engine.enum_radio(&tonemapping, "Tonemapping"),
+		// 		engine.color_picker(&background_color, "Background"),
+		// 		engine.color_picker(&color2, "Color 2"),
+		// 		engine.color_picker(&color3, "Color 3"),
+		// 		engine.toggle(&bloom_enabled, "Bloom"),
+		// 		engine.toggle(&snake_enabled, "Render Snake"),
+		// 		engine.text("Bloom blend factor:"),
+		// 		engine.slider(&bloom_blend_factor),
+		// 		engine.text_edit(&text_to_edit, align = .Center, font_size = engine.THEME.font_size).ui,
+		// 		engine.dropdown(drop_down_values, &drop_down_idx),
+		// 		allocated_str_edit.ui,
+		// 	},
+		// )
+		engine.draw_annotation({2, -1}, "Hello from the engine!")
+		engine.add_world_ui({2, 1}, engine.button("Hey", "btn1").ui)
+		engine.add_world_ui_at_transform(
 			q.UiWorldTransform {
-				offset = {0, 0},
-				rot_scale = E.get_osc(0.2, 0.4, 1.0) * q.rotation_mat_2d(E.get_osc(0.3)),
+				offset = {0, 2},
+				rot_scale = engine.get_osc(0.4, 0.4, 1.0) * q.rotation_mat_2d(engine.get_osc(1.3)),
 			},
-			E.button("Click me too!", "btn2").ui,
+			engine.button("Click me!", "btn2").ui,
 		)
 
-		E.set_tonemapping_mode(tonemapping)
-		E.set_bloom_enabled(bloom_enabled)
-		E.set_bloom_blend_factor(bloom_blend_factor)
-		E.display_value(E.get_hit().is_on_screen_ui, E.get_hit().is_on_world_ui)
+		engine.set_tonemapping_mode(tonemapping)
+		engine.set_bloom_enabled(bloom_enabled)
+		engine.set_bloom_blend_factor(bloom_blend_factor)
+		// engine.display_value(engine.get_hit().is_on_screen_ui, engine.get_hit().is_on_world_ui)
 
 		for y in -5 ..= 5 {
-			E.draw_gizmos_line(Vec2{-5, f32(y)}, Vec2{5, f32(y)}, color2)
+			engine.draw_gizmos_line(Vec2{-5, f32(y)}, Vec2{5, f32(y)}, color2)
 		}
 		for x in -5 ..= 5 {
-			E.draw_gizmos_line(Vec2{f32(x), -5}, Vec2{f32(x), 5}, color2)
+			engine.draw_gizmos_line(Vec2{f32(x), -5}, Vec2{f32(x), 5}, color2)
 		}
 
-		E.draw_sprite(q.Sprite{texture = sprite, pos = {-3, 5}, size = {1, 2.2}, rotation = 0, color = q.ColorWhite})
+		engine.draw_sprite(
+			q.Sprite{texture = sprite, pos = {-3, 5}, size = {1, 2.2}, rotation = 0, color = q.ColorWhite},
+		)
 
 		for pos, i in forest {
-			E.draw_sprite(
-				q.Sprite{texture = corn, pos = pos, size = {1, 2}, rotation = E.get_osc(2), color = {1, 1, 1, 1}},
+			engine.draw_sprite(
+				q.Sprite{texture = corn, pos = pos, size = {1, 2}, rotation = engine.get_osc(2), color = {1, 1, 1, 1}},
 			)
 		}
 
-		player_pos += E.get_wasd() * 20 * E.get_delta_secs()
+		player_pos += engine.get_wasd() * 20 * engine.get_delta_secs()
 
 		// poly := [?]q.Vec2{{-5, -5}, {-5, 0}, {0, 0}, {-5, -5}, {0, 0}, {0, -5}}
 		// q.draw_color_mesh(poly[:])
 
 		if snake_enabled {
-			snake_update_body(&snake, E.get_hit_pos())
+			snake_update_body(&snake, engine.get_hit_pos())
 			snake_draw(&snake)
 		}
 
-		E.set_clear_color(background_color)
+		engine.set_clear_color(background_color)
 	}
 
 }
@@ -144,7 +146,7 @@ snake_create :: proc(head_pos: Vec2) -> Snake {
 snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 	prev_pos: Vec2
 	snake.points[0] = head_pos
-	s := E.get_delta_secs() * SNAKE_LERP_SPEED
+	s := engine.get_delta_secs() * SNAKE_LERP_SPEED
 	s = clamp(s, 0, 1)
 	for i in 1 ..< SNAKE_PTS {
 		follow_pos := snake.points[i - 1]
@@ -228,7 +230,7 @@ snake_draw :: proc(snake: ^Snake) {
 	// 	append(&new_vertices, snake.vertices[i])
 	// }
 	// q.draw_color_mesh(new_vertices[:])
-	E.draw_color_mesh_indexed(snake.vertices[:], snake.triangles[:])
+	engine.draw_color_mesh_indexed(snake.vertices[:], snake.triangles[:])
 }
 
 
