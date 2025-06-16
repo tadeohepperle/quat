@@ -695,6 +695,9 @@ get_ui_cursor_pos :: proc() -> Vec2 {
 	p, _ := q.ui_cursor_pos()
 	return p
 }
+get_ui_id_hovered :: proc() -> q.UiId {
+	return ENGINE.ui_ctx.cache.state.hovered
+}
 get_cursor_pos :: proc() -> Vec2 {
 	return ENGINE.platform.cursor_pos
 }

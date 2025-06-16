@@ -5,29 +5,29 @@ import "core:math/linalg"
 
 
 DEFAULT_CAMERA_CONTROLLER_SETTINGS := CameraSettings {
-	min_size           = 2.0,
-	max_size           = 700.0,
-	default_size       = 10.0,
-	lerp_speed         = 40.0,
-	zoom_sensitivity   = 0.24,
-	scroll_sensitivity = 0.2,
-	move_speed         = 1.0, // is multiplied with current height, to have same speed on different scales
-	move_with_wasd     = true,
-	move_with_arrows   = true,
-	scroll_when_on_ui  = false,
+	min_size          = 2.0,
+	max_size          = 700.0,
+	default_size      = 10.0,
+	lerp_speed        = 40.0,
+	zoom_sensitivity  = 0.24,
+	move_speed        = 1.0, // is multiplied with current height, to have same speed on different scales
+	move_with_wasd    = true,
+	move_with_arrows  = true,
+	scroll_when_on_ui = false,
+	zoom_enabled      = true,
 }
 
 CameraSettings :: struct {
-	min_size:           f32,
-	max_size:           f32,
-	default_size:       f32,
-	lerp_speed:         f32,
-	zoom_sensitivity:   f32,
-	scroll_sensitivity: f32,
-	move_speed:         f32,
-	move_with_wasd:     bool,
-	move_with_arrows:   bool,
-	scroll_when_on_ui:  bool,
+	min_size:          f32,
+	max_size:          f32,
+	default_size:      f32,
+	lerp_speed:        f32,
+	zoom_enabled:      bool,
+	zoom_sensitivity:  f32,
+	move_speed:        f32,
+	move_with_wasd:    bool,
+	move_with_arrows:  bool,
+	scroll_when_on_ui: bool,
 }
 
 CameraController :: struct {
@@ -77,7 +77,7 @@ camera_controller_update :: proc(cam: ^CameraController) {
 	if !cam.settings.scroll_when_on_ui && is_on_ui {
 		scroll = 0.0
 	}
-	if abs(scroll) > 0 && !is_shift_pressed() && !is_ctrl_pressed() {
+	if abs(scroll) > 0 && !is_shift_pressed() && !is_ctrl_pressed() && cam.settings.zoom_enabled {
 		// calculate new size
 		size_before := cam.current.height
 		size_after := size_before - scroll * size_before * cam.settings.zoom_sensitivity
