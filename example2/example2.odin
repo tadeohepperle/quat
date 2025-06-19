@@ -57,24 +57,24 @@ main :: proc() {
 		if allocated_str_edit.just_edited {
 			fmt.println("Edited allocated string:", allocated_str)
 		}
-		// engine.add_window(
-		// 	"Example window",
-		// 	{
-		// 		engine.button("I do nothing").ui,
-		// 		engine.enum_radio(&text_align, "Text Align"),
-		// 		engine.enum_radio(&tonemapping, "Tonemapping"),
-		// 		engine.color_picker(&background_color, "Background"),
-		// 		engine.color_picker(&color2, "Color 2"),
-		// 		engine.color_picker(&color3, "Color 3"),
-		// 		engine.toggle(&bloom_enabled, "Bloom"),
-		// 		engine.toggle(&snake_enabled, "Render Snake"),
-		// 		engine.text("Bloom blend factor:"),
-		// 		engine.slider(&bloom_blend_factor),
-		// 		engine.text_edit(&text_to_edit, align = .Center, font_size = engine.THEME.font_size).ui,
-		// 		engine.dropdown(drop_down_values, &drop_down_idx),
-		// 		allocated_str_edit.ui,
-		// 	},
-		// )
+		engine.add_window(
+			"Example window",
+			{
+				engine.button("I do nothing").ui,
+				engine.enum_radio(&text_align, "Text Align"),
+				engine.enum_radio(&tonemapping, "Tonemapping"),
+				engine.color_picker(&background_color, "Background"),
+				engine.color_picker(&color2, "Color 2"),
+				engine.color_picker(&color3, "Color 3"),
+				engine.toggle(&bloom_enabled, "Bloom"),
+				engine.toggle(&snake_enabled, "Render Snake"),
+				engine.text("Bloom blend factor:"),
+				engine.slider(&bloom_blend_factor),
+				engine.text_edit(&text_to_edit, align = .Center, font_size = engine.THEME.font_size).ui,
+				engine.dropdown(drop_down_values, &drop_down_idx),
+				allocated_str_edit.ui,
+			},
+		)
 		engine.draw_annotation({2, -1}, "Hello from the engine!")
 		engine.add_world_ui({2, 1}, engine.button("Hey", "btn1").ui)
 		engine.add_world_ui_at_transform(

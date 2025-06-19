@@ -328,6 +328,7 @@ _engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
 }
 
 _engine_end_frame :: proc(engine: ^Engine) {
+
 	// RESIZE AND END INPUT:
 	if engine.platform.screen_resized {
 		q.platform_resize(&engine.platform)
@@ -348,6 +349,7 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 	// PREPARE
 	_engine_prepare(engine)
+
 	// RENDER
 	_engine_render(engine)
 	// CLEAR
@@ -427,8 +429,8 @@ _engine_prepare :: proc(engine: ^Engine) {
 }
 
 _engine_render :: proc(engine: ^Engine) {
-	// acquire surface texture:
-	surface_texture, surface_view, command_encoder := q.platform_start_render(&engine.platform)
+	// get surface texture view:
+	surface_view, command_encoder := q.platform_start_render(&engine.platform)
 
 	// hdr render pass:
 	hdr_pass := q.platform_start_hdr_pass(engine.platform, command_encoder)
@@ -564,7 +566,7 @@ _engine_render :: proc(engine: ^Engine) {
 		)
 	}
 
-	q.platform_end_render(&engine.platform, surface_texture, surface_view, command_encoder)
+	q.platform_end_render(&engine.platform, surface_view, command_encoder)
 }
 
 @(private)

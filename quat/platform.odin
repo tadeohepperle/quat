@@ -64,6 +64,7 @@ Platform :: struct {
 	depth_screen_texture:        DepthTexture,
 	tonemapping_pipeline:        ^RenderPipeline, // owned by ShaderRegistry
 	asset_manager:               AssetManager,
+	surface_texture:             wgpu.SurfaceTexture, // a little hacky... acquired before input polling and stored here at start of frame to avoid V-Sync latency.
 
 	// input related fields:
 	total_secs_f64:              f64,
@@ -176,13 +177,17 @@ platform_destroy :: proc(platform: ^Platform) {
 
 
 // returns false if should be shut down
-platform_start_frame :: proc(platform: ^Platform) -> bool {
+platform_start_frame :: proc(platform: ^Platform) -> (should_keep_running: bool) {
 	if platform.should_close {
 		return false
 	}
 
+	// IMPORTANT! do this before polling events! Otherwise big vsync delay on all input
+	_acquire_surface_texture(platform)
+
 	time := glfw.GetTime()
 	glfw.PollEvents()
+
 
 	total_secs_before_f64 := platform.total_secs_f64
 	platform.total_secs_f64 = time
@@ -206,6 +211,7 @@ platform_start_frame :: proc(platform: ^Platform) -> bool {
 	}
 	_recalculate_ui_layout_extent(platform)
 
+
 	return true
 }
 
@@ -217,7 +223,6 @@ _recalculate_ui_layout_extent :: proc "contextless" (platform: ^Platform) {
 
 platform_end_render :: proc(
 	platform: ^Platform,
-	surface_texture: wgpu.SurfaceTexture,
 	surface_view: wgpu.TextureView,
 	command_encoder: wgpu.CommandEncoder,
 ) {
@@ -237,7 +242,6 @@ platform_end_render :: proc(
 	wgpu.QueueSubmit(platform.queue, {command_buffer})
 	wgpu.SurfacePresent(platform.surface)
 	// cleanup:
-	wgpu.TextureRelease(surface_texture.texture)
 	wgpu.TextureViewRelease(surface_view)
 	wgpu.CommandBufferRelease(command_buffer)
 }
@@ -268,32 +272,37 @@ platform_start_hdr_pass :: proc(platform: Platform, command_encoder: wgpu.Comman
 	return hdr_pass
 }
 
-platform_start_render :: proc(
-	platform: ^Platform,
-) -> (
-	surface_texture: wgpu.SurfaceTexture,
-	surface_view: wgpu.TextureView,
-	command_encoder: wgpu.CommandEncoder,
-) {
-	surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
-
-	switch surface_texture.status {
+// WARNING: MAY BLOCK ON V_SYNC!!!!
+_acquire_surface_texture :: proc(platform: ^Platform) {
+	if platform.surface_texture.texture != nil {
+		wgpu.TextureRelease(platform.surface_texture.texture)
+	}
+	platform.surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
+	switch platform.surface_texture.status {
 	case .SuccessOptimal, .SuccessSuboptimal:
 	// All good, could check for `surface_texture.suboptimal` here.
 	case .Timeout, .Outdated, .Lost:
 		// Skip this frame, and re-configure surface.
-		if surface_texture.texture != nil {
-			wgpu.TextureRelease(surface_texture.texture)
-		}
 		platform_resize(platform)
-		surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
-		assert(surface_texture.status == .SuccessOptimal || surface_texture.status == .SuccessSuboptimal)
+		platform.surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
+		assert(
+			platform.surface_texture.status == .SuccessOptimal ||
+			platform.surface_texture.status == .SuccessSuboptimal,
+		)
 	case .OutOfMemory, .DeviceLost, .Error:
 		// Fatal error
-		fmt.panicf("Fatal error in wgpu.SurfaceGetCurrentTexture, status=", surface_texture.status)
+		fmt.panicf("Fatal error in wgpu.SurfaceGetCurrentTexture, status=", platform.surface_texture.status)
 	}
+}
+
+platform_start_render :: proc(
+	platform: ^Platform,
+) -> (
+	surface_view: wgpu.TextureView,
+	command_encoder: wgpu.CommandEncoder,
+) {
 	surface_view = wgpu.TextureCreateView(
-		surface_texture.texture,
+		platform.surface_texture.texture,
 		&wgpu.TextureViewDescriptor {
 			label = "surface view",
 			format = SURFACE_FORMAT,
@@ -306,7 +315,7 @@ platform_start_render :: proc(
 		},
 	)
 	command_encoder = wgpu.DeviceCreateCommandEncoder(platform.device, nil)
-	return surface_texture, surface_view, command_encoder
+	return surface_view, command_encoder
 }
 
 // platform
@@ -346,11 +355,15 @@ platform_resize :: proc(platform: ^Platform) {
 	platform.screen_resized = false
 	platform.surface_config.width = platform.screen_size.x
 	platform.surface_config.height = platform.screen_size.y
+	if platform.surface_texture.texture != nil {
+		wgpu.TextureRelease(platform.surface_texture.texture)
+	}
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
 	texture_destroy(&platform.hdr_screen_texture)
 	texture_destroy(&platform.depth_screen_texture)
 	platform.hdr_screen_texture = texture_create(platform.device, platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
+	_acquire_surface_texture(platform)
 }
 
 _platform_receive_glfw_char_event :: proc(platform: ^Platform, char: rune) {
