@@ -113,23 +113,11 @@ sprite_batches_render :: proc(
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
-	wgpu.RenderPassEncoderSetVertexBuffer(
-		render_pass,
-		0,
-		instance_buffer.buffer,
-		0,
-		instance_buffer.size,
-	)
+	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
 	for batch in batches {
 		texture_bind_group := assets_get_texture_bind_group(assets, batch.texture)
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
-		wgpu.RenderPassEncoderDraw(
-			render_pass,
-			4,
-			u32(batch.end_idx - batch.start_idx),
-			0,
-			u32(batch.start_idx),
-		)
+		wgpu.RenderPassEncoderDraw(render_pass, 4, u32(batch.end_idx - batch.start_idx), 0, u32(batch.start_idx))
 	}
 
 }

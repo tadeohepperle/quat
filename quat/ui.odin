@@ -751,8 +751,9 @@ layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
 	_set_position(ui, initial_pos)
 }
 
+
+INFINITE_SIZE :: Vec2{max(f32), max(f32)}
 layout_in_world_space :: proc(ui: Ui, world_pos: Vec2, transform: UiWorldTransform, pixels_per_world_unit: f32) {
-	INFINITE_SIZE := Vec2{max(f32), max(f32)}
 	used_size := _set_size(ui, INFINITE_SIZE)
 	initial_pos := Vec2{world_pos.x, -world_pos.y} * pixels_per_world_unit - (used_size / 2)
 	transform := UiTransform {
@@ -761,6 +762,12 @@ layout_in_world_space :: proc(ui: Ui, world_pos: Vec2, transform: UiWorldTransfo
 	}
 	context.user_ptr = &transform
 	_set_position(ui, initial_pos)
+}
+
+measure_ui_size :: proc(ui: Ui, max_size: Maybe(Vec2) = nil) -> Vec2 {
+	max_size := max_size.(Vec2) or_else INFINITE_SIZE
+	used_size := _set_size(ui, max_size)
+	return used_size
 }
 
 _set_size :: proc(ui: Ui, max_size: Vec2) -> (used_size: Vec2) {

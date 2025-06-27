@@ -290,7 +290,14 @@ slider :: proc {
 }
 
 
-slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0, slider_width: f32 = 0) -> Ui {
+slider_int :: proc(
+	value: ^int,
+	min: int = 0,
+	max: int = 1,
+	id: UiId = 0,
+	slider_width: f32 = 0,
+	custom_text: Maybe(string) = nil,
+) -> Ui {
 	slider_width := slider_width
 	if slider_width == 0 {
 		slider_width = THEME.control_width_lg
@@ -372,7 +379,12 @@ slider_int :: proc(value: ^int, min: int = 0, max: int = 1, id: UiId = 0, slider
 	)
 	child_text(
 		container,
-		Text{str = fmt.tprint(val), color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
+		Text {
+			str = custom_text.(string) or_else fmt.tprint(val),
+			color = THEME.text,
+			font_size = THEME.font_size,
+			shadow = THEME.text_shadow,
+		},
 	)
 	return container
 }
@@ -968,7 +980,8 @@ colored_triangle :: proc() -> Ui {
 		res[0] = q.CustomUiMesh{verts, tris, 0}
 		return res
 	}
-	Empty :: struct {}
+	Empty :: struct {
+	}
 	return q.ui_custom(Empty{}, set_size, add_primitives)
 }
 

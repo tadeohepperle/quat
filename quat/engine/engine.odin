@@ -1027,7 +1027,7 @@ get_wasd :: proc() -> Vec2 {
 	return {0, 0}
 }
 get_arrows :: proc() -> (res: Vec2) {
-	keys := [4]q.Key{.LEFT, .RIGHT, .DOWN, .UP}
+	keys := ARROW_KEYS
 	dirs := [4]Vec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
 	for key, idx in keys {
 		if .Pressed in ENGINE.platform.keys[key] {
@@ -1037,8 +1037,10 @@ get_arrows :: proc() -> (res: Vec2) {
 	return res
 }
 
-get_arrows_just_pressed_or_repeated :: proc() -> (res: IVec2) {
-	keys := [4]q.Key{.LEFT, .RIGHT, .DOWN, .UP}
+ARROW_KEYS :: [4]q.Key{.LEFT, .RIGHT, .DOWN, .UP}
+WASD_KEYS :: [4]q.Key{.A, .D, .S, .W}
+
+get_arrows_just_pressed_or_repeated :: proc(keys := ARROW_KEYS) -> (res: IVec2) {
 	dirs := [4]IVec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
 	for key, idx in keys {
 		flags := ENGINE.platform.keys[key]
