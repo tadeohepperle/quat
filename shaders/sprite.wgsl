@@ -86,7 +86,7 @@ fn sprite_vertex(vertex_index: u32, instance: SpriteInstance) -> SpriteVertex {
     
     let pos = (u_uv * size) - size_half;
     let pos_rotated = rotate(pos, instance.rotation);
-    out.z = pos_rotated.y+ instance.z + size_half.y;
+    out.z = pos_rotated.y+ instance.z; // do this to let sprite size affect z: + size_half.y;
     out.pos = pos_rotated + instance.pos;
     return out;
 }

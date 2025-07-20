@@ -179,7 +179,12 @@ add_window :: proc(title: string, content: []Ui, window_width: f32 = 0) {
 			shadow = 0.5,
 		},
 	)
-	add_ui(with_children(window, content))
+	for ch in content {
+		if ch != nil {
+			q.ui_add_child(window, ch)
+		}
+	}
+	add_ui(window)
 }
 
 button :: proc(title: string, id: string = "") -> UiWithInteraction {
@@ -980,8 +985,7 @@ colored_triangle :: proc() -> Ui {
 		res[0] = q.CustomUiMesh{verts, tris, 0}
 		return res
 	}
-	Empty :: struct {
-	}
+	Empty :: struct {}
 	return q.ui_custom(Empty{}, set_size, add_primitives)
 }
 

@@ -22,22 +22,9 @@ MotionTextureAllocator :: struct {
 	texture:     q.MotionTextureHandle,
 }
 // currently only supports fixed size, no resizing
-motion_texture_allocator_create :: proc(
-	diffuse_size: IVec2,
-	motion_size: IVec2,
-) -> (
-	res: MotionTextureAllocator,
-) {
+motion_texture_allocator_create :: proc(diffuse_size: IVec2, motion_size: IVec2) -> (res: MotionTextureAllocator) {
 	ratio, is_ratio := _is_ratio(diffuse_size, motion_size)
-	assert(
-		is_ratio,
-		q.tprint(
-			"non-integer ratio between diffuse size",
-			diffuse_size,
-			"and motion size",
-			motion_size,
-		),
-	)
+	assert(is_ratio, q.tprint("non-integer ratio between diffuse size", diffuse_size, "and motion size", motion_size))
 	res.ratio = ratio
 
 	texture := q.motion_texture_create(diffuse_size, motion_size, ENGINE.platform.device)
@@ -167,7 +154,8 @@ SrcImage :: struct {
 	atlas_id:     AtlasId,
 	src_path:     string,
 	image:        Image,
-	pos_in_atlas: IVec2,
+	pos_in_atlas: IVec2, // top-left corner of rectangle in atlas that is image.size + padding * 2 pixels big
+	padding:      int, // the actual image starts at alloc_pos_in_atlas + padding
 	texture_tile: TextureTile,
 }
 
@@ -181,14 +169,7 @@ texture_allocator_create :: proc(settings: TextureAllocatorSettings) -> (this: T
 		}
 	}
 	if max_size_idx == -1 {
-		panic(
-			fmt.tprint(
-				"settings.max_size is",
-				settings.max_size,
-				"but it should be one of these:",
-				ATLAS_SIZES,
-			),
-		)
+		panic(fmt.tprint("settings.max_size is", settings.max_size, "but it should be one of these:", ATLAS_SIZES))
 	}
 	this.grow_sizes = ATLAS_SIZES[:max_size_idx + 1]
 
@@ -246,21 +227,17 @@ AddImgResult :: struct {
 texture_allocator_get_info :: proc(this: TextureAllocator, id: SrcImageId) -> SrcImage {
 	return this.src_images[id].(SrcImage)
 }
-texture_allocator_add_img :: proc(this: ^TextureAllocator, img: Image) -> AddImgResult {
+texture_allocator_add_img :: proc(this: ^TextureAllocator, img: Image, padding: int = 0) -> AddImgResult {
 	id := _next_src_img_id(this)
 	new_src_img := SrcImage {
 		id       = id,
 		src_path = "",
 		image    = img,
+		padding  = padding,
 	}
 	grew, ok: bool
 	for &atlas in this.atlases {
-		grew, ok = _try_add_img(
-			&atlas,
-			&new_src_img,
-			this.settings.auto_grow_shrink,
-			&this.src_images,
-		)
+		grew, ok = _try_add_img(&atlas, &new_src_img, this.settings.auto_grow_shrink, &this.src_images)
 		if ok {
 			break
 		}
@@ -268,15 +245,9 @@ texture_allocator_add_img :: proc(this: ^TextureAllocator, img: Image) -> AddImg
 	}
 	if !ok && len(this.atlases) < this.settings.max_n_atlases {
 		new_atlas_id := AtlasId(len(this.atlases))
-		new_atlas_size :=
-			this.grow_sizes[0] if this.settings.auto_grow_shrink else this.settings.max_size
+		new_atlas_size := this.grow_sizes[0] if this.settings.auto_grow_shrink else this.settings.max_size
 		new_atlas := _atlas_create(new_atlas_id, new_atlas_size)
-		grew, ok = _try_add_img(
-			&new_atlas,
-			&new_src_img,
-			this.settings.auto_grow_shrink,
-			&this.src_images,
-		)
+		grew, ok = _try_add_img(&new_atlas, &new_src_img, this.settings.auto_grow_shrink, &this.src_images)
 		append(&this.atlases, new_atlas)
 	}
 	if !ok {
@@ -284,12 +255,7 @@ texture_allocator_add_img :: proc(this: ^TextureAllocator, img: Image) -> AddImg
 		return AddImgResult{ok = false}
 	}
 	append(&this.src_images, new_src_img)
-	return AddImgResult {
-		tile = new_src_img.texture_tile,
-		id = new_src_img.id,
-		grew = grew,
-		ok = true,
-	}
+	return AddImgResult{tile = new_src_img.texture_tile, id = new_src_img.id, grew = grew, ok = true}
 }
 
 texture_allocator_remove_img :: proc(this: ^TextureAllocator, id: SrcImageId) -> (ok: bool) {
@@ -341,13 +307,14 @@ _try_add_img :: proc(
 	grew: bool,
 	ok: bool,
 ) {
+	img_size_with_padding := src.image.size + src.padding * 2
 	pos_in_atlas: IVec2
 	if grow_allowed {
 		remap_allocs: map[IVec2]IVec2
 		old_atlas_size := this.atlas.size
 		pos_in_atlas, remap_allocs = q.atlas_allocate_growing_if_necessary(
 			&this.atlas,
-			src.image.size,
+			img_size_with_padding,
 			ATLAS_SIZES,
 		) or_return
 		grew = old_atlas_size != this.atlas.size
@@ -367,26 +334,23 @@ _try_add_img :: proc(
 					"if atlas grew, the remap_allocs map should contain entry for all prev allocations",
 				)
 				src_img.pos_in_atlas = new_pos_in_atlas
-				q.image_copy_into(&this.image, q.image_view(src_img.image), new_pos_in_atlas)
+				q.image_copy_into(&this.image, q.image_view(src_img.image), new_pos_in_atlas + src_img.padding)
 			}
 		}
 	} else {
-		pos_in_atlas = q.atlas_allocate(&this.atlas, src.image.size) or_return
+		pos_in_atlas = q.atlas_allocate(&this.atlas, img_size_with_padding) or_return
 	}
 	src.atlas_id = this.id
 	src.pos_in_atlas = pos_in_atlas
-	q.image_copy_into(&this.image, q.image_view(src.image), pos_in_atlas)
+	q.image_copy_into(&this.image, q.image_view(src.image), pos_in_atlas + src.padding)
 	_sync_atlas_texture_to_atlas_image(this, src_images)
 	append(&this.src_image_ids, src.id)
-	src_tile_uv := atlas_uv_aabb(this.atlas.size, pos_in_atlas, src.image.size)
+	src_tile_uv := atlas_uv_aabb(this.atlas.size, pos_in_atlas + src.padding, src.image.size)
 	src.texture_tile = q.TextureTile{this.texture, src_tile_uv}
 	return grew, true
 }
 
-_sync_atlas_texture_to_atlas_image :: proc(
-	this: ^_TextureAtlas,
-	src_images: ^[dynamic]Maybe(SrcImage),
-) {
+_sync_atlas_texture_to_atlas_image :: proc(this: ^_TextureAtlas, src_images: ^[dynamic]Maybe(SrcImage)) {
 	if this.texture == 0 {
 		if this.atlas.size != 0 {
 			this.texture = create_texture_from_image(this.image)

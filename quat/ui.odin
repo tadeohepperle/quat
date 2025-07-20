@@ -490,6 +490,9 @@ DivFlag :: enum u32 {
 	// stretches the inside. If a mamimum stretching 0.66 - 1.5 is wanted and repeating beyond that, set the .NineSliceRepeat flag
 	NineSliceUsingBorderWidth,
 	NineSliceRepeat,
+	// if this is set, the uv of the texture is assumed to be UNIT_UV (0,0,1,1). Instead of using the uv aabb of the texture tile, 
+	// instead the texture is repeated every texture.uv.max pixels.
+	RepeatTextureEveryUvMaxPx,
 }
 
 Ui :: union {
@@ -1643,6 +1646,11 @@ _add_div_rect :: proc(e: ^DivElement, vertices: ^[dynamic]UiVertex, tris: ^[dyna
 		if .RotateByGap in e.flags {
 			rotation = e.gap
 		}
+
+		texture := e.texture
+		if .RepeatTextureEveryUvMaxPx in e.flags {
+			texture.uv = Aabb{{0, 0}, e.size / e.texture.uv.max}
+		}
 		add_rect(
 			vertices,
 			tris,
@@ -1805,10 +1813,6 @@ _add_nine_slice_rects_repeating :: proc(
 	rep_f32 := ui_inner / tile_inner
 	rep_x := max(int(math.round(rep_f32.x)), 1)
 	rep_y := max(int(math.round(rep_f32.y)), 1)
-	// if rep_x == 1 && rep_y == 1 {
-	// 	_add_nine_slice_rects_stretching(vertices, tris, pos, size, color, uv, vals)
-	// 	return
-	// }
 	start_v := u32(len(vertices))
 	// reserve enough space in the vertices and triangles arrays already:
 	num_quads := (rep_y + 2) * (rep_x + 2)

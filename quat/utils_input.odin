@@ -29,6 +29,7 @@ glfw_int_to_mouse_button :: proc "contextless" (glfw_mouse_button: i32) -> Maybe
 		return .Right
 	case glfw.MOUSE_BUTTON_MIDDLE:
 		return .Middle
+	// todo: back and forward mouse buttons
 	case:
 		return nil
 	}

@@ -59,6 +59,12 @@ aabb_standard_form :: proc "contextless" (aabb: Aabb) -> Aabb {
 aabb_contains :: proc "contextless" (aabb: Aabb, pt: Vec2) -> bool {
 	return pt.x >= aabb.min.x && pt.y >= aabb.min.y && pt.x <= aabb.max.x && pt.y <= aabb.max.y
 }
+aabb_flip_x :: proc "contextless" (aabb: Aabb) -> Aabb {
+	return Aabb{Vec2{aabb.max.x, aabb.min.y}, Vec2{aabb.min.x, aabb.max.y}}
+}
+aabb_flip_y :: proc "contextless" (aabb: Aabb) -> Aabb {
+	return Aabb{Vec2{aabb.min.x, aabb.max.y}, Vec2{aabb.max.x, aabb.min.y}}
+}
 aabb_center :: proc "contextless" (aabb: Aabb) -> Vec2 {
 	return (aabb.min + aabb.max) / 2
 }
