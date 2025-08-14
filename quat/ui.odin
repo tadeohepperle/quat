@@ -382,19 +382,36 @@ CustomUi :: struct {
 Div :: struct {
 	width:             f32,
 	height:            f32,
-	padding:           Padding,
+	// left, right, top, bottom
+	padding:           Vec4,
 	offset:            Vec2,
 	absolute_unit_pos: Vec2, // only taken into account if flag .Absolute set
 	color:             Color,
 	gap:               f32, // gap between children
 	flags:             DivFlags,
 	texture:           TextureTile,
+	// top_left, top_right, bottom_right, bottom_left
 	border_radius:     Vec4,
+	// left, top, right, bottom
 	border_width:      Vec4,
 	border_color:      Color,
 	lerp_speed:        f32, //   (lerp speed)
 	z_layer:           u16, // an offset to the parents z layer. 
 }
+padding :: proc(left: f32 = 0, right: f32 = 0, top: f32 = 0, bottom: f32 = 0) -> Vec4 {
+	return Vec4{left, right, top, bottom}
+}
+padding_symmetric :: proc(horizontal: f32 = 0, vertical: f32 = 0) -> Vec4 {
+	return Vec4{horizontal, horizontal, vertical, vertical}
+}
+border_radius :: proc(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Vec4 {
+	return {top_left, top_right, bottom_right, bottom_left}
+}
+border_width :: proc(left: f32 = 0, top: f32 = 0, right: f32 = 0, bottom: f32 = 0) -> Vec4 {
+	return Vec4{left, top, right, bottom}
+}
+
+
 COVER_DIV :: Div {
 	flags  = {.Absolute, .WidthFraction, .HeightFraction},
 	width  = 1,
@@ -406,22 +423,7 @@ RED_BOX_DIV := Div {
 	height = 40,
 	color  = ColorSoftRed,
 }
-
-Padding :: struct {
-	left:   f32,
-	right:  f32,
-	top:    f32,
-	bottom: f32,
-}
 BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED: Vec4 : -10 // apply this to your vertices in custom meshes, it fixes otherwise translucent colors, because then the corner flags are not set 
-
-border_width :: proc(left: f32 = 0, top: f32 = 0, right: f32 = 0, bottom: f32 = 0) -> Vec4 {
-	return Vec4{left, top, right, bottom}
-}
-
-border_radius :: proc(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Vec4 {
-	return {top_left, top_right, bottom_right, bottom_left}
-}
 
 // is stored in div.borderwidth
 NineSliceValues :: struct {
@@ -841,8 +843,8 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 	}
 
 	// compute padding:
-	pad_x := div.padding.left + div.padding.right
-	pad_y := div.padding.top + div.padding.bottom
+	pad_x := div.padding[0] + div.padding[1]
+	pad_y := div.padding[2] + div.padding[3]
 	child_count := len(div.children)
 	if child_count > 1 && div.gap != 0 {
 		if DivFlag.LayoutAsText in div.flags {
@@ -999,12 +1001,12 @@ _set_child_positions_for_div_with_text_layout :: proc(div: ^DivElement) {
 
 // assumes div.size and div.pos are already set
 _set_child_positions_for_div :: proc(div: ^DivElement) {
-	pad_x := div.padding.left + div.padding.right
-	pad_y := div.padding.top + div.padding.bottom
+	pad_x := div.padding[0] + div.padding[1]
+	pad_y := div.padding[2] + div.padding[3]
 
 	child_count := len(div.children)
 	inner_size := Vec2{div.size.x - pad_x, div.size.y - pad_y}
-	inner_pos := div.pos + Vec2{div.padding.left, div.padding.top}
+	inner_pos := div.pos + Vec2{div.padding[0], div.padding[2]}
 
 	main_size: f32 = ---
 	cross_size: f32 = ---

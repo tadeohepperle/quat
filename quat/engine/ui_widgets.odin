@@ -796,7 +796,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 		dialog := child_div(
 			ui,
 			Div {
-				padding           = q.Padding{16, 16, 16, 16},
+				padding           = 16,
 				color             = THEME.surface_deep,
 				border_width      = THEME.border_width,
 				border_radius     = THEME.border_radius,
@@ -1179,7 +1179,7 @@ text_edit :: proc(
 			border_color = border_color,
 			border_width = THEME.border_width,
 			border_radius = THEME.border_radius,
-			padding = {8, 8, 4, 4},
+			padding = q.padding_symmetric(8, 4),
 			flags = {.AxisX, .WidthPx},
 		},
 		id,
