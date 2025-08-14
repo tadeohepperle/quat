@@ -302,8 +302,8 @@ UiVertex :: struct {
 	uv:            Vec2,
 	color:         Color,
 	border_color:  Color,
-	border_radius: BorderRadius,
-	border_width:  BorderWidth,
+	border_radius: Vec4,
+	border_width:  Vec4,
 	flags:         u32,
 }
 UiGlyphInstance :: struct {
@@ -389,8 +389,8 @@ Div :: struct {
 	gap:               f32, // gap between children
 	flags:             DivFlags,
 	texture:           TextureTile,
-	border_radius:     BorderRadius,
-	border_width:      BorderWidth,
+	border_radius:     Vec4,
+	border_width:      Vec4,
 	border_color:      Color,
 	lerp_speed:        f32, //   (lerp speed)
 	z_layer:           u16, // an offset to the parents z layer. 
@@ -413,28 +413,25 @@ Padding :: struct {
 	top:    f32,
 	bottom: f32,
 }
-BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED :: BorderWidth{-10, -10, -10, -10} // apply this to your vertices in custom meshes, it fixes otherwise translucent colors, because then the corner flags are not set 
-BorderWidth :: struct {
-	left:   f32,
-	top:    f32,
-	right:  f32,
-	bottom: f32,
+BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED: Vec4 : -10 // apply this to your vertices in custom meshes, it fixes otherwise translucent colors, because then the corner flags are not set 
+
+border_width :: proc(left: f32 = 0, top: f32 = 0, right: f32 = 0, bottom: f32 = 0) -> Vec4 {
+	return Vec4{left, top, right, bottom}
 }
+
+border_radius :: proc(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Vec4 {
+	return {top_left, top_right, bottom_right, bottom_left}
+}
+
 // is stored in div.borderwidth
 NineSliceValues :: struct {
 	inset_px:     Vec2,
 	tile_size_px: Vec2,
 }
-nine_slice_values :: proc(inset_px: Vec2, tile_size_px: Vec2) -> BorderWidth {
-	return BorderWidth{inset_px.x, inset_px.y, tile_size_px.x, tile_size_px.y}
+// set to border_width field:
+nine_slice_values :: proc(inset_px: Vec2, tile_size_px: Vec2) -> Vec4 {
+	return Vec4{inset_px.x, inset_px.y, tile_size_px.x, tile_size_px.y}
 }
-BorderRadius :: struct {
-	top_left:     f32,
-	top_right:    f32,
-	bottom_right: f32,
-	bottom_left:  f32,
-}
-
 Text :: struct {
 	str:                  string,
 	font:                 FontHandle,
@@ -1628,18 +1625,10 @@ _add_div_rect :: proc(e: ^DivElement, vertices: ^[dynamic]UiVertex, tris: ^[dyna
 	} else {
 		start_v := u32(len(vertices))
 
+		// todo: maybe the shader could do this instead???
 		max_border_radius := min(e.size.x, e.size.y) / 2.0
-		if e.border_radius.top_left > max_border_radius {
-			e.border_radius.top_left = max_border_radius
-		}
-		if e.border_radius.top_right > max_border_radius {
-			e.border_radius.top_right = max_border_radius
-		}
-		if e.border_radius.bottom_right > max_border_radius {
-			e.border_radius.bottom_right = max_border_radius
-		}
-		if e.border_radius.bottom_left > max_border_radius {
-			e.border_radius.bottom_left = max_border_radius
+		#unroll for i in 0 ..< 4 {
+			e.border_radius[i] = min(e.border_radius[i], max_border_radius)
 		}
 
 		rotation: f32 = 0
@@ -1673,8 +1662,8 @@ add_rect :: #force_inline proc(
 	size: Vec2,
 	color: Color,
 	border_color: Color,
-	border_width: BorderWidth,
-	border_radius: BorderRadius,
+	border_width: Vec4,
+	border_radius: Vec4,
 	texture: TextureTile,
 	rotation: f32 = 0,
 ) {

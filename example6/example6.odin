@@ -23,10 +23,7 @@ main :: proc() {
 	defer engine.deinit()
 
 	v :: proc(pos: Vec3) -> q.Mesh3dVertex {
-		return q.Mesh3dVertex {
-			pos = pos,
-			color = q.Color{pos.x / 3.0, pos.y / 3.0, pos.z / 3.0, 1.0},
-		}
+		return q.Mesh3dVertex{pos = pos, color = q.Color{pos.x / 3.0, pos.y / 3.0, pos.z / 3.0, 1.0}}
 	}
 	L :: 0.00
 	H :: 3.0
@@ -77,12 +74,7 @@ main :: proc() {
 	cam := engine.camera_controller_create()
 
 	terrain_textures := engine.load_texture_array(
-		{
-			"./assets/t_0.png",
-			"./assets/t_1.png",
-			"./assets/t_2.png",
-			"./assets/t_undiscovered_dark.png",
-		},
+		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_undiscovered_dark.png"},
 	)
 	engine.set_tritex_textures(terrain_textures)
 
@@ -145,18 +137,9 @@ main :: proc() {
 		engine.add_window(
 			"Shader Variables",
 			{
-				engine.row(
-					{engine.slider(&new_new_factor), engine.text_from_string("transition")},
-					gap = 8,
-				),
-				engine.row(
-					{engine.slider(&shader_xxx.y), engine.text_from_string("noise")},
-					gap = 8,
-				),
-				engine.row(
-					{engine.slider(&shader_xxx.z), engine.text_from_string("mesh h")},
-					gap = 8,
-				),
+				engine.row({engine.slider(&new_new_factor), engine.text_from_string("transition")}, gap = 8),
+				engine.row({engine.slider(&shader_xxx.y), engine.text_from_string("noise")}, gap = 8),
+				engine.row({engine.slider(&shader_xxx.z), engine.text_from_string("mesh h")}, gap = 8),
 			},
 		)
 
@@ -266,11 +249,7 @@ random_chunk :: proc(chunk_pos: IVec2) -> (res: Chunk) {
 			res.data.tiles[idx] = q.HexTileData{old_ter, new_ter, old_vis, new_vis, new_fact}
 		}
 	}
-	res.uniform = q.hex_chunk_uniform_create(
-		engine.ENGINE.platform.device,
-		engine.ENGINE.platform.queue,
-		chunk_pos,
-	)
+	res.uniform = q.hex_chunk_uniform_create(engine.ENGINE.platform.device, engine.ENGINE.platform.queue, chunk_pos)
 	q.hex_chunk_uniform_write_data(&res.uniform, &res.data)
 	return res
 }

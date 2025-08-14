@@ -81,8 +81,7 @@ main :: proc() {
 	}
 }
 
-None :: struct {
-}
+None :: struct {}
 NodeId :: distinct u64
 Node :: struct {
 	id:    NodeId,

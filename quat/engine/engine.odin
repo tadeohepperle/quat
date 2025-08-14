@@ -12,6 +12,7 @@ import wgpu "vendor:wgpu"
 
 Vec2 :: q.Vec2
 Vec3 :: q.Vec3
+Vec4 :: q.Vec4
 Color :: q.Color
 print :: q.print
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
@@ -1123,4 +1124,14 @@ draw_motion_particles :: proc(
 	texture: q.MotionTextureHandle,
 ) {
 	append(&ENGINE.scene.motion_particles_draw_commands, _MotionParticleDrawCommand{particles, flipbook, texture})
+}
+
+
+get_default_font_line_metrics :: proc() -> q.LineMetrics {
+	return q.slotmap_get(ENGINE.platform.asset_manager.fonts, 0).line_metrics
+}
+
+set_default_font_line_metrics :: proc(line_metrics: q.LineMetrics) {
+	font := q.slotmap_access(&ENGINE.platform.asset_manager.fonts, 0)
+	font.line_metrics = line_metrics
 }

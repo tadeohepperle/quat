@@ -40,9 +40,7 @@ main :: proc() {
 	engine.set_clear_color({0.2, 0.2, 0.3, 1.0})
 
 
-	ta := engine.texture_allocator_create(
-		{max_size = {512, 512}, max_n_atlases = 1, auto_grow_shrink = false},
-	)
+	ta := engine.texture_allocator_create({max_size = {512, 512}, max_n_atlases = 1, auto_grow_shrink = false})
 
 	panel_bg_img := q.image_load("./assets/nineslice3.png") or_else panic(" not found")
 	panel_bg := engine.texture_allocator_add_img(&ta, panel_bg_img).tile
@@ -67,10 +65,7 @@ main :: proc() {
 					squeeze_into = SQUEEZE_SIZE,
 					corner_ui = test_div(CORNER_SIZE, q.ColorOrange),
 					top_header_ui = test_div(Vec2{FIELD_SIZE.x, CORNER_SIZE.y}, q.ColorLightBlue),
-					side_header_ui = test_div(
-						Vec2{CORNER_SIZE.x, FIELD_SIZE.y},
-						q.ColorSoftPurpleBlue,
-					),
+					side_header_ui = test_div(Vec2{CORNER_SIZE.x, FIELD_SIZE.y}, q.ColorSoftPurpleBlue),
 					field_ui = test_div(FIELD_SIZE),
 				},
 				&state,
@@ -169,18 +164,10 @@ scroll_table :: proc(
 	left_slider_id: q.UiId,
 ) -> Ui {
 	SCROLL_BAR_WIDTH: f32 : 16.0
-	KNOB_BORDER_RADIUS :: q.BorderRadius {
-		SCROLL_BAR_WIDTH / 2,
-		SCROLL_BAR_WIDTH / 2,
-		SCROLL_BAR_WIDTH / 2,
-		SCROLL_BAR_WIDTH / 2,
-	}
+	KNOB_BORDER_RADIUS :: SCROLL_BAR_WIDTH / 2
 
 	total_size_uncut := SCROLL_BAR_WIDTH + corner_size + field_size
-	total_size := Vec2 {
-		min(squeeze_into.x, total_size_uncut.x),
-		min(squeeze_into.y, total_size_uncut.y),
-	}
+	total_size := Vec2{min(squeeze_into.x, total_size_uncut.x), min(squeeze_into.y, total_size_uncut.y)}
 	visible_field_size := total_size - props.corner_size - SCROLL_BAR_WIDTH
 	assert(visible_field_size.x > props.corner_size.x + SCROLL_BAR_WIDTH)
 	assert(visible_field_size.y > props.corner_size.y + SCROLL_BAR_WIDTH)
@@ -217,12 +204,7 @@ scroll_table :: proc(
 	x_offset: f32 = state.top_slider_f * (field_size.x - visible_field_size.x)
 
 	container := div(
-		Div {
-			width = total_size.x,
-			height = total_size.y,
-			flags = {.WidthPx, .HeightPx},
-			color = q.ColorDarkGrey,
-		},
+		Div{width = total_size.x, height = total_size.y, flags = {.WidthPx, .HeightPx}, color = q.ColorDarkGrey},
 	)
 	top_slider := child_div(
 		container,

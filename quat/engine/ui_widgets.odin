@@ -27,9 +27,9 @@ UiTheme :: struct {
 	font_size_lg:      f32,
 	text_shadow:       f32,
 	disabled_opacity:  f32,
-	border_width:      q.BorderWidth,
-	border_radius:     q.BorderRadius,
-	border_radius_sm:  q.BorderRadius,
+	border_width:      Vec4,
+	border_radius:     Vec4,
+	border_radius_sm:  Vec4,
 	control_width_lg:  f32,
 	control_width_sm:  f32,
 	control_height:    f32,
@@ -52,9 +52,9 @@ THEME: UiTheme = UiTheme {
 	font_size_lg      = 24,
 	text_shadow       = 0.8,
 	disabled_opacity  = 0.4,
-	border_width      = q.BorderWidth{2.0, 2.0, 2.0, 2.0},
-	border_radius     = q.BorderRadius{8.0, 8.0, 8.0, 8.0},
-	border_radius_sm  = q.BorderRadius{4.0, 4.0, 4.0, 4.0},
+	border_width      = 2.0,
+	border_radius     = 8.0,
+	border_radius_sm  = 4.0,
 	control_width_lg  = 196,
 	control_width_sm  = 48,
 	control_height    = 24,
@@ -265,7 +265,7 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 			height = pill_height,
 			padding = {pad, pad, pad, pad},
 			flags = pill_flags,
-			border_radius = {rad, rad, rad, rad},
+			border_radius = rad,
 		},
 		id = id,
 	)
@@ -278,7 +278,7 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 			height = 0.75 * pill_height,
 			lerp_speed = 10,
 			flags = flags,
-			border_radius = {12, 12, 12, 12},
+			border_radius = 12,
 		},
 		id = q.ui_id_next(id),
 	)
@@ -692,7 +692,7 @@ _display_values :: proc(values: []DisplayValue) {
 			absolute_unit_pos = Vec2{0.5, 1},
 			color = {0, 0, 0, 0.6},
 			padding = {8, 8, 8, 8},
-			border_radius = {8, 8, 8, 8},
+			border_radius = 8,
 		},
 	)
 	for val in values {
@@ -872,8 +872,8 @@ crosshair_at_unit_pos :: proc(unit_pos: Vec2) -> Ui {
 			width = 16,
 			height = 16,
 			color = {1.0, 1.0, 1.0, 0.0},
-			border_radius = {8, 8, 8, 8},
-			border_width = {2, 2, 2, 2},
+			border_radius = 8,
+			border_width = 2,
 			border_color = THEME.text,
 			flags = {.WidthPx, .HeightPx, .Absolute},
 			absolute_unit_pos = Vec2{0.5, 0.5},
@@ -906,7 +906,6 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 	add_primitives :: proc(data: ^ColorGradientRect, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
 		n_x := data.colors_n_x
 		n_y := data.colors_n_y
-		border_width := q.BorderWidth{-10.0, -10.0, -10.0, -10.0}
 
 		verts := make([dynamic]q.UiVertex, allocator = context.temp_allocator)
 		tris := make([dynamic]q.Triangle, allocator = context.temp_allocator)
@@ -922,10 +921,10 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 					q.UiVertex {
 						pos = vertex_pos,
 						color = color,
-						border_radius = {0, 0, 0, 0},
+						border_radius = 0,
 						size = size,
 						flags = 0,
-						border_width = border_width,
+						border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
 						border_color = {},
 					},
 				)
@@ -1430,8 +1429,8 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 			color = THEME.background,
 			width = 16,
 			height = 16,
-			border_radius = {8, 8, 8, 8},
-			border_width = {2, 2, 2, 2},
+			border_radius = 8,
+			border_width = 2,
 			border_color = THEME.text if res.pressed else THEME.text_secondary,
 		},
 	)
@@ -1496,7 +1495,7 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 		return q.UiVertex {
 			pos = pos,
 			color = color,
-			border_radius = {0, 0, 0, 0},
+			border_radius = 0,
 			border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
 		}
 	}
@@ -1557,7 +1556,7 @@ NineSliceMode :: enum {
 // 		return q.UiVertex {
 // 			pos = pos,
 // 			color = color,
-// 			border_radius = {0, 0, 0, 0},
+// 			border_radius = 0,
 // 			border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
 // 		}
 // 	}

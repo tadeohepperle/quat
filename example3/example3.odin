@@ -49,15 +49,7 @@ main :: proc() {
 		v(1, 8, .Two),
 		v(-1, 8, .Two),
 	}
-	triangles := []q.Triangle {
-		{0, 1, 2},
-		{1, 3, 4},
-		{1, 4, 2},
-		{3, 5, 6},
-		{3, 6, 4},
-		{5, 7, 8},
-		{5, 8, 6},
-	}
+	triangles := []q.Triangle{{0, 1, 2}, {1, 3, 4}, {1, 4, 2}, {3, 5, 6}, {3, 6, 4}, {5, 7, 8}, {5, 8, 6}}
 
 	skinned_mesh := E.create_skinned_mesh(triangles, vertices, 2, 0)
 
@@ -112,14 +104,7 @@ main :: proc() {
 				pos =
 					v.weights[0] * q.affine_apply(current_pose[0], v.pos) +
 					v.weights[1] * q.affine_apply(current_pose[1], v.pos)
-				append(
-					verts,
-					q.Mesh2dVertex {
-						pos = pos,
-						uv = pos,
-						color = {v.weights[0], v.weights[1], 0, 0.5},
-					},
-				)
+				append(verts, q.Mesh2dVertex{pos = pos, uv = pos, color = {v.weights[0], v.weights[1], 0, 0.5}})
 			}
 			for tri in triangles {
 				append(tris, tri + start)
@@ -181,14 +166,7 @@ v :: proc(x: f32, y: f32, weights: enum {
 // - `to_head === affine_apply(A, from_head)`
 //
 // solution: M = A^-1 * B  
-affine_from_vectors :: proc(
-	from_root: Vec2,
-	from_head: Vec2,
-	to_root: Vec2,
-	to_head: Vec2,
-) -> (
-	res: Affine2,
-) {
+affine_from_vectors :: proc(from_root: Vec2, from_head: Vec2, to_root: Vec2, to_head: Vec2) -> (res: Affine2) {
 	a := from_head - from_root
 	b := to_head - to_root
 

@@ -68,3 +68,44 @@ draw_circle :: proc(pos: Vec2, radius: f32, color: Color = q.ColorRed) {
 		append(tris, q.Triangle{start, u32(j + 1) + start, u32(i + 1) + start})
 	}
 }
+
+draw_rect :: proc(pos: Vec2, size: Vec2, rotation: f32 = 0.0, color: Color = q.ColorRed) {
+	rect := q.rotated_rect(pos, size, rotation)
+	verts, tris, s := access_color_mesh_write_buffers()
+	append_elems(
+		verts,
+		q.ColorMeshVertex{pos = rect.a, color = color},
+		q.ColorMeshVertex{pos = rect.b, color = color},
+		q.ColorMeshVertex{pos = rect.c, color = color},
+		q.ColorMeshVertex{pos = rect.d, color = color},
+	)
+	append_elems(tris, q.Triangle{s, s + 1, s + 2}, q.Triangle{s, s + 2, s + 3})
+}
+
+draw_rect_border :: proc(pos: Vec2, size: Vec2, border_width: f32, rotation: f32 = 0.0, color: Color = q.ColorRed) {
+	outer := q.rotated_rect(pos, size, rotation)
+	inner := q.rotated_rect(pos, size - border_width, rotation)
+	verts, tris, s := access_color_mesh_write_buffers()
+	append_elems(
+		verts,
+		q.ColorMeshVertex{pos = outer.a, color = color},
+		q.ColorMeshVertex{pos = outer.b, color = color},
+		q.ColorMeshVertex{pos = outer.c, color = color},
+		q.ColorMeshVertex{pos = outer.d, color = color},
+		q.ColorMeshVertex{pos = inner.a, color = color},
+		q.ColorMeshVertex{pos = inner.b, color = color},
+		q.ColorMeshVertex{pos = inner.c, color = color},
+		q.ColorMeshVertex{pos = inner.d, color = color},
+	)
+	append_elems(
+		tris,
+		q.Triangle{s, s + 1, s + 5},
+		q.Triangle{s, s + 5, s + 4},
+		q.Triangle{s + 1, s + 2, s + 6},
+		q.Triangle{s + 1, s + 6, s + 5},
+		q.Triangle{s + 2, s + 3, s + 7},
+		q.Triangle{s + 2, s + 7, s + 6},
+		q.Triangle{s + 3, s, s + 4},
+		q.Triangle{s + 3, s + 4, s + 7},
+	)
+}
