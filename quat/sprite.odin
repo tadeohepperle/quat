@@ -12,12 +12,12 @@ Sprite :: struct {
 	z:        f32,
 }
 
-SpriteGroup :: struct {
-	texture:         Texture,
-	y_for_sorting:   f32, // compared to pos.y of other sprites
-	instances:       [dynamic]SpriteInstance,
-	instance_buffer: DynamicBuffer(SpriteInstance),
-}
+// SpriteGroup :: struct {
+// 	texture:         Texture,
+// 	y_for_sorting:   f32, // compared to pos.y of other sprites
+// 	instances:       [dynamic]SpriteInstance,
+// 	instance_buffer: DynamicBuffer(SpriteInstance),
+// }
 
 SpriteInstance :: struct {
 	pos:      Vec2,

@@ -370,15 +370,18 @@ CustomUiElementStorage :: [128]u8
 
 CustomUi :: struct {
 	// `data`` points at this.data when passed to the `set_size` and `add_primitives` functions
-	set_size:       proc(data: rawptr, max_size: Vec2) -> (used_size: Vec2),
+	set_size:          proc(data: rawptr, max_size: Vec2) -> (used_size: Vec2),
 	// returns the primitives that should be added (preferably allocated in tmp storage)
-	add_primitives: proc(
+	add_primitives:    proc(
 		data: rawptr,
 		pos: Vec2, // passed here, instead of having another function for set_position
 		size: Vec2, // the size that is also returned in set_size().
 	) -> []CustomPrimitives, // in tmp
-	data:           CustomUiElementStorage,
+	data:              CustomUiElementStorage,
+	absolute_unit_pos: Vec2,
+	absolute:          bool,
 }
+
 Div :: struct {
 	width:             f32,
 	height:            f32,
@@ -610,6 +613,8 @@ ui_custom :: proc(
 		pos: Vec2, // passed here, instead of having another function for set_position
 		size: Vec2, // the size that is also returned in set_size().
 	) -> []CustomPrimitives,
+	absolute_unit_pos: Vec2 = {0, 0},
+	absolute: bool = false,
 	id: UiId = 0,
 ) -> ^CustomUiElement where size_of(T) <= size_of(CustomUiElementStorage) {
 	custom_element := CustomUiElement {
@@ -618,6 +623,8 @@ ui_custom :: proc(
 			data = CustomUiElementStorage{},
 			set_size = auto_cast set_size,
 			add_primitives = auto_cast add_primitives,
+			absolute = absolute,
+			absolute_unit_pos = absolute_unit_pos,
 		},
 	}
 	// write the data:
@@ -742,8 +749,9 @@ layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
 	used_size := _set_size(ui, layout_extent)
 
 	// this allows top level divs to be absolute-positioned, relative to screen size
-	if div, ok := ui.(^DivElement); ok && DivFlag.Absolute in div.flags {
-		initial_pos = (layout_extent - used_size) * div.absolute_unit_pos
+
+	if absolute_unit_pos, ok := _has_absolute_positioning(ui); ok {
+		initial_pos = (layout_extent - used_size) * absolute_unit_pos
 	}
 	transform := UiTransform {
 		space = .Screen,
@@ -784,7 +792,11 @@ _set_size :: proc(ui: Ui, max_size: Vec2) -> (used_size: Vec2) {
 		}
 		used_size = el.size
 	case ^CustomUiElement:
-		el.size = el.set_size(&el.data, max_size)
+		if el.set_size != nil {
+			el.size = el.set_size(&el.data, max_size)
+		} else {
+			el.size = 0
+		}
 		used_size = el.size
 	}
 	return used_size
@@ -813,7 +825,7 @@ _set_child_sizes_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 		div.content_size = Vec2{0, 0}
 		for ch in div.children {
 			ch_size := _set_size(ch, max_size)
-			if !_has_absolute_positioning(ch) {
+			if _, absolute := _has_absolute_positioning(ch); !absolute {
 				if axis_is_x {
 					div.content_size.x += ch_size.x
 					div.content_size.y = max(div.content_size.y, ch_size.y)
@@ -826,11 +838,15 @@ _set_child_sizes_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 	}
 }
 
-_has_absolute_positioning :: proc(element: Ui) -> bool {
-	if div, ok := element.(^DivElement); ok && DivFlag.Absolute in div.flags {
-		return true
+_has_absolute_positioning :: #force_inline proc(element: Ui) -> (absolute_unit_pos: Vec2, ok: bool) {
+	switch el in element {
+	case ^DivElement:
+		return el.absolute_unit_pos, DivFlag.Absolute in el.flags
+	case ^CustomUiElement:
+		return el.absolute_unit_pos, el.absolute
+	case ^TextElement:
 	}
-	return false
+	return
 }
 
 // writes to div.size
@@ -1064,8 +1080,8 @@ _set_child_positions_for_div :: proc(div: ^DivElement) {
 		}
 
 		ch_rel_pos: Vec2 = ---
-		if _has_absolute_positioning(ch) {
-			ch_rel_pos = (inner_size - ch_size) * ch.(^DivElement).absolute_unit_pos
+		if absolute_unit_pos, ok := _has_absolute_positioning(ch); ok {
+			ch_rel_pos = (inner_size - ch_size) * absolute_unit_pos
 		} else {
 			if axis_is_x {
 				ch_rel_pos = Vec2{main_offset, ch_cross_offset}
@@ -1544,6 +1560,25 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 			}
 		case ^CustomUiElement:
 			custom_primitive_runs: []CustomPrimitives = e.add_primitives(&e.data, e.pos, e.size)
+
+			/*
+
+			The user should just do:
+			add_pts
+
+
+			set_texture()
+			add_vertex()
+			...
+
+			set_font()
+
+
+
+
+			*/
+
+
 			for custom_primitives in custom_primitive_runs {
 				switch kind in custom_primitives {
 				case CustomUiMesh:
