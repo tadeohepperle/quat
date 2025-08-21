@@ -8,8 +8,6 @@ Mesh2dVertex :: struct {
 }
 
 Mesh2dRenderer :: struct {
-	device:          wgpu.Device,
-	queue:           wgpu.Queue,
 	pipeline:        ^RenderPipeline,
 	vertices:        [dynamic]Mesh2dVertex,
 	vertex_buffer:   DynamicBuffer(Mesh2dVertex),
@@ -24,13 +22,11 @@ TextureRegion :: struct {
 	texture:       TextureHandle,
 }
 
-mesh_2d_renderer_create :: proc(rend: ^Mesh2dRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
-	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
-	dynamic_buffer_init(&rend.index_buffer, {.Index}, rend.device, rend.queue)
-	pipeline_config := mesh_2d_pipeline_config(platform.device)
-	rend.pipeline = make_render_pipeline(&platform.shader_registry, pipeline_config)
+mesh_2d_renderer_create :: proc(rend: ^Mesh2dRenderer) {
+	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex})
+	dynamic_buffer_init(&rend.index_buffer, {.Index})
+	pipeline_config := mesh_2d_pipeline_config()
+	rend.pipeline = make_render_pipeline(pipeline_config)
 }
 
 mesh_2d_renderer_destroy :: proc(rend: ^Mesh2dRenderer) {
@@ -65,7 +61,6 @@ mesh_2d_renderer_render :: proc(
 	rend: ^Mesh2dRenderer,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
-	assets: AssetManager,
 ) {
 	tri_count := u32(rend.index_buffer.length)
 	reg_count := len(rend.texture_regions)
@@ -78,33 +73,19 @@ mesh_2d_renderer_render :: proc(
 	} else {
 		append(
 			&rend.texture_regions,
-			TextureRegion{texture = 0, start_tri_idx = 0, end_tri_idx = u32(tri_count)},
+			TextureRegion{texture = DEFAULT_TEXTURE, start_tri_idx = 0, end_tri_idx = u32(tri_count)},
 		)
 	}
 
+	textures := assets_get_map(Texture)
 	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
-	wgpu.RenderPassEncoderSetVertexBuffer(
-		render_pass,
-		0,
-		rend.vertex_buffer.buffer,
-		0,
-		rend.vertex_buffer.size,
-	)
-	wgpu.RenderPassEncoderSetIndexBuffer(
-		render_pass,
-		rend.index_buffer.buffer,
-		.Uint32,
-		0,
-		rend.index_buffer.size,
-	)
+	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, rend.vertex_buffer.buffer, 0, rend.vertex_buffer.size)
+	wgpu.RenderPassEncoderSetIndexBuffer(render_pass, rend.index_buffer.buffer, .Uint32, 0, rend.index_buffer.size)
 	for reg in rend.texture_regions {
 		if reg.end_tri_idx <= reg.start_tri_idx do continue
-		wgpu.RenderPassEncoderSetBindGroup(
-			render_pass,
-			1,
-			assets_get_texture_bind_group(assets, reg.texture),
-		)
+		bind_group := slotmap_get(textures, reg.texture).bind_group
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, bind_group)
 		index_count := (reg.end_tri_idx - reg.start_tri_idx) * 3
 		first_index := reg.start_tri_idx * 3
 		wgpu.RenderPassEncoderDrawIndexed(render_pass, index_count, 1, first_index, 0, 0)
@@ -112,7 +93,7 @@ mesh_2d_renderer_render :: proc(
 	clear(&rend.texture_regions)
 }
 
-mesh_2d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+mesh_2d_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_2d",
 		vs_shader = "mesh_2d",
@@ -129,10 +110,7 @@ mesh_2d_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			rgba_bind_group_layout_cached(device),
-		),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

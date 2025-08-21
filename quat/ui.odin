@@ -92,6 +92,14 @@ InteractionState :: struct($ID: typeid) {
 	just_released:  ID,
 	just_unfocused: ID,
 }
+Interaction :: struct {
+	hovered:        bool,
+	pressed:        bool,
+	focused:        bool,
+	just_pressed:   bool,
+	just_released:  bool,
+	just_unfocused: bool,
+}
 update_interaction_state :: proc(using state: ^InteractionState($T), new_hovered: T, press: PressFlags) {
 	// todo! just_hovered, just_unhovered...
 	hovered = new_hovered
@@ -116,14 +124,6 @@ update_interaction_state :: proc(using state: ^InteractionState($T), new_hovered
 		just_pressed = hovered
 		pressed = hovered
 	}
-}
-Interaction :: struct {
-	hovered:        bool,
-	pressed:        bool,
-	focused:        bool,
-	just_pressed:   bool,
-	just_released:  bool,
-	just_unfocused: bool,
 }
 interaction :: proc "contextless" (id: $T, state: ^InteractionState(T)) -> Interaction {
 	return Interaction {
@@ -192,7 +192,6 @@ UiCache :: struct {
 	cursor_pos_start_press:       Vec2,
 	cursor_pos_world_start_press: Vec2,
 	delta_secs:                   f32,
-	platform:                     ^Platform,
 	cursor_pos:                   Vec2, // (scaled to reference cursor pos)
 	cursor_pos_world:             Vec2,
 }
@@ -503,24 +502,7 @@ Ui :: union {
 	^CustomUiElement,
 }
 
-
-// The ui relies on this being set before calling any div/text creating or layout functions
-// 
-// I know, global state sucks, but the alternative of threading a UiCtx ptr through every 
-// nested function call is just less convenient.
-// The other alternative would be to use the context.user_ptr of Odin, but in effect that
-// is the same, harder to control and even easier to fuck up.
-@(private = "file")
-UI_CTX_PTR: ^UiCtx
-set_global_ui_ctx_ptr :: proc(ptr: ^UiCtx) {
-	UI_CTX_PTR = ptr
-}
-assert_ui_ctx_ptr_is_set :: proc() {
-	assert(
-		UI_CTX_PTR.cache.platform != nil,
-		"platform ptr must be set on UI_CTX_PTR.cache, because it contains the asset manager that we need for resolving fonts!",
-	)
-}
+UI_CTX_PTR := &PLATFORM.ui_ctx
 UiCtx :: struct {
 	// all buffers here are fixed size, allocated once because any reallocation could
 	// fuck up the internal ptrs in the childrens arrays!
@@ -547,24 +529,19 @@ GLYPHS_MAX_COUNT :: 4096 * 16
 // Idea: Global ctx could be outsourced to engine package instead of living in quat.
 // but then we need all functions like `div`, `text`, etc. to pass the ctx around constantly
 // and we need to provide wrappers referring to the GLOBAL_CTX in the `engine` package 
-ui_ctx_create :: proc(platform: ^Platform) -> (ctx: UiCtx) {
+ui_ctx_create :: proc() -> (ctx: UiCtx) {
 	ctx.divs = make([]DivElement, DIVS_MAX_COUNT)
 	ctx.texts = make([]TextElement, TEXTS_MAX_COUNT)
 	ctx.custom_uis = make([]CustomUiElement, CUSTOM_UIS_MAX_COUNT)
 	ctx.glyphs = make([]ComputedGlyph, GLYPHS_MAX_COUNT)
 	ctx.temp_alloc = context.temp_allocator
-	ctx.cache.platform = platform
 	return ctx
 }
-
 UiElementCounts :: struct {
 	divs:       int,
 	texts:      int,
 	glyphs:     int,
 	custom_uis: int,
-}
-_ui_ctx_ptr :: proc() -> ^UiCtx {
-	return UI_CTX_PTR
 }
 
 ui_ctx_drop :: proc(ctx: ^UiCtx) {
@@ -630,10 +607,12 @@ ui_custom :: proc(
 	// write the data:
 	data_dst: ^T = cast(^T)&custom_element.data
 	data_dst^ = data
-	UI_CTX_PTR.custom_uis[UI_CTX_PTR.custom_uis_len] = custom_element
+
+	ctx := &UI_CTX_PTR
+	ctx.custom_uis[ctx.custom_uis_len] = custom_element
 	#no_bounds_check {
-		ptr := &UI_CTX_PTR.custom_uis[UI_CTX_PTR.custom_uis_len]
-		UI_CTX_PTR.custom_uis_len += 1
+		ptr := &ctx.custom_uis[ctx.custom_uis_len]
+		ctx.custom_uis_len += 1
 		return ptr
 	}
 }
@@ -647,7 +626,6 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 	cache.cached, cache.new_cached = cache.new_cached, cache.cached
 	clear(&cache.new_cached)
 
-	cache.platform = platform
 	cache.cursor_pos = screen_to_layout_space(
 		platform.cursor_pos,
 		platform.settings.screen_ui_reference_size,
@@ -667,6 +645,8 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 			continue
 		}
 		if z_gte(cached.z_info, highest_z) {
+
+			// determine where the cursor would land in the ui
 			cursor_pos: Vec2 = ---
 			switch cached.space {
 			case .Screen:
@@ -707,7 +687,7 @@ ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
 	}
 
 	// determine the rest of ids, i.e. \
-	left_btn := cache.platform.mouse_buttons[.Left]
+	left_btn := PLATFORM.mouse_buttons[.Left]
 	update_interaction_state(&cache.state, hovered, left_btn)
 	update_interaction_state(&cache.tag_state, hovered_tag, left_btn)
 
@@ -1214,13 +1194,8 @@ _layout_div_in_text_ctx :: proc(ctx: ^TextLayoutCtx, div: ^DivElement) {
 	return
 }
 
-_ui_get_font :: proc(handle: FontHandle) -> Font {
-	assets := UI_CTX_PTR.cache.platform.asset_manager
-	return assets_get_font(assets, handle)
-}
-
 _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
-	font := _ui_get_font(text.font)
+	font := assets_get(text.font)
 	font_size := text.font_size
 	scale := font_size / f32(font.settings.font_size)
 	ctx.current_line.metrics = merge_line_metrics_to_max(
@@ -1493,7 +1468,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 		switch e in ui {
 		case ^DivElement:
 			if e.color != 0 && e.size.x > 0 && e.size.y > 0 {
-				_flush_if_mismatch(b, .Rect, TextureOrFontHandle(e.texture.handle))
+				_flush_if_mismatch(b, .Rect, transmute(TextureOrFontHandle)(e.texture.handle))
 				_add_div_rect(e, &write.vertices, &write.triangles)
 			}
 
@@ -1543,7 +1518,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 				_flush_and_apply_new_clipping_rect(b, UiTransform{space = .Screen, data = {clipped_to = prev_clip}})
 			}
 		case ^TextElement:
-			_flush_if_mismatch(b, .Glyph, TextureOrFontHandle(e.font))
+			_flush_if_mismatch(b, .Glyph, transmute(TextureOrFontHandle)e.font)
 			// todo: maybe copying them over is stupid, maybe we can create the computed glyphs
 			// directly in the primitives buffer from the get go
 			for g in UI_CTX_PTR.glyphs[e.glyphs_start_idx:e.glyphs_end_idx] {
@@ -1582,7 +1557,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 			for custom_primitives in custom_primitive_runs {
 				switch kind in custom_primitives {
 				case CustomUiMesh:
-					_flush_if_mismatch(b, .Rect, TextureOrFontHandle(kind.texture))
+					_flush_if_mismatch(b, .Rect, transmute(TextureOrFontHandle)kind.texture)
 					start_idx := u32(len(write.vertices))
 					// todo: memcpy might be faster for vertices!
 					for v in kind.vertices {
@@ -1592,7 +1567,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 						append(&write.triangles, i + start_idx)
 					}
 				case CustomGlyphs:
-					_flush_if_mismatch(b, .Glyph, TextureOrFontHandle(kind.font))
+					_flush_if_mismatch(b, .Glyph, transmute(TextureOrFontHandle)kind.font)
 					// todo: memcpy might be faster for glyph instances!
 					for g in kind.instances {
 						append(&write.glyphs_instances, g)
@@ -1646,7 +1621,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 
 
 _add_div_rect :: proc(e: ^DivElement, vertices: ^[dynamic]UiVertex, tris: ^[dynamic]Triangle) {
-	if e.texture.handle != 0 && .NineSliceUsingBorderWidth in e.flags {
+	if e.texture.handle != DEFAULT_TEXTURE && .NineSliceUsingBorderWidth in e.flags {
 		repeat := .NineSliceRepeat in e.flags
 		_add_nine_slice_rects(
 			vertices,
@@ -1707,7 +1682,7 @@ add_rect :: #force_inline proc(
 	start_v := u32(len(vertices))
 
 	flags_all: u32 = 0
-	if texture.handle != 0 {
+	if texture.handle != DEFAULT_TEXTURE {
 		flags_all |= UI_VERTEX_FLAG_TEXTURED
 	}
 

@@ -27,9 +27,9 @@ motion_texture_allocator_create :: proc(diffuse_size: IVec2, motion_size: IVec2)
 	assert(is_ratio, q.tprint("non-integer ratio between diffuse size", diffuse_size, "and motion size", motion_size))
 	res.ratio = ratio
 
-	texture := q.motion_texture_create(diffuse_size, motion_size, ENGINE.platform.device)
+	texture := q.motion_texture_create(diffuse_size, motion_size)
 	q.atlas_init(&res.atlas, diffuse_size)
-	res.texture = q.assets_add_motion_texture(&ENGINE.platform.asset_manager, texture)
+	res.texture = q.assets_add_motion_texture(texture)
 	res.diffuse_img = q.image_create(diffuse_size)
 	res.motion_img = q.image_create(motion_size)
 	return res
@@ -392,17 +392,6 @@ _atlas_create :: proc(id: AtlasId, size: IVec2) -> (this: _TextureAtlas) {
 	return this
 }
 
-// texture_atlas_create :: proc(size: IVec2 = {0, 0}, growable: bool) -> TextureAtlas {
-// 	atlas: Atlas
-// 	q.atlas_init(&atlas, size)
-// 	return TextureAtlas{atlas = atlas, growable = growable}
-// }
-// AddImgRes :: struct {
-// 	tile: TextureTile,
-// 	id:   SrcImageId,
-// 	grew: bool,
-// 	ok:   bool,
-// }
 ATLAS_SIZES := []IVec2 {
 	{128, 128},
 	{256, 256},
@@ -413,138 +402,3 @@ ATLAS_SIZES := []IVec2 {
 	{2048, 1024},
 	{2048, 2048}, // maximum texture size
 }
-// _atlas_add_img :: proc(this: ^TextureAtlas, img: q.Image) -> (res: AddImgRes) {
-// 	old_atlas_size := this.atlas.size
-
-// 	pos_in_atlas: IVec2
-// 	if this.growable {
-// 		remap_allocs: map[IVec2]IVec2
-// 		pos_in_atlas, remap_allocs, res.ok = q.atlas_allocate_growing_if_necessary(
-// 			&this.atlas,
-// 			img.size,
-// 			ATLAS_SIZES,
-// 		)
-// 		if !res.ok {
-// 			return res
-// 		}
-// 		res.grew = old_atlas_size != this.atlas.size
-// 		if res.grew {
-// 			q.image_drop(&this.image)
-// 			if this.texture != 0 {
-// 				destroy_texture(this.texture)
-// 				this.texture = 0
-// 			}
-// 			this.image = q.image_create(this.atlas.size)
-// 			assert(len(remap_allocs) == len(this.src_images))
-// 			for _, &src_image in this.src_images {
-// 				new_pos_in_atlas, has_new_pos := remap_allocs[src_image.pos_in_atlas]
-// 				assert(
-// 					has_new_pos,
-// 					"if atlas grew, the remap_allocs map should contain entry for all prev allocations",
-// 				)
-// 				src_image.pos_in_atlas = new_pos_in_atlas
-// 				q.image_copy_into(&this.image, q.image_view(src_image.image), new_pos_in_atlas)
-// 			}
-// 		}
-// 	} else {
-// 		pos_in_atlas, res.ok = q.atlas_allocate(&this.atlas, img.size)
-// 		if !res.ok {
-// 			return res
-// 		}
-// 	}
-// 	src_image := SrcImage {
-// 		src_path     = "",
-// 		image        = img,
-// 		pos_in_atlas = pos_in_atlas,
-// 		// texture_tile: TextureTile,
-// 	}
-// 	q.image_copy_into(&this.image, q.image_view(src_image.image), src_image.pos_in_atlas)
-
-
-// }
-
-
-/*
-
-alloc : TextureAllocator 
-loaded := alloc.load_all({"i.png", "j.png", "k.png"})
-for i in loaded {
-	alloc.got_tile("")
-}
-can we have stable texture tiles?
-alloc.delete("jajdjad.png")   -> remapping: {id -> newtile}
-
-
-*/
-
-// AtlasId :: distinct u32
-// SrcImageId :: distinct u32
-
-// TextureAllocatorSettings :: struct {
-// 	max_atlas_size: IVec2,
-// }
-// DEFAULT_TEXTURE_ALLOCATOR_SETTINGS :: TextureAllocatorSettings {
-// 	max_atlas_size = {2048, 2048},
-// }
-// TextureAllocator :: struct {
-// 	device:     wgpu.Device,
-// 	queue:      wgpu.Queue,
-// 	atlases:    [dynamic]TextureAtlas,
-// 	src_images: [dynamic]SrcImage,
-// }
-
-// SrcImage :: struct {
-// 	src_path:     string,
-// 	image:        Image,
-// 	pos_in_atlas: IVec2,
-// 	texture_tile: TextureTile,
-// }
-
-// texture_allocator_create :: proc(
-// 	settings: TextureAllocatorSettings,
-// 	device: wgpu.Device,
-// 	queue: wgpu.Queue,
-// ) -> TextureAllocator {
-// 	return TextureAllocator{device = device, queue = queue}
-// }
-
-// TextureAtlas :: struct {
-// 	atlas:         Atlas,
-// 	image:         Image,
-// 	source_images: map[SrcImageId]None,
-// 	texture:       TextureHandle,
-// }
-// texture_atlas_sync :: proc(this: TextureAtlas) {
-// 	if this.atlas.size == {0, 0} {
-// 		if this.texture == 0 {
-// 			return
-// 		} else {
-
-// 		}
-// 	}
-// }
-
-// _texture_allocator_add_img :: proc(
-// 	this: TextureAllocator,
-// 	image: Image,
-// ) -> (
-// 	id: SrcImageId,
-// 	tile: TextureTile,
-// ) {
-// 	unimplemented()
-// }
-// _atlas_try_add_img :: proc(this: TextureAtlas) {
-
-
-// }
-
-
-// AllocationSettings :: struct {
-// 	atlas_name: Maybe(string),
-// 	// padding: int,
-// }
-
-// texture_allocator_load :: proc(allocator: TextureAllocator) {
-
-
-// }

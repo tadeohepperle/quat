@@ -77,19 +77,18 @@ shader_registry_get :: proc(reg: ^ShaderRegistry, shader_name: string) -> wgpu.S
 	return shader.shader_module
 }
 
-make_render_pipeline :: proc(reg: ^ShaderRegistry, config: RenderPipelineConfig) -> ^RenderPipeline {
+make_render_pipeline :: proc(config: RenderPipelineConfig) -> ^RenderPipeline {
 	pipeline := new(RenderPipeline)
 	pipeline.config = config
-	err := _create_or_reload_render_pipeline(reg, pipeline)
+	err := _create_or_reload_render_pipeline(&PLATFORM.shader_registry, pipeline)
 	if err != nil {
 		fmt.panicf("Failed to create Render Pipeline \"{}\": {}", pipeline.config.debug_name, err.(WgpuError).message)
 	}
 	assert(pipeline.layout != nil)
 	assert(pipeline.pipeline != nil)
-	append(&reg.pipelines, pipeline)
+	append(&PLATFORM.shader_registry.pipelines, pipeline)
 	return pipeline
 }
-
 
 wgpu_optional_bool :: proc(b: bool) -> wgpu.OptionalBool {
 	return .True if b else .False

@@ -3,8 +3,8 @@ import wgpu "vendor:wgpu"
 
 
 HEX_TO_WORLD_POS_MAT :: matrix[2, 2]f32{
-	1.5, 0, 
-	-0.75, 1.5, 
+	1.5, 0,
+	-0.75, 1.5,
 }
 hex_to_world_pos :: proc "contextless" (hex_pos: [2]i32) -> Vec2 {
 	return HEX_TO_WORLD_POS_MAT * Vec2{f32(hex_pos.x), f32(hex_pos.y)}
@@ -32,21 +32,17 @@ HexChunkData :: struct {
 
 HexChunkUniform :: struct {
 	chunk_pos:  [2]i32,
-	device:     wgpu.Device,
-	queue:      wgpu.Queue,
 	data:       wgpu.Buffer, // of type HexChunkData
 	bind_group: wgpu.BindGroup,
 }
 hex_chunk_uniform_destroy :: proc(this: ^HexChunkUniform) {
-	this.device = nil
-	this.queue = nil
 	wgpu.BindGroupRelease(this.bind_group)
 	wgpu.BufferDestroy(this.data)
 }
 
 hex_chunk_uniform_write_data :: proc(this: ^HexChunkUniform, terrain_data: ^HexChunkData) {
-	assert(this.queue != nil)
-	wgpu.QueueWriteBuffer(this.queue, this.data, 0, terrain_data, size_of(HexChunkData))
+	assert(PLATFORM.queue != nil)
+	wgpu.QueueWriteBuffer(PLATFORM.queue, this.data, 0, terrain_data, size_of(HexChunkData))
 }
 hex_chunk_uniform_create :: proc(
 	device: wgpu.Device,
@@ -55,22 +51,16 @@ hex_chunk_uniform_create :: proc(
 ) -> (
 	uniform: HexChunkUniform,
 ) {
-	uniform.device = device
-	uniform.queue = queue
 	uniform.chunk_pos = chunk_pos
 	buffer_usage := wgpu.BufferUsageFlags{.CopyDst, .Uniform}
 	uniform.data = wgpu.DeviceCreateBuffer(
-		device,
-		&wgpu.BufferDescriptor {
-			usage = buffer_usage,
-			size = size_of(HexChunkData),
-			mappedAtCreation = false,
-		},
+		PLATFORM.device,
+		&wgpu.BufferDescriptor{usage = buffer_usage, size = size_of(HexChunkData), mappedAtCreation = false},
 	)
 	uniform.bind_group = wgpu.DeviceCreateBindGroup(
-		device,
+		PLATFORM.device,
 		&wgpu.BindGroupDescriptor {
-			layout = hex_chunk_data_bind_group_layout_cached(device),
+			layout = hex_chunk_data_bind_group_layout_cached(),
 			entryCount = 1,
 			entries = &wgpu.BindGroupEntry {
 				binding = 0,
@@ -82,7 +72,7 @@ hex_chunk_uniform_create :: proc(
 	)
 	return uniform
 }
-hex_chunk_data_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+hex_chunk_data_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
 	if layout == nil {
 		entries := []wgpu.BindGroupLayoutEntry {
@@ -97,7 +87,7 @@ hex_chunk_data_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.Bin
 			},
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
-			device,
+			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = 1, entries = raw_data(entries)},
 		)
 	}
@@ -111,19 +101,23 @@ hex_chunks_render :: proc(
 	globals_uniform_bind_group: wgpu.BindGroup,
 	textures: TextureArrayHandle,
 	chunks: []HexChunkUniform,
-	assets: AssetManager,
 ) {
 	if len(chunks) == 0 {
 		return
 	}
-	if textures == 0 {
+	if textures == {} {
 		print("warning! wants to draw tritex meshes, but TextureArrayHandle is 0!")
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
 
-	texture_array_bindgroup := assets_get_texture_array_bind_group(assets, textures)
+	texture_array, ok := assets_get(textures)
+	if !ok {
+		print("warning! texture array not found!")
+	}
+
+	texture_array_bindgroup := texture_array.bind_group
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_array_bindgroup)
 	for chunk in chunks {
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, chunk.bind_group)
@@ -145,7 +139,7 @@ hex_chunks_render :: proc(
 HexChunkPushConstants :: struct {
 	chunk_pos: [2]i32, // the hex pos of the bottom left (non-border) tile in this chunk / CHUNK_SIZE
 }
-hex_chunk_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+hex_chunk_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "hex_chunk",
 		vs_shader = "hex_chunk",
@@ -156,9 +150,9 @@ hex_chunk_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 		vertex = {},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			tritex_textures_bind_group_layout_cached(device),
-			hex_chunk_data_bind_group_layout_cached(device),
+			globals_bind_group_layout_cached(),
+			tritex_textures_bind_group_layout_cached(),
+			hex_chunk_data_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,

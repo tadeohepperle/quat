@@ -7,8 +7,6 @@ ColorMeshVertex :: struct {
 }
 
 ColorMeshRenderer :: struct {
-	device:        wgpu.Device,
-	queue:         wgpu.Queue,
 	pipeline:      ^RenderPipeline,
 	vertices:      [dynamic]ColorMeshVertex,
 	vertex_buffer: DynamicBuffer(ColorMeshVertex),
@@ -16,15 +14,10 @@ ColorMeshRenderer :: struct {
 	index_buffer:  DynamicBuffer(Triangle),
 }
 
-color_mesh_renderer_create :: proc(rend: ^ColorMeshRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
-	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex}, rend.device, rend.queue)
-	dynamic_buffer_init(&rend.index_buffer, {.Index}, rend.device, rend.queue)
-	rend.pipeline = make_render_pipeline(
-		&platform.shader_registry,
-		color_mesh_pipeline_config(platform.device),
-	)
+color_mesh_renderer_create :: proc(rend: ^ColorMeshRenderer) {
+	dynamic_buffer_init(&rend.vertex_buffer, {.Vertex})
+	dynamic_buffer_init(&rend.index_buffer, {.Index})
+	rend.pipeline = make_render_pipeline(color_mesh_pipeline_config())
 }
 
 color_mesh_renderer_destroy :: proc(rend: ^ColorMeshRenderer) {
@@ -53,24 +46,12 @@ color_mesh_renderer_render :: proc(
 	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
 
-	wgpu.RenderPassEncoderSetVertexBuffer(
-		render_pass,
-		0,
-		rend.vertex_buffer.buffer,
-		0,
-		rend.vertex_buffer.size,
-	)
-	wgpu.RenderPassEncoderSetIndexBuffer(
-		render_pass,
-		rend.index_buffer.buffer,
-		.Uint32,
-		0,
-		rend.index_buffer.size,
-	)
+	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, rend.vertex_buffer.buffer, 0, rend.vertex_buffer.size)
+	wgpu.RenderPassEncoderSetIndexBuffer(render_pass, rend.index_buffer.buffer, .Uint32, 0, rend.index_buffer.size)
 	wgpu.RenderPassEncoderDrawIndexed(render_pass, u32(rend.index_buffer.length) * 3, 1, 0, 0, 0)
 }
 
-color_mesh_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+color_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "color_mesh",
 		vs_shader = "color_mesh",
@@ -86,7 +67,7 @@ color_mesh_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig 
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(device)),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached()),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -111,11 +92,7 @@ color_mesh_add_vertices :: proc(rend: ^ColorMeshRenderer, vertices: []ColorMeshV
 	}
 }
 
-color_mesh_add_indexed :: proc(
-	rend: ^ColorMeshRenderer,
-	vertices: []ColorMeshVertex,
-	triangles: []Triangle,
-) {
+color_mesh_add_indexed :: proc(rend: ^ColorMeshRenderer, vertices: []ColorMeshVertex, triangles: []Triangle) {
 	start_idx := u32(len(rend.vertices))
 	append(&rend.vertices, ..vertices)
 	for t in triangles {

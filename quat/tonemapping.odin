@@ -1,7 +1,7 @@
 package quat
 
 import wgpu "vendor:wgpu"
-tonemapping_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+tonemapping_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "tonemapping",
 		vs_shader = "screen",
@@ -11,13 +11,9 @@ tonemapping_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig
 		topology = .TriangleList,
 		vertex = {},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(rgba_bind_group_layout_cached(device)),
+		bind_group_layouts = bind_group_layouts(rgba_bind_group_layout_cached()),
 		push_constant_ranges = push_const_ranges(
-			wgpu.PushConstantRange {
-				stages = {.Fragment},
-				start = 0,
-				end = size_of(TonemappingMode),
-			},
+			wgpu.PushConstantRange{stages = {.Fragment}, start = 0, end = size_of(TonemappingMode)},
 		),
 		blend = ALPHA_BLENDING,
 		format = SURFACE_FORMAT,
@@ -58,13 +54,7 @@ tonemap :: proc(
 	wgpu.RenderPassEncoderSetPipeline(tonemap_pass, tonemapping_pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(tonemap_pass, 0, hdr_texture_bind_group)
 	push_constants := mode
-	wgpu.RenderPassEncoderSetPushConstants(
-		tonemap_pass,
-		{.Fragment},
-		0,
-		size_of(TonemappingMode),
-		&push_constants,
-	)
+	wgpu.RenderPassEncoderSetPushConstants(tonemap_pass, {.Fragment}, 0, size_of(TonemappingMode), &push_constants)
 	wgpu.RenderPassEncoderDraw(tonemap_pass, 3, 1, 0, 0)
 
 	wgpu.RenderPassEncoderEnd(tonemap_pass)

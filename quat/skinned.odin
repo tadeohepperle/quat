@@ -13,7 +13,7 @@ SkinnedVertex :: struct {
 	indices: [MAX_WEIGHTS]u32, // todo: would be sufficient as u16 or u8 probably, but there is no u8 or u16 in wgsl, so we would need bit masking and shifting there...
 	weights: [MAX_WEIGHTS]f32,
 }
-SkinnedGeometryHandle :: distinct u32
+SkinnedGeometryHandle :: Handle(SkinnedGeometry)
 SkinnedGeometry :: struct {
 	indices:         [dynamic]u32,
 	index_buffer:    wgpu.Buffer, // index buffer of u32
@@ -24,7 +24,6 @@ SkinnedGeometry :: struct {
 }
 
 // multiple skinned mesh instances can share the same SkinnedMeshGeometry
-SkinnedMeshHandle :: distinct u32
 SkinnedMesh :: struct {
 	geometry:         SkinnedGeometryHandle,
 	bones_buffer:     wgpu.Buffer, // storage buffer with bone_count * Affine2
@@ -37,59 +36,43 @@ _skinned_mesh_drop :: proc(this: ^SkinnedMesh) {
 }
 
 // queues a write of new bone transforms into the bone buffer, can be done every frame e.g. for the bone transforms between two keyframes in an animation
-skinned_mesh_update_bones :: proc(
-	assets: ^AssetManager,
-	handle: SkinnedMeshHandle,
-	bones: []Affine2,
-) {mesh := slotmap_access(&assets.skinned_meshes, u32(handle))
+skinned_mesh_update_bones :: proc(handle: SkinnedMeshHandle, bones: []Affine2) {
+	mesh: ^SkinnedMesh = assets_get_ref(handle)
 	assert(len(bones) == mesh.bone_count)
-	wgpu.QueueWriteBuffer(
-		assets.queue,
-		mesh.bones_buffer,
-		0,
-		raw_data(bones),
-		uint(len(bones) * size_of(Affine2)),
-	)
+	wgpu.QueueWriteBuffer(PLATFORM.queue, mesh.bones_buffer, 0, raw_data(bones), uint(len(bones) * size_of(Affine2)))
 }
 // creates new buffer for the bones we can write to seperately, but points to the same verts + indices as the cloned mesh
-skinned_mesh_clone :: proc(assets: ^AssetManager, handle: SkinnedMeshHandle) -> SkinnedMeshHandle {
-	mesh := slotmap_get(assets.skinned_meshes, u32(handle))
-	_geometry_clone(assets, mesh.geometry) // increases the reference count
+skinned_mesh_clone :: proc(handle: SkinnedMeshHandle) -> SkinnedMeshHandle {
+	mesh: SkinnedMesh = assets_get(handle)
+	_geometry_clone(mesh.geometry) // increases the reference count
 	// create a new buffer with unit transforms for all the bones:
 	mesh.bones_buffer, mesh.bones_bind_group = _create_bones_buffer_and_bind_group(
-		assets.device,
-		assets.queue,
+		PLATFORM.device,
+		PLATFORM.queue,
 		mesh.bone_count,
 	)
-	handle := slotmap_insert(&assets.skinned_meshes, mesh)
-	return SkinnedMeshHandle(handle)
+	return assets_insert(mesh)
 }
-skinned_mesh_deregister :: proc(assets: ^AssetManager, handle: SkinnedMeshHandle) {
-	mesh: SkinnedMesh = slotmap_remove(&assets.skinned_meshes, u32(handle))
-	_geometry_deregister(assets, mesh.geometry)
+skinned_mesh_deregister :: proc(handle: SkinnedMeshHandle) {
+	mesh: SkinnedMesh = assets_remove(handle) or_else panic("skinned mesh not found!")
+	_geometry_deregister(mesh.geometry)
 	_skinned_mesh_drop(&mesh)
 }
 skinned_mesh_register :: proc(
-	assets: ^AssetManager,
 	triangles: []Triangle,
 	vertices: []SkinnedVertex,
 	bone_count: int,
 	texture: TextureHandle,
 ) -> SkinnedMeshHandle {
-	geometry := _geometry_register(assets, triangles_to_u32s(triangles), vertices, texture)
-	bones_buffer, bones_bind_group := _create_bones_buffer_and_bind_group(
-		assets.device,
-		assets.queue,
-		bone_count,
-	)
+	geometry := _geometry_register(triangles_to_u32s(triangles), vertices, texture)
+	bones_buffer, bones_bind_group := _create_bones_buffer_and_bind_group(PLATFORM.device, PLATFORM.queue, bone_count)
 	skinned_mesh := SkinnedMesh {
 		geometry         = geometry,
 		bones_buffer     = bones_buffer,
 		bones_bind_group = bones_bind_group,
 		bone_count       = bone_count,
 	}
-	handle := slotmap_insert(&assets.skinned_meshes, skinned_mesh)
-	return SkinnedMeshHandle(handle)
+	return assets_insert(skinned_mesh)
 }
 _create_bones_buffer_and_bind_group :: proc(
 	device: wgpu.Device,
@@ -108,46 +91,34 @@ _create_bones_buffer_and_bind_group :: proc(
 	for &b in unit_transforms {
 		b = AFFINE2_UNIT
 	}
-	wgpu.QueueWriteBuffer(
-		queue,
-		bones_buffer,
-		0,
-		raw_data(unit_transforms),
-		uint(bones_buffer_size),
-	)
+	wgpu.QueueWriteBuffer(queue, bones_buffer, 0, raw_data(unit_transforms), uint(bones_buffer_size))
 	bind_group_descriptor := wgpu.BindGroupDescriptor {
-		layout     = bones_storage_buffer_bind_group_layout_cached(device),
+		layout     = bones_storage_buffer_bind_group_layout_cached(),
 		entryCount = 1,
-		entries    = &wgpu.BindGroupEntry {
-			binding = 0,
-			buffer = bones_buffer,
-			size = bones_buffer_size,
-		},
+		entries    = &wgpu.BindGroupEntry{binding = 0, buffer = bones_buffer, size = bones_buffer_size},
 	}
 	bones_bind_group := wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
 	return bones_buffer, bones_bind_group
 }
-_geometry_clone :: proc(assets: ^AssetManager, handle: SkinnedGeometryHandle) {
-	geom := slotmap_access(&assets.skinned_geometries, u32(handle))
+_geometry_clone :: proc(handle: SkinnedGeometryHandle) {
+	geom: ^SkinnedGeometry = assets_get_ref(handle)
 	geom.reference_count += 1
 }
 _geometry_register :: proc(
-	assets: ^AssetManager,
 	indices: []u32,
 	vertices: []SkinnedVertex,
 	texture: TextureHandle,
 ) -> SkinnedGeometryHandle {
-	geom := _geometry_create(indices, vertices, texture, assets.device, assets.queue)
-	idx := slotmap_insert(&assets.skinned_geometries, geom)
-	return SkinnedGeometryHandle(idx)
+	geom := _geometry_create(indices, vertices, texture, PLATFORM.device, PLATFORM.queue)
+	return assets_insert(geom)
 }
-_geometry_deregister :: proc(assets: ^AssetManager, handle: SkinnedGeometryHandle) {
-	geom := slotmap_access(&assets.skinned_geometries, u32(handle))
+_geometry_deregister :: proc(handle: SkinnedGeometryHandle) {
+	geom: ^SkinnedGeometry = assets_get_ref(handle)
 	assert(geom.reference_count > 0)
 	geom.reference_count -= 1
 	if geom.reference_count == 0 {
-		el := slotmap_remove(&assets.skinned_geometries, u32(handle))
-		_geometry_drop(&el)
+		geom_removed := assets_remove(handle)
+		_geometry_drop(&geom_removed)
 	}
 }
 _geometry_create :: proc(
@@ -210,7 +181,6 @@ skinned_mesh_render :: proc(
 	commands: []SkinnedRenderCommand,
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
-	assets: AssetManager,
 ) {
 	if len(commands) == 0 {
 		return
@@ -218,10 +188,16 @@ skinned_mesh_render :: proc(
 	// todo: maybe sort and batch the commands here by their z or whatever, like for sprites???
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+
+
+	textures := assets_get_map(Texture)
+	skinned_meshes := assets_get_map(SkinnedMesh)
+	skinned_geometries := assets_get_map(SkinnedGeometry)
+
 	for command in commands {
-		mesh := slotmap_get(assets.skinned_meshes, u32(command.mesh))
-		geom := slotmap_get(assets.skinned_geometries, u32(mesh.geometry))
-		texture_bind_group := assets_get_texture_bind_group(assets, geom.texture)
+		mesh: SkinnedMesh = slotmap_get(skinned_meshes, command.mesh)
+		geom: SkinnedGeometry = slotmap_get(skinned_geometries, mesh.geometry)
+		texture_bind_group := slotmap_get(textures, geom.texture).bind_group
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, mesh.bones_bind_group)
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_bind_group)
 		wgpu.RenderPassEncoderSetPushConstants(
@@ -256,7 +232,7 @@ SkinnedRendererPushConstants :: struct {
 	// one instance buffer for the entire renderer that we write into might actually be easier than seperate draw calls all the time.
 	// requires that all bone transforms are also in one big storage buffer...
 }
-skinned_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+skinned_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "skinned",
 		vs_shader = "skinned",
@@ -275,9 +251,9 @@ skinned_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			bones_storage_buffer_bind_group_layout_cached(device),
-			rgba_bind_group_layout_cached(device),
+			globals_bind_group_layout_cached(),
+			bones_storage_buffer_bind_group_layout_cached(),
+			rgba_bind_group_layout_cached(),
 		),
 		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange {
@@ -292,9 +268,7 @@ skinned_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 	}
 }
 
-bones_storage_buffer_bind_group_layout_cached :: proc(
-	device: wgpu.Device,
-) -> wgpu.BindGroupLayout {
+bones_storage_buffer_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
 	if layout == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
@@ -309,11 +283,8 @@ bones_storage_buffer_bind_group_layout_cached :: proc(
 			},
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
-			device,
-			&wgpu.BindGroupLayoutDescriptor {
-				entryCount = uint(len(entries)),
-				entries = &entries[0],
-			},
+			PLATFORM.device,
+			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return layout

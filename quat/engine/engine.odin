@@ -17,6 +17,8 @@ Color :: q.Color
 print :: q.print
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
 
+PLATFORM := &q.PLATFORM
+
 EngineSettings :: struct {
 	using platform:           q.PlatformSettings,
 	bloom_enabled:            bool,
@@ -36,10 +38,8 @@ DEFAULT_ENGINE_SETTINGS := EngineSettings {
 Pipeline :: ^q.RenderPipeline
 Engine :: struct {
 	settings:                         EngineSettings,
-	platform:                         q.Platform,
 	hit:                              HitInfo,
 	scene:                            Scene,
-	ui_ctx:                           q.UiCtx,
 	bloom_renderer:                   q.BloomRenderer,
 	gizmos_renderer:                  q.GizmosRenderer,
 	color_mesh_renderer:              q.ColorMeshRenderer,
@@ -54,11 +54,6 @@ Engine :: struct {
 	motion_particles_render_commands: [dynamic]q.MotionParticlesRenderCommand,
 	motion_particles_buffer:          q.DynamicBuffer(q.MotionParticleInstance),
 	top_level_elements_scratch:       [dynamic]q.TopLevelElement,
-
-	// sprite_pipeline:     Pipeline,
-	// tritex_pipeline:     Pipeline,
-	// skinned_pipeline:    Pipeline,
-	// mesh_3d_pipeline:    Pipeline,
 }
 
 SpriteBuffers :: struct {
@@ -66,8 +61,8 @@ SpriteBuffers :: struct {
 	instances:       [dynamic]q.SpriteInstance,
 	instance_buffer: q.DynamicBuffer(q.SpriteInstance),
 }
-sprite_buffers_create :: proc(device: wgpu.Device, queue: wgpu.Queue) -> (this: SpriteBuffers) {
-	q.dynamic_buffer_init(&this.instance_buffer, {.Vertex}, device, queue)
+sprite_buffers_create :: proc() -> (this: SpriteBuffers) {
+	q.dynamic_buffer_init(&this.instance_buffer, {.Vertex})
 	return this
 }
 sprite_buffers_destroy :: proc(this: ^SpriteBuffers) {
@@ -195,61 +190,55 @@ ENGINE: Engine
 
 // after creating the engine, let it be pinned, don't move it in memory!!
 _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
+	assert(!q.is_initialized())
 
 	assert(settings.screen_ui_reference_size.x > 0)
 	assert(settings.screen_ui_reference_size.y > 0)
 	engine.settings = settings
-	platform := &engine.platform
-	q.platform_create(platform, settings.platform)
-	engine.ui_ctx = q.ui_ctx_create(platform)
-	q.set_global_ui_ctx_ptr(&engine.ui_ctx)
+
+	q.init(settings.platform)
+
 	_scene_create(&engine.scene)
 
-	q.bloom_renderer_create(&engine.bloom_renderer, platform)
-	q.gizmos_renderer_create(&engine.gizmos_renderer, platform)
-	q.color_mesh_renderer_create(&engine.color_mesh_renderer, platform)
-	q.mesh_2d_renderer_create(&engine.mesh_2d_renderer, platform)
+	q.bloom_renderer_create(&engine.bloom_renderer)
+	q.gizmos_renderer_create(&engine.gizmos_renderer)
+	q.color_mesh_renderer_create(&engine.color_mesh_renderer)
+	q.mesh_2d_renderer_create(&engine.mesh_2d_renderer)
 
-
-	reg := &platform.shader_registry
-	device := platform.device
-	queue := platform.queue
 	p := &engine.pipelines
-	p[.HexChunk] = q.make_render_pipeline(reg, q.hex_chunk_pipeline_config(device))
-	p[.SpriteSimple] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Simple))
-	p[.SpriteCutout] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Cutout))
-	p[.SpriteShine] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Shine))
-	p[.SpriteTransparent] = q.make_render_pipeline(reg, q.sprite_pipeline_config(device, .Transparent))
-	p[.Mesh3d] = q.make_render_pipeline(reg, q.mesh_3d_pipeline_config(device))
-	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(reg, q.mesh_3d_hex_chunk_masked_pipeline_config(device))
-	p[.SkinnedCutout] = q.make_render_pipeline(reg, q.skinned_pipeline_config(device))
-	p[.Tritex] = q.make_render_pipeline(reg, q.tritex_mesh_pipeline_config(device))
-	p[.ScreenUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, .Screen))
-	p[.ScreenUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, .Screen))
-	p[.WorldUiGlyph] = q.make_render_pipeline(reg, q.ui_glyph_pipeline_config(device, .World))
-	p[.WorldUiRect] = q.make_render_pipeline(reg, q.ui_rect_pipeline_config(device, .World))
-	p[.MotionParticles] = q.make_render_pipeline(reg, q.motion_particles_pipeline_config(device))
+	p[.HexChunk] = q.make_render_pipeline(q.hex_chunk_pipeline_config())
+	p[.SpriteSimple] = q.make_render_pipeline(q.sprite_pipeline_config(.Simple))
+	p[.SpriteCutout] = q.make_render_pipeline(q.sprite_pipeline_config(.Cutout))
+	p[.SpriteShine] = q.make_render_pipeline(q.sprite_pipeline_config(.Shine))
+	p[.SpriteTransparent] = q.make_render_pipeline(q.sprite_pipeline_config(.Transparent))
+	p[.Mesh3d] = q.make_render_pipeline(q.mesh_3d_pipeline_config())
+	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
+	p[.SkinnedCutout] = q.make_render_pipeline(q.skinned_pipeline_config())
+	p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
+	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.Screen))
+	p[.ScreenUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.Screen))
+	p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.World))
+	p[.WorldUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.World))
+	p[.MotionParticles] = q.make_render_pipeline(q.motion_particles_pipeline_config())
 
 
-	engine.cutout_sprites = sprite_buffers_create(device, queue)
-	engine.shine_sprites = sprite_buffers_create(device, queue)
-	engine.transparent_sprites_low = sprite_buffers_create(device, queue)
-	engine.transparent_sprites_high = sprite_buffers_create(device, queue)
+	engine.cutout_sprites = sprite_buffers_create()
+	engine.shine_sprites = sprite_buffers_create()
+	engine.transparent_sprites_low = sprite_buffers_create()
+	engine.transparent_sprites_high = sprite_buffers_create()
 
-	engine.world_ui_buffers = q.ui_render_buffers_create(device, queue)
-	engine.screen_ui_buffers = q.ui_render_buffers_create(device, queue)
+	engine.world_ui_buffers = q.ui_render_buffers_create()
+	engine.screen_ui_buffers = q.ui_render_buffers_create()
 
-	q.dynamic_buffer_init(&engine.motion_particles_buffer, {.Vertex}, device, queue)
+	q.dynamic_buffer_init(&engine.motion_particles_buffer, {.Vertex})
 }
 _engine_destroy :: proc(engine: ^Engine) {
-	q.platform_destroy(&engine.platform)
+
 	q.bloom_renderer_destroy(&engine.bloom_renderer)
 	q.gizmos_renderer_destroy(&engine.gizmos_renderer)
 	q.color_mesh_renderer_destroy(&engine.color_mesh_renderer)
 	q.mesh_2d_renderer_destroy(&engine.mesh_2d_renderer)
 	_scene_destroy(&engine.scene)
-	q.set_global_ui_ctx_ptr(nil)
-	q.ui_ctx_drop(&engine.ui_ctx)
 
 	sprite_buffers_destroy(&engine.cutout_sprites)
 	sprite_buffers_destroy(&engine.shine_sprites)
@@ -262,6 +251,8 @@ _engine_destroy :: proc(engine: ^Engine) {
 	q.dynamic_buffer_destroy(&engine.motion_particles_buffer)
 	delete(engine.motion_particles_render_commands)
 	delete(engine.top_level_elements_scratch)
+
+	q.deinit()
 }
 
 
@@ -285,7 +276,7 @@ next_frame :: proc() -> bool {
 }
 
 _engine_start_frame :: proc(engine: ^Engine) -> bool {
-	if !q.platform_start_frame(&engine.platform) {
+	if !q.platform_start_frame() {
 		return false
 	}
 	_engine_recalculate_hit_info(engine)
@@ -314,11 +305,12 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 	engine.hit.hit_collider_idx = hit_collider_idx
 }
 _engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
-	hovered_id := engine.ui_ctx.cache.state.hovered
+
+	hovered_id := PLATFORM.ui_ctx.cache.state.hovered
 	engine.hit.is_on_world_ui = false
 	engine.hit.is_on_screen_ui = false
 	if hovered_id != 0 {
-		cached_element := engine.ui_ctx.cache.cached[hovered_id]
+		cached_element := PLATFORM.ui_ctx.cache.cached[hovered_id]
 		switch cached_element.transform.space {
 		case .Screen:
 			engine.hit.is_on_screen_ui = true
@@ -331,9 +323,9 @@ _engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
 _engine_end_frame :: proc(engine: ^Engine) {
 
 	// RESIZE AND END INPUT:
-	if engine.platform.screen_resized {
-		q.platform_resize(&engine.platform)
-		q.bloom_renderer_resize(&engine.bloom_renderer, engine.platform.screen_size)
+	if PLATFORM.screen_resized {
+		q.platform_resize()
+		q.bloom_renderer_resize(&engine.bloom_renderer, PLATFORM.screen_size)
 	}
 	// ADD SOME ADDITIONAL DRAW DATA:
 	_engine_draw_annotations(engine)
@@ -344,7 +336,7 @@ _engine_end_frame :: proc(engine: ^Engine) {
 		_engine_debug_collider_gizmos(engine)
 	}
 
-	engine.platform.settings = engine.settings.platform
+	q.PLATFORM.settings = engine.settings.platform
 	q.platform_reset_input_at_end_of_frame(&engine.platform)
 	_display_values(engine.scene.display_values[:])
 
@@ -353,6 +345,7 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 	// RENDER
 	_engine_render(engine)
+
 	// CLEAR
 	_scene_clear(&engine.scene)
 	free_all(context.temp_allocator)
@@ -361,7 +354,6 @@ _engine_end_frame :: proc(engine: ^Engine) {
 _engine_prepare :: proc(engine: ^Engine) {
 	scene := &engine.scene
 	q.platform_prepare(&engine.platform, scene.camera)
-	q.assert_ui_ctx_ptr_is_set()
 	clear(&engine.top_level_elements_scratch)
 	for e in scene.world_ui {
 		q.layout_in_world_space(
@@ -448,7 +440,6 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		engine.scene.tritex_textures,
 		engine.scene.hex_chunks[:],
-		asset_manager,
 	)
 	q.tritex_mesh_render(
 		engine.pipelines[.Tritex].pipeline,
@@ -456,21 +447,18 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		engine.scene.tritex_meshes[:],
 		engine.scene.tritex_textures,
-		asset_manager,
 	)
 	q.mesh_3d_renderer_render(
 		engine.pipelines[.Mesh3d].pipeline,
 		hdr_pass,
 		global_bind_group,
 		engine.scene.meshes_3d[:],
-		asset_manager,
 	)
 	q.mesh_3d_renderer_render_hex_chunk_masked(
 		engine.pipelines[.Mesh3dHexChunkMasked].pipeline,
 		hdr_pass,
 		global_bind_group,
 		engine.scene.meshes_3d_hex_chunk_masked[:],
-		asset_manager,
 	)
 
 	simple_sprite_shader := engine.settings.use_simple_sprite_shader
@@ -480,7 +468,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.cutout_sprites.instance_buffer,
 		hdr_pass,
 		global_bind_group,
-		asset_manager,
 	)
 	// todo: this is certainly stupid, because then we render all skinned meshes on top of sprites:
 	q.skinned_mesh_render(
@@ -488,7 +475,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.skinned_render_commands[:],
 		hdr_pass,
 		global_bind_group,
-		asset_manager,
 	)
 	q.motion_particles_render(
 		engine.pipelines[.MotionParticles].pipeline,
@@ -496,7 +482,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.motion_particles_render_commands[:],
 		hdr_pass,
 		global_bind_group,
-		asset_manager,
 	)
 	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, global_bind_group, asset_manager)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
@@ -508,7 +493,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.transparent_sprites_low.instance_buffer,
 		hdr_pass,
 		global_bind_group,
-		asset_manager,
 	)
 	q.ui_render(
 		engine.world_ui_buffers,
@@ -518,7 +502,6 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		engine.platform.settings.screen_ui_reference_size,
 		engine.platform.screen_size,
-		asset_manager,
 	)
 	q.sprite_batches_render(
 		engine.pipelines[.SpriteTransparent].pipeline,
@@ -526,7 +509,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.transparent_sprites_high.instance_buffer,
 		hdr_pass,
 		global_bind_group,
-		asset_manager,
 	)
 	q.sprite_batches_render(
 		engine.pipelines[.SpriteShine].pipeline,
@@ -534,7 +516,6 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.shine_sprites.instance_buffer,
 		hdr_pass,
 		global_bind_group,
-		asset_manager,
 	)
 	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
 	// Solution 2: use depth writes for at least one of the two and render that first.
@@ -550,7 +531,6 @@ _engine_render :: proc(engine: ^Engine) {
 		global_bind_group,
 		engine.platform.settings.screen_ui_reference_size,
 		engine.platform.screen_size,
-		asset_manager,
 	)
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .UI)
 	wgpu.RenderPassEncoderEnd(hdr_pass)
@@ -788,40 +768,40 @@ create_skinned_mesh :: proc(
 	bone_count: int,
 	texture: q.TextureHandle = q.DEFAULT_TEXTURE,
 ) -> q.SkinnedMeshHandle {
-	return q.skinned_mesh_register(&ENGINE.platform.asset_manager, triangles, vertices, bone_count, texture)
+	return q.skinned_mesh_register(&ENGINE.platform.triangles, vertices, bone_count, texture)
 }
 destroy_skinned_mesh :: proc(handle: q.SkinnedMeshHandle) {
-	q.skinned_mesh_deregister(&ENGINE.platform.asset_manager, handle)
+	q.skinned_mesh_deregister(&ENGINE.platform.handle)
 }
 // call this with a slice of bone transforms that has the same length as what the skinned mesh expects
 set_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) {
-	q.skinned_mesh_update_bones(&ENGINE.platform.asset_manager, handle, bones)
+	q.skinned_mesh_update_bones(&ENGINE.platform.handle, bones)
 }
 draw_skinned_mesh :: proc(handle: q.SkinnedMeshHandle, pos: Vec2 = Vec2{0, 0}, color: Color = q.ColorWhite) {
 	append(&ENGINE.scene.skinned_render_commands, q.SkinnedRenderCommand{pos, color, handle})
 }
 // expected to be 8bit RGBA png
 load_texture :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureHandle {
-	return q.assets_load_texture(&ENGINE.platform.asset_manager, path, settings)
+	return q.assets_load_texture(&ENGINE.platform.path, settings)
 }
 create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
 	texture := q.texture_from_image(ENGINE.platform.device, ENGINE.platform.queue, img, q.TEXTURE_SETTINGS_RGBA)
-	handle := q.assets_add_texture(&ENGINE.platform.asset_manager, texture)
+	handle := q.assets_add_texture(&ENGINE.platform.texture)
 	return handle
 }
 destroy_texture :: proc(handle: q.TextureHandle) {
-	q.assets_deregister_texture(&ENGINE.platform.asset_manager, handle)
+	q.assets_deregister_texture(&ENGINE.platform.handle)
 }
 get_texture_info :: proc(handle: q.TextureHandle) -> q.TextureInfo {
-	return q.assets_get_texture_info(ENGINE.platform.asset_manager, handle)
+	return q.assets_get_texture_info(ENGINE.platform.handle)
 }
 write_image_to_texture :: proc(img: q.Image, handle: q.TextureHandle) {
-	texture := q.assets_get_texture(ENGINE.platform.asset_manager, handle)
+	texture := q.assets_get_texture(ENGINE.platform.handle)
 	q.texture_write_from_image(ENGINE.platform.queue, texture, img)
 }
 // is expected to be 16bit R channel only png
 load_depth_texture :: proc(path: string) -> q.TextureHandle {
-	return q.assets_load_depth_texture(&ENGINE.platform.asset_manager, path)
+	return q.assets_load_depth_texture(&ENGINE.platform.path)
 }
 load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureTile {
 	return q.TextureTile{load_texture(path, settings), q.UNIT_AABB}
@@ -829,7 +809,7 @@ load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_
 load_texture_as_sprite :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.Sprite {
 	texture_handle := load_texture(path, settings)
 	texture_tile := q.TextureTile{texture_handle, q.UNIT_AABB}
-	texture_info := q.assets_get_texture_info(ENGINE.platform.asset_manager, texture_handle)
+	texture_info := q.assets_get_texture_info(ENGINE.platform.texture_handle)
 	sprite_size := Vec2{f32(texture_info.size.x), f32(texture_info.size.y)} / 100.0
 	return q.Sprite {
 		pos = {0, 0},
@@ -845,10 +825,10 @@ load_texture_array :: proc(
 	paths: []string,
 	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
 ) -> q.TextureArrayHandle {
-	return q.assets_load_texture_array(&ENGINE.platform.asset_manager, paths, settings)
+	return q.assets_load_texture_array(&ENGINE.platform.paths, settings)
 }
 load_font :: proc(path: string) -> q.FontHandle {
-	handle, err := q.assets_load_font(&ENGINE.platform.asset_manager, path)
+	handle, err := q.assets_load_font(&ENGINE.platform.path)
 	if err, has_err := err.(string); has_err {
 		panic(err)
 	}

@@ -21,8 +21,6 @@ BLOOM_SETTINGS_DEFAULT :: BloomSettings {
 }
 
 BloomRenderer :: struct {
-	device:                    wgpu.Device,
-	queue:                     wgpu.Queue,
 	first_downsample_pipeline: ^RenderPipeline,
 	downsample_pipeline:       ^RenderPipeline,
 	upsample_pipeline:         ^RenderPipeline,
@@ -40,17 +38,12 @@ bloom_renderer_destroy :: proc(rend: ^BloomRenderer) {
 	}
 }
 
-bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
+bloom_renderer_create :: proc(rend: ^BloomRenderer) {
+	assert(is_initialized())
 
-	_create_bloom_textures(rend, platform.screen_size)
+	_create_bloom_textures(rend, PLATFORM.screen_size)
 
-
-	bind_group_layouts := bind_group_layouts(
-		platform.globals.bind_group_layout,
-		rgba_bind_group_layout_cached(platform.device),
-	)
+	bind_group_layouts := bind_group_layouts(PLATFORM.globals.bind_group_layout, rgba_bind_group_layout_cached())
 	first_downsample_config := RenderPipelineConfig {
 		debug_name           = "bloom first_downsample",
 		vs_shader            = "screen",
@@ -113,11 +106,11 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer, platform: ^Platform) {
 		},
 		format = HDR_FORMAT,
 	}
-	reg := &platform.shader_registry
-	rend.first_downsample_pipeline = make_render_pipeline(reg, first_downsample_config)
-	rend.downsample_pipeline = make_render_pipeline(reg, downsample_config)
-	rend.upsample_pipeline = make_render_pipeline(reg, upsample_config)
-	rend.final_upsample_pipeline = make_render_pipeline(reg, final_upsample_config)
+	reg := &PLATFORM.shader_registry
+	rend.first_downsample_pipeline = make_render_pipeline(first_downsample_config)
+	rend.downsample_pipeline = make_render_pipeline(downsample_config)
+	rend.upsample_pipeline = make_render_pipeline(upsample_config)
+	rend.final_upsample_pipeline = make_render_pipeline(final_upsample_config)
 }
 
 render_bloom :: proc(
@@ -231,7 +224,7 @@ _create_bloom_textures :: proc(rend: ^BloomRenderer, size: UVec2) {
 
 		texture_big_enough := max(tex_size.x, tex_size.y) > 12 && min(tex_size.x, tex_size.y) > 1
 		if texture_big_enough {
-			e = texture_create(rend.device, tex_size, BLOOM_TEXTURE_SETTINGS)
+			e = texture_create(tex_size, BLOOM_TEXTURE_SETTINGS)
 		}
 	}
 }

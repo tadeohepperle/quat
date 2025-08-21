@@ -6,8 +6,6 @@ import "core:strings"
 import wgpu "vendor:wgpu"
 
 DynamicBuffer :: struct($T: typeid) {
-	device: wgpu.Device,
-	queue:  wgpu.Queue,
 	buffer: wgpu.Buffer,
 	usage:  wgpu.BufferUsageFlags,
 	size:   u64, // capacity * size_of(T) in bytes, the number of bytes that is actually allocated for the buffer on the GPU
@@ -15,15 +13,8 @@ DynamicBuffer :: struct($T: typeid) {
 }
 
 MIN_BUFFER_SIZE :: 1024
-dynamic_buffer_init :: proc(
-	this: ^DynamicBuffer($T),
-	usage: wgpu.BufferUsageFlags,
-	device: wgpu.Device,
-	queue: wgpu.Queue,
-) {
+dynamic_buffer_init :: proc(this: ^DynamicBuffer($T), usage: wgpu.BufferUsageFlags) {
 	this.usage = {.CopyDst} | usage
-	this.device = device
-	this.queue = queue
 }
 
 _target_buffer_size :: #force_inline proc "contextless" (n_elements: int, size_of_t: int) -> u64 {
@@ -38,9 +29,9 @@ dynamic_buffer_reserve :: proc(this: ^DynamicBuffer($T), for_n_total_elements: i
 			dynamic_buffer_destroy(this)
 		}
 		this.size = target_size
-		assert(this.device != nil, tprint(loc))
+		assert(PLATFORM.device != nil, tprint(loc))
 		this.buffer = wgpu.DeviceCreateBuffer(
-			this.device,
+			PLATFORM.device,
 			&wgpu.BufferDescriptor{usage = this.usage, size = target_size, mappedAtCreation = false},
 		)
 	}
@@ -52,14 +43,14 @@ dynamic_buffer_clear :: proc "contextless" (this: ^DynamicBuffer($T)) {
 
 // overwrites all data in the buffer, resizing it if necessary
 dynamic_buffer_write :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #caller_location) {
-	assert(this.queue != nil, tprint(loc))
+	assert(PLATFORM.queue != nil, tprint(loc))
 	this.length = len(elements)
 	if this.length == 0 {
 		return
 	}
 	dynamic_buffer_reserve(this, this.length)
 	used_size := uint(this.length * size_of(T))
-	wgpu.QueueWriteBuffer(this.queue, this.buffer, 0, raw_data(elements), used_size)
+	wgpu.QueueWriteBuffer(PLATFORM.queue, this.buffer, 0, raw_data(elements), used_size)
 }
 
 // appends to the end of the buffer, but requires that the buffer has enough size allocated, for this to succeed.
@@ -122,9 +113,9 @@ uniform_buffer_create_from_bind_group_layout :: proc(
 		},
 	)
 }
-uniform_bind_group_layout :: proc(device: wgpu.Device, size_of_t: u64) -> wgpu.BindGroupLayout {
+uniform_bind_group_layout :: proc(size_of_t: u64) -> wgpu.BindGroupLayout {
 	return wgpu.DeviceCreateBindGroupLayout(
-		device,
+		PLATFORM.device,
 		&wgpu.BindGroupLayoutDescriptor {
 			entryCount = 1,
 			entries = &wgpu.BindGroupLayoutEntry {

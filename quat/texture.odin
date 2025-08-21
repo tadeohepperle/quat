@@ -63,8 +63,6 @@ TextureTileWithDepth :: struct {
 }
 
 texture_from_image_path :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
 	path: string,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
@@ -72,20 +70,13 @@ texture_from_image_path :: proc(
 	error: Error,
 ) {
 	img := image_load(path) or_return
-	texture = texture_from_image(device, queue, img, settings)
+	texture = texture_from_image(img, settings)
 	image_drop(&img)
 	return
 }
 
 COPY_BYTES_PER_ROW_ALIGNMENT: u32 : 256 // Buffer-Texture copies must have [`bytes_per_row`] aligned to this number.
-texture_from_image :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
-	img: Image,
-	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
-) -> (
-	texture: Texture,
-) {
+texture_from_image :: proc(img: Image, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> (texture: Texture) {
 	// todo: remove this stupid restriction, but we currently only support rgba8 textures
 	assert(settings.format == wgpu.TextureFormat.RGBA8UnormSrgb || settings.format == wgpu.TextureFormat.RGBA8Unorm)
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
@@ -94,11 +85,11 @@ texture_from_image :: proc(
 			"Currently only images with at least 64px per row (256 bytes per row) are supported, bc. of https://docs.rs/wgpu/latest/wgpu/struct.ImageDataLayout.html",
 		)
 	}
-	texture = texture_create(device, size, settings)
-	texture_write_from_image(queue, texture, img)
+	texture = texture_create(size, settings)
+	texture_write_from_image(texture, img)
 	return texture
 }
-texture_write_from_image :: proc(queue: wgpu.Queue, texture: Texture, img: Image) {
+texture_write_from_image :: proc(texture: Texture, img: Image) {
 	size := texture.info.size
 	assert(size.x == u32(img.size.x))
 	assert(size.y == u32(img.size.y))
@@ -112,7 +103,7 @@ texture_write_from_image :: proc(queue: wgpu.Queue, texture: Texture, img: Image
 		rowsPerImage = size.y,
 	}
 	wgpu.QueueWriteTexture(
-		queue,
+		PLATFORM.queue,
 		&image_copy,
 		raw_data(img.pixels),
 		uint(len(img.pixels) * 4),
@@ -122,8 +113,6 @@ texture_write_from_image :: proc(queue: wgpu.Queue, texture: Texture, img: Image
 }
 
 depth_texture_16bit_r_from_image_path :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
 	path: string,
 	settings: TextureSettings = TEXTURE_SETTINGS_DEPTH_SPRITE,
 ) -> (
@@ -134,7 +123,7 @@ depth_texture_16bit_r_from_image_path :: proc(
 	img := depth_image_load(path) or_return
 	defer {depth_image_drop(&img)}
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
-	texture = texture_create(device, size, settings)
+	texture = texture_create(size, settings)
 
 	if size.x % 128 != 0 {
 		panic(
@@ -150,7 +139,7 @@ depth_texture_16bit_r_from_image_path :: proc(
 		rowsPerImage = size.y,
 	}
 	wgpu.QueueWriteTexture(
-		queue,
+		PLATFORM.queue,
 		&image_copy,
 		raw_data(img.pixels),
 		uint(len(img.pixels) * 2),
@@ -164,8 +153,8 @@ texture_as_image_copy :: proc(texture: Texture) -> wgpu.TexelCopyTextureInfo {
 	return wgpu.TexelCopyTextureInfo{texture = texture.texture, mipLevel = 0, origin = {0, 0, 0}, aspect = .All}
 }
 
-_texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> Texture {
-	texture := texture_create(device, {1, 1}, TEXTURE_SETTINGS_RGBA)
+_texture_create_1px_white :: proc() -> Texture {
+	texture := texture_create({1, 1}, TEXTURE_SETTINGS_RGBA)
 	block_size: u32 = 4
 	image_copy := texture_as_image_copy(texture)
 	data_layout := wgpu.TexelCopyBufferLayout {
@@ -175,7 +164,7 @@ _texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> Tex
 	}
 	data := [4]u8{255, 255, 255, 255}
 	wgpu.QueueWriteTexture(
-		queue,
+		PLATFORM.queue,
 		&image_copy,
 		&data,
 		4,
@@ -186,7 +175,7 @@ _texture_create_1px_white :: proc(device: wgpu.Device, queue: wgpu.Queue) -> Tex
 }
 
 DEPTH_TEXTURE_FORMAT :: wgpu.TextureFormat.Depth32Float
-depth_texture_create :: proc(device: wgpu.Device, size: UVec2) -> DepthTexture {
+depth_texture_create :: proc(size: UVec2) -> DepthTexture {
 	texture: Texture
 	settings := TextureSettings {
 		label        = "depth_texture",
@@ -208,7 +197,7 @@ depth_texture_create :: proc(device: wgpu.Device, size: UVec2) -> DepthTexture {
 		viewFormatCount = 1,
 		viewFormats = &texture.info.settings.format,
 	}
-	texture.texture = wgpu.DeviceCreateTexture(device, &descriptor)
+	texture.texture = wgpu.DeviceCreateTexture(PLATFORM.device, &descriptor)
 
 	texture_view_descriptor := wgpu.TextureViewDescriptor {
 		format          = settings.format,
@@ -230,21 +219,21 @@ depth_texture_create :: proc(device: wgpu.Device, size: UVec2) -> DepthTexture {
 		mipmapFilter  = .Nearest,
 		maxAnisotropy = 1,
 	}
-	texture.sampler = wgpu.DeviceCreateSampler(device, &sampler_descriptor)
+	texture.sampler = wgpu.DeviceCreateSampler(PLATFORM.device, &sampler_descriptor)
 
 	bind_group_descriptor_entries := [?]wgpu.BindGroupEntry {
 		wgpu.BindGroupEntry{binding = 0, textureView = texture.view},
 		wgpu.BindGroupEntry{binding = 1, sampler = texture.sampler},
 	}
 	bind_group_descriptor := wgpu.BindGroupDescriptor {
-		layout     = depth_texture_bind_group_layout_cached(device),
+		layout     = depth_texture_bind_group_layout_cached(),
 		entryCount = uint(len(bind_group_descriptor_entries)),
 		entries    = &bind_group_descriptor_entries[0],
 	}
-	texture.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
+	texture.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
 	return DepthTexture{texture}
 }
-depth_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+depth_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) LAYOUT: wgpu.BindGroupLayout
 	if LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
@@ -260,20 +249,14 @@ depth_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.Bind
 			},
 		}
 		LAYOUT = wgpu.DeviceCreateBindGroupLayout(
-			device,
+			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
 	return LAYOUT
 }
 
-texture_create :: proc(
-	device: wgpu.Device,
-	size: UVec2,
-	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
-) -> (
-	texture: Texture,
-) {
+texture_create :: proc(size: UVec2, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> (texture: Texture) {
 	assert(wgpu.TextureUsage.TextureBinding in settings.usage)
 
 	texture.info = TextureInfo{size, settings, 1}
@@ -287,7 +270,7 @@ texture_create :: proc(
 		viewFormatCount = 1,
 		viewFormats = &texture.info.settings.format,
 	}
-	texture.texture = wgpu.DeviceCreateTexture(device, &descriptor)
+	texture.texture = wgpu.DeviceCreateTexture(PLATFORM.device, &descriptor)
 
 	texture_view_descriptor := wgpu.TextureViewDescriptor {
 		format          = settings.format,
@@ -310,18 +293,18 @@ texture_create :: proc(
 		maxAnisotropy = 1,
 		// ...
 	}
-	texture.sampler = wgpu.DeviceCreateSampler(device, &sampler_descriptor)
+	texture.sampler = wgpu.DeviceCreateSampler(PLATFORM.device, &sampler_descriptor)
 
 	bind_group_descriptor_entries := [?]wgpu.BindGroupEntry {
 		wgpu.BindGroupEntry{binding = 0, textureView = texture.view},
 		wgpu.BindGroupEntry{binding = 1, sampler = texture.sampler},
 	}
 	bind_group_descriptor := wgpu.BindGroupDescriptor {
-		layout     = rgba_bind_group_layout_cached(device),
+		layout     = rgba_bind_group_layout_cached(),
 		entryCount = uint(len(bind_group_descriptor_entries)),
 		entries    = &bind_group_descriptor_entries[0],
 	}
-	texture.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
+	texture.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
 	return
 }
 
@@ -334,7 +317,7 @@ texture_destroy :: proc(texture: ^Texture) {
 }
 
 
-rgba_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
 	if layout == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
@@ -350,7 +333,7 @@ rgba_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayo
 			},
 		}
 		layout = wgpu.DeviceCreateBindGroupLayout(
-			device,
+			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}

@@ -16,10 +16,10 @@ UiRenderBuffers :: struct {
 	index_buffer:          DynamicBuffer(Triangle),
 	glyph_instance_buffer: DynamicBuffer(UiGlyphInstance),
 }
-ui_render_buffers_create :: proc(device: wgpu.Device, queue: wgpu.Queue) -> (this: UiRenderBuffers) {
-	dynamic_buffer_init(&this.vertex_buffer, {.Vertex}, device, queue)
-	dynamic_buffer_init(&this.index_buffer, {.Index}, device, queue)
-	dynamic_buffer_init(&this.glyph_instance_buffer, {.Vertex}, device, queue)
+ui_render_buffers_create :: proc() -> (this: UiRenderBuffers) {
+	dynamic_buffer_init(&this.vertex_buffer, {.Vertex})
+	dynamic_buffer_init(&this.index_buffer, {.Index})
+	dynamic_buffer_init(&this.glyph_instance_buffer, {.Vertex})
 	return this
 }
 ui_render_buffers_destroy :: proc(this: ^UiRenderBuffers) {
@@ -50,7 +50,6 @@ ui_render :: proc(
 	globals_bind_group: wgpu.BindGroup,
 	screen_reference_size: Vec2,
 	screen_size: UVec2,
-	assets: AssetManager,
 ) {
 	screen_size_f32 := Vec2{f32(screen_size.x), f32(screen_size.y)}
 	if len(buffers.batches) == 0 {
@@ -60,6 +59,10 @@ ui_render :: proc(
 	last_transform := UiTransform{.Screen, {clipped_to = nil}} // no batch will have this, so the first batch already fulfills batch.clipped_to != last_clipped_to
 	pipeline: wgpu.RenderPipeline = nil
 	last_clipped_to: Maybe(Aabb) = nil
+
+
+	textures := assets_get_map(Texture)
+	fonts := assets_get_map(Font)
 
 	for &batch in buffers.batches {
 		set_world_transform_push_const := false
@@ -144,20 +147,19 @@ ui_render :: proc(
 
 		switch batch.kind {
 		case .Rect:
-			texture_bind_group := assets_get_texture_bind_group(assets, TextureHandle(batch.handle))
+			texture_bind_group := slotmap_get(textures, transmute(TextureHandle)batch.handle).bind_group
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
 			// important: take *3 here to get from triangle_idx to index_idx
 			start_idx := u32(batch.start_idx) * 3
 			index_count := u32(batch.end_idx - batch.start_idx) * 3
 			wgpu.RenderPassEncoderDrawIndexed(render_pass, index_count, 1, start_idx, 0, 0)
 		case .Glyph:
-			font_texture_bind_group := assets_get_font_texture_bind_group(assets, FontHandle(batch.handle))
+			texture_handle := slotmap_get(fonts, transmute(FontHandle)batch.handle).texture_handle
+			font_texture_bind_group := slotmap_get(textures, texture_handle).bind_group
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, font_texture_bind_group)
 			instance_count := u32(batch.end_idx - batch.start_idx)
 			wgpu.RenderPassEncoderDraw(render_pass, 4, instance_count, 0, u32(batch.start_idx))
 		}
-
-
 	}
 	// remove scissor again after all batches are done if last batch was in scissor:
 	if last_transform.space == .World || last_transform.data.clipped_to == nil {
@@ -174,7 +176,7 @@ layout_to_screen_space :: proc(pt: Vec2, screen_reference_size: Vec2, screen_siz
 	return pt * (screen_size.y / f32(screen_reference_size.y))
 }
 
-ui_rect_pipeline_config :: proc(device: wgpu.Device, space: UiSpace) -> RenderPipelineConfig {
+ui_rect_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_rect",
 		vs_shader = "ui",
@@ -196,10 +198,7 @@ ui_rect_pipeline_config :: proc(device: wgpu.Device, space: UiSpace) -> RenderPi
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			rgba_bind_group_layout_cached(device),
-		),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
 		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiWorldTransform)}) if space == .World else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -212,7 +211,7 @@ UiPushConstants :: struct {
 	scale:  f32,
 	offset: Vec2,
 }
-ui_glyph_pipeline_config :: proc(device: wgpu.Device, space: UiSpace) -> RenderPipelineConfig {
+ui_glyph_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
 		vs_shader = "ui",
@@ -231,10 +230,7 @@ ui_glyph_pipeline_config :: proc(device: wgpu.Device, space: UiSpace) -> RenderP
 				{format = .Float32x2, offset = offset_of(UiGlyphInstance, shadow_and_bias)},
 			),
 		},
-		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			rgba_bind_group_layout_cached(device),
-		),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
 		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiWorldTransform)}) if space == .World else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

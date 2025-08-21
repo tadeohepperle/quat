@@ -9,8 +9,6 @@ GizmosVertex :: struct {
 }
 
 GizmosRenderer :: struct {
-	device:         wgpu.Device,
-	queue:          wgpu.Queue,
 	pipeline:       ^RenderPipeline,
 	vertices:       [GizmosMode][dynamic]GizmosVertex,
 	vertex_buffers: [GizmosMode]DynamicBuffer(GizmosVertex),
@@ -22,16 +20,11 @@ GizmosMode :: enum u32 {
 }
 GIZMOS_COLOR := Color{1, 0, 0, 1}
 
-gizmos_renderer_create :: proc(rend: ^GizmosRenderer, platform: ^Platform) {
-	rend.device = platform.device
-	rend.queue = platform.queue
+gizmos_renderer_create :: proc(rend: ^GizmosRenderer) {
 	for mode in GizmosMode {
-		dynamic_buffer_init(&rend.vertex_buffers[mode], {.Vertex}, rend.device, rend.queue)
+		dynamic_buffer_init(&rend.vertex_buffers[mode], {.Vertex})
 	}
-	rend.pipeline = make_render_pipeline(
-		&platform.shader_registry,
-		gizmos_pipeline_config(platform.device),
-	)
+	rend.pipeline = make_render_pipeline(gizmos_pipeline_config())
 }
 gizmos_renderer_destroy :: proc(rend: ^GizmosRenderer) {
 	for mode in GizmosMode {
@@ -57,13 +50,7 @@ gizmos_renderer_render :: proc(
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
-	wgpu.RenderPassEncoderSetVertexBuffer(
-		render_pass,
-		0,
-		vertex_buffer.buffer,
-		0,
-		vertex_buffer.size,
-	)
+	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer.buffer, 0, vertex_buffer.size)
 	mode := mode
 	wgpu.RenderPassEncoderSetPushConstants(render_pass, {.Vertex}, 0, size_of(GizmosMode), &mode)
 	wgpu.RenderPassEncoderDraw(render_pass, u32(vertex_buffer.length), 1, 0, 0)
@@ -85,20 +72,8 @@ gizmos_renderer_render_all_modes :: proc(
 			wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
 		}
-		wgpu.RenderPassEncoderSetVertexBuffer(
-			render_pass,
-			0,
-			vertex_buffer.buffer,
-			0,
-			vertex_buffer.size,
-		)
-		wgpu.RenderPassEncoderSetPushConstants(
-			render_pass,
-			{.Vertex},
-			0,
-			size_of(GizmosMode),
-			&mode,
-		)
+		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer.buffer, 0, vertex_buffer.size)
+		wgpu.RenderPassEncoderSetPushConstants(render_pass, {.Vertex}, 0, size_of(GizmosMode), &mode)
 		wgpu.RenderPassEncoderDraw(render_pass, u32(vertex_buffer.length), 1, 0, 0)
 	}
 }
@@ -190,7 +165,7 @@ gizmos_renderer_add_rect :: proc(
 	gizmos_renderer_add_line(rend, d, a, color, mode)
 }
 
-gizmos_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
+gizmos_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "gizmos",
 		vs_shader = "gizmos",
@@ -206,7 +181,7 @@ gizmos_pipeline_config :: proc(device: wgpu.Device) -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(device)),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached()),
 		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(GizmosMode)},
 		),

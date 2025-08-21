@@ -29,7 +29,6 @@ font_destroy :: proc(font: ^Font) {
 }
 font_from_bytes :: proc(
 	ttf_file_bytes: []u8,
-	assets: ^AssetManager,
 	name: string, // static str
 	settings := sdffont.SDF_FONT_SETTINGS_DEFAULT,
 ) -> (
@@ -52,7 +51,7 @@ font_from_bytes :: proc(
 		min_filter   = .Nearest,
 		usage        = {.TextureBinding, .CopyDst},
 	}
-	texture := texture_create(assets.device, settings.atlas_size, TEXTURE_SETTINGS_SDF_FONT)
+	texture := texture_create(settings.atlas_size, TEXTURE_SETTINGS_SDF_FONT)
 
 	size := texture.info.size
 	image_copy := wgpu.TexelCopyTextureInfo {
@@ -68,7 +67,7 @@ font_from_bytes :: proc(
 	}
 	atlas_image := sdffont.font_get_atlas_image(sdf_font)
 	wgpu.QueueWriteTexture(
-		assets.queue,
+		PLATFORM.queue,
 		&image_copy,
 		raw_data(atlas_image.bytes),
 		uint(len(atlas_image.bytes)),
@@ -76,7 +75,7 @@ font_from_bytes :: proc(
 		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 	)
 
-	texture_handle := assets_add_texture(assets, texture)
+	texture_handle := assets_insert(texture)
 	font = Font {
 		settings       = settings,
 		name           = strings.clone(name),
@@ -91,7 +90,6 @@ font_from_bytes :: proc(
 
 font_from_path :: proc(
 	ttf_file_path: string,
-	assets: ^AssetManager,
 	settings := sdffont.SDF_FONT_SETTINGS_DEFAULT,
 ) -> (
 	font: Font,
@@ -102,5 +100,5 @@ font_from_path :: proc(
 		err = tprint("could not read font tile", ttf_file_path)
 		return
 	}
-	return font_from_bytes(ttf_bytes, assets, ttf_file_path, settings)
+	return font_from_bytes(ttf_bytes, ttf_file_path, settings)
 }

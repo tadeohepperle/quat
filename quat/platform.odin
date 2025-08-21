@@ -8,6 +8,27 @@ import glfw "vendor:glfw"
 import wgpu "vendor:wgpu"
 import wgpu_glfw "vendor:wgpu/glfwglue"
 
+
+is_initialized :: proc() -> bool {
+	return PLATFORM.is_initialized
+}
+init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
+	_init_platform(&PLATFORM, settings)
+}
+deinit :: proc() {
+	destroy_assets()
+
+	uniform_buffer_destroy(&PLATFORM.globals)
+	shader_registry_destroy(&PLATFORM.shader_registry)
+	texture_destroy(&PLATFORM.hdr_screen_texture)
+	texture_destroy(&PLATFORM.depth_screen_texture)
+	wgpu.QueueRelease(PLATFORM.queue)
+	wgpu.DeviceDestroy(PLATFORM.device)
+	wgpu.InstanceRelease(PLATFORM.instance)
+
+	ui_ctx_drop(&PLATFORM.ui_ctx)
+}
+
 PlatformSettings :: struct {
 	title:                    string,
 	initial_size:             UVec2,
@@ -37,6 +58,8 @@ PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
 	screen_ui_reference_size = {1920, 1080},
 	world_ui_px_per_unit     = 100,
 }
+@(private = "file")
+DEFAULT_FONT_TTF := #load("../assets/Lora-Medium.ttf")
 
 SURFACE_FORMAT := wgpu.TextureFormat.BGRA8UnormSrgb
 HDR_FORMAT := wgpu.TextureFormat.RGBA16Float
@@ -49,7 +72,12 @@ HDR_SCREEN_TEXTURE_SETTINGS := TextureSettings {
 	usage        = {.RenderAttachment, .TextureBinding},
 }
 
+// The platform is some global thing that NEEDS to be initialized for the rest of the codebase to work.
+// Earlier we used dependency injection everywhere, passing e.g. the shader registry, the queue, the device, etc around.
+// But it is much more useful to have just one singleton PLATFORM memory location and work with that.
+PLATFORM: Platform
 Platform :: struct {
+	is_initialized:              bool,
 	settings:                    PlatformSettings,
 	window:                      glfw.WindowHandle,
 	// wgpu related fields:
@@ -59,11 +87,11 @@ Platform :: struct {
 	adapter:                     wgpu.Adapter,
 	device:                      wgpu.Device,
 	queue:                       wgpu.Queue,
+	assets:                      Assets,
 	shader_registry:             ShaderRegistry,
 	hdr_screen_texture:          Texture,
 	depth_screen_texture:        DepthTexture,
 	tonemapping_pipeline:        ^RenderPipeline, // owned by ShaderRegistry
-	asset_manager:               AssetManager,
 	surface_texture:             wgpu.SurfaceTexture, // a little hacky... acquired before input polling and stored here at start of frame to avoid V-Sync latency.
 
 	// input related fields:
@@ -73,6 +101,7 @@ Platform :: struct {
 	delta_secs:                  f32,
 	screen_size:                 UVec2,
 	screen_size_f32:             Vec2,
+	ui_ctx:                      UiCtx,
 	ui_layout_extent:            Vec2, // screen size, scaled such that height is always e.g. 1080px
 	screen_resized:              bool,
 	should_close:                bool,
@@ -94,7 +123,6 @@ Platform :: struct {
 	globals:                     UniformBuffer(ShaderGlobals),
 }
 
-
 ShaderGlobals :: struct {
 	camera_proj_col_1:       Vec3,
 	_pad_1:                  f32,
@@ -112,12 +140,36 @@ ShaderGlobals :: struct {
 	_pad_4:                  f32,
 	xxx:                     Vec4, // some floats for testing purposes
 }
-platform_create :: proc(platform: ^Platform, settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
+
+// this is honestly a bit stupid:
+_init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
+	assert(platform == &PLATFORM)
 	platform.settings = settings
 	_init_glfw_window(platform)
 	_init_wgpu(platform)
-	platform.hdr_screen_texture = texture_create(platform.device, platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
-	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
+
+	platform.ui_ctx = ui_ctx_create()
+	// create default texture (1px white) and default font
+	platform.assets = Assets{}
+	default_texture_handle := assets_insert(_texture_create_1px_white())
+	assert(DEFAULT_TEXTURE == default_texture_handle)
+
+	default_font: Font
+	font_err: Error
+	if settings.default_font_path == "" {
+		default_font, font_err = font_from_bytes(DEFAULT_FONT_TTF, "LuxuriousRoman")
+	} else {
+		default_font, font_err = font_from_path(settings.default_font_path)
+	}
+	default_font_handle := assets_insert(default_font)
+	assert(DEFAULT_FONT == default_font_handle)
+
+
+	default_motion_texture_handle := assets_insert(_motion_texture_create_1px_white())
+	assert(DEFAULT_MOTION_TEXTURE == default_motion_texture_handle)
+
+	platform.hdr_screen_texture = texture_create(platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
+	platform.depth_screen_texture = depth_texture_create(platform.screen_size)
 	platform.shader_registry = shader_registry_create(
 		platform.device,
 		settings.shaders_dir_path,
@@ -126,19 +178,16 @@ platform_create :: proc(platform: ^Platform, settings: PlatformSettings = PLATFO
 	uniform_buffer_create_from_bind_group_layout(
 		&platform.globals,
 		platform.device,
-		globals_bind_group_layout_cached(platform.device),
+		globals_bind_group_layout_cached(),
 	)
 
-	platform.tonemapping_pipeline = make_render_pipeline(
-		&platform.shader_registry,
-		tonemapping_pipeline_config(platform.device),
-	)
-	asset_manager_create(&platform.asset_manager, settings.default_font_path, platform.device, platform.queue)
+	platform.tonemapping_pipeline = make_render_pipeline(tonemapping_pipeline_config())
+	platform.is_initialized = true
 }
-globals_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+globals_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
 	if layout == nil {
-		layout = uniform_bind_group_layout(device, size_of(ShaderGlobals))
+		layout = uniform_bind_group_layout(size_of(ShaderGlobals))
 	}
 	return layout
 }
@@ -161,23 +210,13 @@ platform_prepare :: proc(platform: ^Platform, camera: Camera) {
 		xxx                     = platform.globals_xxx,
 	}
 	uniform_buffer_write(platform.queue, &platform.globals, &platform.globals_data)
-	asset_manager_update_changed_font_atlas_textures(&platform.asset_manager)
-}
-
-platform_destroy :: proc(platform: ^Platform) {
-	uniform_buffer_destroy(&platform.globals)
-	asset_manager_destroy(&platform.asset_manager)
-	shader_registry_destroy(&platform.shader_registry)
-	texture_destroy(&platform.hdr_screen_texture)
-	texture_destroy(&platform.depth_screen_texture)
-	wgpu.QueueRelease(platform.queue)
-	wgpu.DeviceDestroy(platform.device)
-	wgpu.InstanceRelease(platform.instance)
+	update_changed_font_atlas_textures(platform.queue)
 }
 
 
 // returns false if should be shut down
-platform_start_frame :: proc(platform: ^Platform) -> (should_keep_running: bool) {
+platform_start_frame :: proc() -> (should_keep_running: bool) {
+	platform := &PLATFORM
 	if platform.should_close {
 		return false
 	}
@@ -210,7 +249,6 @@ platform_start_frame :: proc(platform: ^Platform) -> (should_keep_running: bool)
 		glfw.SetWindowTitle(platform.window, title)
 	}
 	_recalculate_ui_layout_extent(platform)
-
 
 	return true
 }
@@ -283,7 +321,7 @@ _acquire_surface_texture :: proc(platform: ^Platform) {
 	// All good, could check for `surface_texture.suboptimal` here.
 	case .Timeout, .Outdated, .Lost:
 		// Skip this frame, and re-configure surface.
-		platform_resize(platform)
+		_platform_resize()
 		platform.surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
 		assert(
 			platform.surface_texture.status == .SuccessOptimal ||
@@ -351,7 +389,9 @@ _clear_file_paths :: proc(paths: ^[]string) {
 	paths^ = nil
 }
 
-platform_resize :: proc(platform: ^Platform) {
+@(private)
+_platform_resize :: proc() {
+	platform := &PLATFORM
 	platform.screen_resized = false
 	platform.surface_config.width = platform.screen_size.x
 	platform.surface_config.height = platform.screen_size.y
@@ -361,8 +401,8 @@ platform_resize :: proc(platform: ^Platform) {
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
 	texture_destroy(&platform.hdr_screen_texture)
 	texture_destroy(&platform.depth_screen_texture)
-	platform.hdr_screen_texture = texture_create(platform.device, platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
-	platform.depth_screen_texture = depth_texture_create(platform.device, platform.screen_size)
+	platform.hdr_screen_texture = texture_create(platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
+	platform.depth_screen_texture = depth_texture_create(platform.screen_size)
 	_acquire_surface_texture(platform)
 }
 

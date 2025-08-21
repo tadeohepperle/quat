@@ -97,7 +97,7 @@ sprites_sort_and_batch :: proc(
 
 @(private)
 _sprite_batch_key :: #force_inline proc(sprite: Sprite) -> u32 {
-	return u32(sprite.texture.handle)
+	return sprite.texture.handle.idx
 }
 
 sprite_batches_render :: proc(
@@ -106,7 +106,6 @@ sprite_batches_render :: proc(
 	instance_buffer: DynamicBuffer(SpriteInstance),
 	render_pass: wgpu.RenderPassEncoder,
 	globals_uniform_bind_group: wgpu.BindGroup,
-	assets: AssetManager,
 ) {
 	if len(batches) == 0 {
 		return
@@ -114,8 +113,9 @@ sprite_batches_render :: proc(
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
+	textures := assets_get_map(Texture)
 	for batch in batches {
-		texture_bind_group := assets_get_texture_bind_group(assets, batch.texture)
+		texture_bind_group := slotmap_get(textures, batch.texture).bind_group
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
 		wgpu.RenderPassEncoderDraw(render_pass, 4, u32(batch.end_idx - batch.start_idx), 0, u32(batch.start_idx))
 	}
@@ -157,7 +157,7 @@ SPRITE_VERTEX_ATTRIBUTES := []VertAttibute {
 	{format = .Float32, offset = offset_of(SpriteInstance, rotation)},
 	{format = .Float32, offset = offset_of(SpriteInstance, z)},
 }
-sprite_pipeline_config :: proc(device: wgpu.Device, kind: SpriteKind) -> RenderPipelineConfig {
+sprite_pipeline_config :: proc(kind: SpriteKind) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "sprite",
 		vs_shader = "sprite",
@@ -167,10 +167,7 @@ sprite_pipeline_config :: proc(device: wgpu.Device, kind: SpriteKind) -> RenderP
 		topology = .TriangleStrip,
 		vertex = {},
 		instance = {ty_id = SpriteInstance, attributes = SPRITE_VERTEX_ATTRIBUTES},
-		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(device),
-			rgba_bind_group_layout_cached(device),
-		),
+		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

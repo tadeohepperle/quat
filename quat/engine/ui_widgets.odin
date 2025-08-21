@@ -112,7 +112,13 @@ text :: proc {
 
 text_from_string :: proc(s: string, id: UiId = 0) -> UiText {
 	return q.ui_text(
-		q.Text{str = s, font = 0, color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
+		q.Text {
+			str = s,
+			font = q.DEFAULT_FONT,
+			color = THEME.text,
+			font_size = THEME.font_size,
+			shadow = THEME.text_shadow,
+		},
 	)
 }
 
