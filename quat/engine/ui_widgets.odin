@@ -86,13 +86,13 @@ with_children :: #force_inline proc(parent: UiDiv, children: []Ui) -> UiDiv {
 }
 
 child_div :: #force_inline proc(parent: UiDiv, div: Div, id: UiId = 0) -> UiDiv {
-	child := q.ui_div(div, id)
+	child := q.div(div, id)
 	q.ui_add_child(parent, child)
 	return child
 }
 
 child_text :: #force_inline proc(parent: UiDiv, text: Text, id: UiId = 0) -> UiText {
-	child := q.ui_text(text, id)
+	child := q.text(text, id)
 	q.ui_add_child(parent, child)
 	return child
 }
@@ -102,16 +102,16 @@ child_text :: #force_inline proc(parent: UiDiv, text: Text, id: UiId = 0) -> UiT
 // 	return ch
 // }
 
-div :: q.ui_div
+div :: q.div
 
 text :: proc {
-	q.ui_text,
+	q.text,
 	text_from_string,
 	text_from_any,
 }
 
 text_from_string :: proc(s: string, id: UiId = 0) -> UiText {
-	return q.ui_text(
+	return q.text(
 		q.Text {
 			str = s,
 			font = q.DEFAULT_FONT,
@@ -326,7 +326,7 @@ slider_int :: proc(
 
 	scroll := get_scroll()
 	if res.just_pressed {
-		f = (cursor_pos.x - knob_width / 2 - cached_pos.x) / (cached_size.x - knob_width)
+		f = (cursor_pos.x - knob_width / 2 - cached_pos.CachedElementInfo) / (cached_size.x - knob_width)
 		val = int(math.round(f32(min) + f * f32(max - min)))
 		start_drag_slider_value^ = val
 	} else if res.pressed || (scroll != 0 && res.hovered) {
@@ -428,7 +428,7 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 
 	scroll := get_scroll()
 	if res.just_pressed {
-		f = (cursor_pos.x - knob_width / 2 - cached_pos.x) / (cached_size.x - knob_width)
+		f = (cursor_pos.x - knob_width / 2 - cached_pos.CachedElementInfo) / (cached_size.x - knob_width)
 		val = min + f * (max - min)
 		start_drag_slider_value^ = val
 	} else if res.pressed || (scroll != 0 && res.hovered) {
@@ -759,7 +759,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 		cached_hue_slider_pos, cached_hue_slider_size, h_ok := q.ui_get_cached_no_user_data(hue_slider_id)
 		if h_ok {
 			if res_hue_slider.pressed {
-				fract_in_slider: f32 = (cursor_pos.x - cached_square_pos.x) / cached_square_size.x
+				fract_in_slider: f32 = (cursor_pos.x - cached_square_pos.CachedElementInfo) / cached_square_size.x
 				fract_in_slider = clamp(fract_in_slider, 0, 1)
 				g_hsv.h = f64(fract_in_slider) * 359.8 // so that we dont loop around
 			}

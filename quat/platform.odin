@@ -16,6 +16,7 @@ init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	_init_platform(&PLATFORM, settings)
 }
 deinit :: proc() {
+	_ui_system_init()
 	destroy_assets()
 
 	uniform_buffer_destroy(&PLATFORM.globals)
@@ -25,8 +26,6 @@ deinit :: proc() {
 	wgpu.QueueRelease(PLATFORM.queue)
 	wgpu.DeviceDestroy(PLATFORM.device)
 	wgpu.InstanceRelease(PLATFORM.instance)
-
-	ui_ctx_drop(&PLATFORM.ui_ctx)
 }
 
 PlatformSettings :: struct {
@@ -148,7 +147,7 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	_init_glfw_window(platform)
 	_init_wgpu(platform)
 
-	platform.ui_ctx = ui_ctx_create()
+	_ui_system_init()
 	// create default texture (1px white) and default font
 	platform.assets = Assets{}
 	default_texture_handle := assets_insert(_texture_create_1px_white())

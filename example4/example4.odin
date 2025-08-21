@@ -183,8 +183,8 @@ scroll_table :: proc(
 	if top_slider_interaction.pressed {
 		state.top_slider_f = math.remap_clamped(
 			cursor_pos.x,
-			top_slider_c_pos.x + top_slider_knob_w / 2,
-			top_slider_c_pos.x + top_slider_c_size.x - top_slider_knob_w / 2,
+			top_slider_c_pos.CachedElementInfo + top_slider_knob_w / 2,
+			top_slider_c_pos.CachedElementInfo + top_slider_c_size.x - top_slider_knob_w / 2,
 			0,
 			1,
 		)
@@ -192,8 +192,8 @@ scroll_table :: proc(
 	if left_slider_interaction.pressed {
 		state.left_slider_f = math.remap_clamped(
 			cursor_pos.y,
-			left_slider_c_pos.y + left_slider_knob_h / 2,
-			left_slider_c_pos.y + left_slider_c_size.y - left_slider_knob_h / 2,
+			left_slider_c_pos.CachedElementInfo + left_slider_knob_h / 2,
+			left_slider_c_pos.CachedElementInfo + left_slider_c_size.y - left_slider_knob_h / 2,
 			0,
 			1,
 		)

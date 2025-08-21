@@ -30,7 +30,7 @@ ui_render_buffers_destroy :: proc(this: ^UiRenderBuffers) {
 }
 
 ui_render_buffers_batch_and_prepare :: proc(this: ^UiRenderBuffers, top_level_elements: []TopLevelElement) {
-	build_ui_batches_and_attach_z_info(top_level_elements, this)
+	ui_system_build_batches(top_level_elements, this)
 	// for b in this.batches {
 	// 	print(b)
 	// 	if b.transform.space == .World {
@@ -103,13 +103,13 @@ ui_render :: proc(
 					u64(buffers.glyph_instance_buffer.size),
 				)
 			}
-			if batch.transform.space == .World {
+			if batch.transform.space == .World2D {
 				set_world_transform_push_const = true
 			}
 		}
 
 		if batch.transform != last_transform {
-			if batch.transform.space == .World {
+			if batch.transform.space == .World2D {
 				set_world_transform_push_const = true
 			}
 
@@ -140,8 +140,8 @@ ui_render :: proc(
 				render_pass,
 				{.Vertex},
 				0,
-				size_of(UiWorldTransform),
-				&batch.transform.data.world_transform,
+				size_of(UiTransform2d),
+				&batch.transform.data.transform2d,
 			)
 		}
 
@@ -162,7 +162,7 @@ ui_render :: proc(
 		}
 	}
 	// remove scissor again after all batches are done if last batch was in scissor:
-	if last_transform.space == .World || last_transform.data.clipped_to == nil {
+	if last_transform.space == .World2D || last_transform.data.clipped_to == nil {
 		// remove scissor
 		wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size.x, screen_size.y)
 	}
@@ -180,9 +180,9 @@ ui_rect_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_rect",
 		vs_shader = "ui",
-		vs_entry_point = "vs_rect_world" if space == .World else "vs_rect",
+		vs_entry_point = "vs_rect_world" if space == .World2D else "vs_rect",
 		fs_shader = "ui",
-		fs_entry_point = "fs_rect_world" if space == .World else "fs_rect",
+		fs_entry_point = "fs_rect_world" if space == .World2D else "fs_rect",
 		topology = .TriangleList,
 		vertex = {
 			ty_id = UiVertex,
@@ -199,7 +199,7 @@ ui_rect_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
-		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiWorldTransform)}) if space == .World else {},
+		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2d)}) if space == .World2D else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
@@ -215,7 +215,7 @@ ui_glyph_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
 		vs_shader = "ui",
-		vs_entry_point = "vs_glyph_world" if space == .World else "vs_glyph",
+		vs_entry_point = "vs_glyph_world" if space == .World2D else "vs_glyph",
 		fs_shader = "ui",
 		fs_entry_point = "fs_glyph",
 		topology = .TriangleStrip,
@@ -231,7 +231,7 @@ ui_glyph_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 			),
 		},
 		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
-		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiWorldTransform)}) if space == .World else {},
+		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2d)}) if space == .World2D else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,

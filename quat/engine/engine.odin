@@ -98,7 +98,7 @@ PipelineType :: enum {
 UiAtWorldPos :: struct {
 	ui:        q.Ui,
 	world_pos: Vec2,
-	transform: q.UiWorldTransform,
+	transform: q.UiTransform2d,
 }
 
 // roughly in render order
@@ -356,10 +356,10 @@ _engine_prepare :: proc(engine: ^Engine) {
 	q.platform_prepare(&engine.platform, scene.camera)
 	clear(&engine.top_level_elements_scratch)
 	for e in scene.world_ui {
-		q.layout_in_world_space(
+		q.ui_system_layout_in_world_space(
 			e.ui,
 			e.world_pos,
-			q.WORLD_UI_UNIT_TRANSFORM,
+			q.WORLD_UI_UNIT_TRANSFORM_2D,
 			engine.platform.settings.world_ui_px_per_unit,
 		)
 		append(
@@ -368,7 +368,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 		)
 	}
 	for ui in scene.screen_ui {
-		q.layout_in_screen_space(ui, engine.platform.ui_layout_extent)
+		q.ui_system_layout_in_screen_space(ui, engine.platform.ui_layout_extent)
 		append(
 			&engine.top_level_elements_scratch,
 			q.TopLevelElement{ui, q.UiTransform{space = .Screen, data = {clipped_to = nil}}},
@@ -591,11 +591,11 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 			c := pos + size
 			d := pos + Vec2{size.x, 0}
 			trans := v.transform.data.world_transform
-			if trans != q.WORLD_UI_UNIT_TRANSFORM {
-				a = q.ui_world_transform_apply(trans, a)
-				b = q.ui_world_transform_apply(trans, b)
-				c = q.ui_world_transform_apply(trans, c)
-				d = q.ui_world_transform_apply(trans, d)
+			if trans != q.WORLD_UI_UNIT_TRANSFORM_2D {
+				a = q.ui_transform_2d_apply(trans, a)
+				b = q.ui_transform_2d_apply(trans, b)
+				c = q.ui_transform_2d_apply(trans, c)
+				d = q.ui_transform_2d_apply(trans, d)
 			}
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, a, b, color, .WORLD)
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, b, c, color, .WORLD)
@@ -921,9 +921,9 @@ add_ui :: proc(ui: q.Ui) {
 	append(&ENGINE.scene.screen_ui, ui)
 }
 add_world_ui :: proc(world_pos: Vec2, ui: q.Ui) {
-	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos, q.WORLD_UI_UNIT_TRANSFORM})
+	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos, q.WORLD_UI_UNIT_TRANSFORM_2D})
 }
-add_world_ui_at_transform :: proc(transform: q.UiWorldTransform, ui: q.Ui) {
+add_world_ui_at_transform :: proc(transform: q.UiTransform2d, ui: q.Ui) {
 	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, Vec2{0, 0}, transform})
 }
 add_ui_next_to_world_point :: proc(

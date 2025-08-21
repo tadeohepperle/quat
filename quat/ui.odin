@@ -11,6 +11,72 @@ import "core:mem"
 import "core:os"
 import "core:slice"
 import "core:unicode/utf8"
+/*
+
+Here is a short overview about how to use this UI system.
+```
+// start of app
+ui_system_init()
+
+// update game loop
+for {
+	// start of frame
+	ui_system_start_frame_clearing_arenas()
+	ui_system_view_cache() or ui_system_get_hovered_id_and_tag()
+	ui_system_set_user_provided_values(...) // e.g. set which ui id is currently selected, where the cursor pos is, what is the deltatime for lerping
+	
+	// middle of frame
+	btn_pressed = ui_interaction(BTN_ID).pressed
+	btn = button("Hello", BTN_ID, color = BLUE if btn_pressed else WHITE)
+	panel = div(...)
+	text = text(...)
+
+	// end of frame:
+	ui_system_layout_in_screen_space({btn, panel}, screen_layout_extent)
+	ui_system_layout_in_world_2d_space(text, UiTransform2d{..})
+	ui_render_buffers_batch_and_prepare(^UiRenderBuffers, []TopLevelElement)   // write the out_batches to GPU buffers
+		calls ui_system_build_batches([]TopLevelElement, ^UiBatches)
+	ui_render()
+}
+
+ui_render_buffers_batch_and_prepare :: proc(this: ^UiRenderBuffers, top_level_elements: []TopLevelElement) {
+	ui_system_build_batches(top_level_elements, this)
+	// for b in this.batches {
+	// 	print(b)
+	// 	if b.transform.space == .World {
+	// 		print("     W: ", b.transform.data.world_transform)
+	// 	}
+	// }
+	dynamic_buffer_write(&this.vertex_buffer, this.primitives.vertices[:])
+	dynamic_buffer_write(&this.index_buffer, this.primitives.triangles[:])
+	dynamic_buffer_write(&this.glyph_instance_buffer, this.primitives.glyphs_instances[:])
+}
+ui_system_deinit()
+
+// you can use ui_system_measure(my_element) to figure out the size of things while still constructing the ui. Then get_and_set_size will be called twice that frame but that is okay.
+```
+
+*/
+
+UiUserProvidedValues :: struct {
+	delta_secs:                           f32, // for lerping UI elements
+	id_state:                             InteractionState(UiId),
+	tag_state:                            InteractionState(UiTag),
+	screen_layout_extent:                 Vec2,
+	screen_layout_cursor_pos:             Vec2,
+	screen_layout_cursor_pos_start_press: Vec2,
+	world_2d_cursor_pos:                  Vec2,
+	world_2d_cursor_pos_start_press:      Vec2,
+	world_2d_px_per_unit:                 f32,
+	// todo: 3d ray for cursor pos in 3d
+}
+ui_system_set_user_provided_values :: proc(values: UiUserProvidedValues) {
+	UI_CTX.user_provided_values = values
+}
+ui_system_view_cache :: proc() -> map[UiId]CachedElement {
+	return UI_CTX.old_cache
+}
+
 
 NO_ID: UiId = 0
 UiId :: u64
@@ -50,22 +116,21 @@ ui_id_from_multiple_anys :: proc(data: ..any) -> UiId {
 	return seed
 }
 ui_interaction :: proc "contextless" (id: UiId) -> Interaction {
-	return interaction(id, &UI_CTX_PTR.cache.state)
+	return interaction(id, &UI_CTX.user_provided_values.id_state)
 }
 ui_interaction_state :: proc "contextless" () -> InteractionState(UiId) {
-	return UI_CTX_PTR.cache.state
+	return UI_CTX.user_provided_values.id_state
 }
 ui_tag_hovered :: proc "contextless" (tag: UiTag) -> bool {
-	return UI_CTX_PTR.cache.tag_state.hovered == tag
+	return UI_CTX.user_provided_values.tag_state.hovered == tag
 }
 ui_hovered_tag :: proc "contextless" () -> UiTag {
-	return UI_CTX_PTR.cache.tag_state.hovered
+	return UI_CTX.user_provided_values.tag_state.hovered
 }
 ui_set_tag :: proc "contextless" (ui: Ui, tag: UiTag) {
 	ptr := _element_base_ptr(ui)
 	ptr.tag = tag
 }
-
 ui_set_tag_recursive :: proc "contextless" (ui: Ui, tag: UiTag) {
 	switch ui in ui {
 	case ^DivElement:
@@ -136,45 +201,50 @@ interaction :: proc "contextless" (id: $T, state: ^InteractionState(T)) -> Inter
 	}
 }
 
+CachedElementInfo :: struct {
+	pos:        Vec2,
+	size:       Vec2,
+	space:      UiSpace,
+	cursor_pos: Vec2,
+}
+
 ui_get_cached :: proc(
 	id: UiId,
 	$USER_DATA_TY: typeid,
 ) -> (
-	pos: Vec2,
-	size: Vec2,
-	is_world_ui: bool,
+	info: CachedElementInfo,
 	user_data: ^USER_DATA_TY,
 	ok: bool,
 ) where size_of(CachedUserData) >=
 	size_of(USER_DATA_TY) {
-	cached, _ok := &UI_CTX_PTR.cache.cached[id]
+	el, _ok := &UI_CTX.old_cache.cached[id]
 	if !_ok {
 		return {}, {}, false, nil, false
 	}
-	user_data = cast(^USER_DATA_TY)(&cached.user_data)
-	return cached.pos, cached.size, cached.transform.space == .World, user_data, true
+	user_data = cast(^USER_DATA_TY)(&el.user_data)
+	return cashed_element_info(el^), user_data, true
 }
 
-ui_get_cached_no_user_data :: proc(id: UiId) -> (pos, size: Vec2, ok: bool) {
-	cached, _ok := &UI_CTX_PTR.cache.cached[id]
+@(private = "file")
+cashed_element_info :: proc(el: CachedElement) -> CachedElementInfo {
+	info := CachedElementInfo{el.pos, el.size, el.transform.space, {}}
+	return info
+}
+ui_get_cached_no_user_data :: proc(id: UiId) -> (data: CachedElementInfo, ok: bool) {
+	el, _ok := UI_CTX.old_cache[id]
 	if !_ok {
-		return {}, {}, false
+		return {}, false
 	}
-	return cached.pos, cached.size, true
+	return cashed_element_info(el), true
 }
 
 // cursor pos scaled to the UI layout extent {1920,1080}
 ui_cursor_pos :: proc(world := false) -> (cursor_pos: Vec2, cursor_pos_start_press: Vec2) {
-	if world {
-		return UI_CTX_PTR.cache.cursor_pos_world, UI_CTX_PTR.cache.cursor_pos_world_start_press
-	} else {
-		return UI_CTX_PTR.cache.cursor_pos, UI_CTX_PTR.cache.cursor_pos_start_press
-	}
-
+	unimplemented()
 }
 ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	for id in ids {
-		if UI_CTX_PTR.cache.state.pressed == id || UI_CTX_PTR.cache.state.focused == id {
+		if UI_CTX.user_provided_values.id_state.pressed == id || UI_CTX.user_provided_values.id_state.focused == id {
 			return true
 		}
 	}
@@ -183,18 +253,6 @@ ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 
 // used to give groups of elements the same tag, such that you can check if a certain tag was hovered
 UiTag :: u64
-// stuff that should survive the frame boundary is stored here, e.g. previous aabb for divs that had ids
-UiCache :: struct {
-	cached:                       map[UiId]CachedElement,
-	new_cached:                   map[UiId]CachedElement,
-	state:                        InteractionState(UiId),
-	tag_state:                    InteractionState(UiTag),
-	cursor_pos_start_press:       Vec2,
-	cursor_pos_world_start_press: Vec2,
-	delta_secs:                   f32,
-	cursor_pos:                   Vec2, // (scaled to reference cursor pos)
-	cursor_pos_world:             Vec2,
-}
 
 // Z position in made up of the following components:
 // - traversal_idx - added to each encountered div during a depth-first traversal of the tree
@@ -222,36 +280,41 @@ CachedElement :: struct {
 	color:                Color,
 	user_data:            CachedUserData,
 	z_info:               ZInfo,
-	using transform:      UiTransform,
+	transform:            UiTransform,
 	tag:                  UiTag, // some tag set by the user explicitly
 }
 
 
 UiSpace :: enum {
 	Screen,
-	World,
+	World2D,
+	World3D,
 }
 UiTransform :: struct {
 	space: UiSpace,
 	data:  struct #raw_union {
-		clipped_to:      Maybe(Aabb),
-		world_transform: UiWorldTransform,
+		clipped_to:  Maybe(Aabb),
+		transform2d: UiTransform2d,
+		transform3d: UiTransform3d,
 	},
 }
 
-
-UiWorldTransform :: struct {
+UiTransform2d :: struct {
 	rot_scale: Mat2,
 	offset:    Vec2,
 }
-WORLD_UI_UNIT_TRANSFORM :: UiWorldTransform {
+UiTransform3d :: struct {
+	// todo
+}
+
+WORLD_UI_UNIT_TRANSFORM_2D :: UiTransform2d {
 	offset    = Vec2{0, 0},
 	rot_scale = Mat2{1, 0, 0, 1},
 }
-ui_world_transform_apply :: proc "contextless" (this: UiWorldTransform, p: Vec2) -> Vec2 {
+ui_transform_2d_apply :: proc "contextless" (this: UiTransform2d, p: Vec2) -> Vec2 {
 	return this.rot_scale * p + this.offset
 }
-ui_world_transform_reverse :: proc "contextless" (this: UiWorldTransform, q: Vec2) -> Vec2 {
+ui_transform_2d_reverse :: proc "contextless" (this: UiTransform2d, q: Vec2) -> Vec2 {
 	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset) // 
 }
 
@@ -325,7 +388,9 @@ TextElement :: struct {
 	using text:       Text,
 	glyphs_start_idx: int,
 	glyphs_end_idx:   int, // excluding idx, like in a i..<j range
-	text_layout_ctx:  ^TextLayoutCtx, // temp allocated! Reason: (a little hacky), save the text layouts during the set_size step here, such that other custom elements can lookup a certain text_id in the set_position step and draw geometry based on the layouted lines.
+	// temp allocated! Reason: (a little hacky), save the text layouts during the set_size step here, such that other custom elements can lookup a certain text_id in the set_position step and draw geometry based on the layouted lines.
+	// this is used for text edit boxes where we need to draw a cursor at the precise position a
+	text_layout_ctx:  ^TextLayoutCtx,
 }
 
 DivElement :: struct {
@@ -334,6 +399,7 @@ DivElement :: struct {
 	content_size: Vec2, // computed
 	children:     [dynamic]Ui, // in temp storage, 
 	// todo: optimize children to be 3 usizes only, and store a single child inline: {backing: []Ui | Ui, len: int} because []Ui and Ui are both 2*8 bytes.    
+	// children could also just be: struct {n_children: u32, first_child_idx: u32, sibling_idx: u32}
 }
 
 Children :: struct {
@@ -349,7 +415,6 @@ CustomUiMesh :: struct {
 	triangles: []Triangle,
 	texture:   TextureHandle,
 }
-
 
 CustomGlyphs :: struct {
 	instances: []UiGlyphInstance,
@@ -502,7 +567,8 @@ Ui :: union {
 	^CustomUiElement,
 }
 
-UI_CTX_PTR := &PLATFORM.ui_ctx
+@(private = "file")
+UI_CTX: UiCtx
 UiCtx :: struct {
 	// all buffers here are fixed size, allocated once because any reallocation could
 	// fuck up the internal ptrs in the childrens arrays!
@@ -516,9 +582,11 @@ UiCtx :: struct {
 	// For that, make this a dynamic array that is swapped to the ui_batches
 	glyphs:                  []ComputedGlyph,
 	glyphs_len:              int,
-	cache:                   UiCache,
 	text_ids_to_tmp_layouts: map[UiId]^TextLayoutCtx, // currently saved here such that custom elements can access it to read the positions of glyphs.
 	temp_alloc:              runtime.Allocator,
+	old_cache:               map[UiId]CachedElement,
+	new_cache:               map[UiId]CachedElement,
+	user_provided_values:    UiUserProvidedValues,
 }
 
 DIVS_MAX_COUNT :: 4096
@@ -526,17 +594,24 @@ TEXTS_MAX_COUNT :: 4096
 CUSTOM_UIS_MAX_COUNT :: 512
 GLYPHS_MAX_COUNT :: 4096 * 16
 
-// Idea: Global ctx could be outsourced to engine package instead of living in quat.
-// but then we need all functions like `div`, `text`, etc. to pass the ctx around constantly
-// and we need to provide wrappers referring to the GLOBAL_CTX in the `engine` package 
-ui_ctx_create :: proc() -> (ctx: UiCtx) {
-	ctx.divs = make([]DivElement, DIVS_MAX_COUNT)
-	ctx.texts = make([]TextElement, TEXTS_MAX_COUNT)
-	ctx.custom_uis = make([]CustomUiElement, CUSTOM_UIS_MAX_COUNT)
-	ctx.glyphs = make([]ComputedGlyph, GLYPHS_MAX_COUNT)
-	ctx.temp_alloc = context.temp_allocator
-	return ctx
+@(private)
+_ui_system_init :: proc() {
+	UI_CTX.divs = make([]DivElement, DIVS_MAX_COUNT)
+	UI_CTX.texts = make([]TextElement, TEXTS_MAX_COUNT)
+	UI_CTX.custom_uis = make([]CustomUiElement, CUSTOM_UIS_MAX_COUNT)
+	UI_CTX.glyphs = make([]ComputedGlyph, GLYPHS_MAX_COUNT)
+	UI_CTX.temp_alloc = context.temp_allocator
 }
+
+@(private)
+_ui_system_deinit :: proc() {
+	delete(UI_CTX.divs)
+	delete(UI_CTX.custom_uis)
+	delete(UI_CTX.texts)
+	delete(UI_CTX.glyphs)
+	delete(UI_CTX.text_ids_to_tmp_layouts)
+}
+
 UiElementCounts :: struct {
 	divs:       int,
 	texts:      int,
@@ -544,40 +619,32 @@ UiElementCounts :: struct {
 	custom_uis: int,
 }
 
-ui_ctx_drop :: proc(ctx: ^UiCtx) {
-	delete(ctx.divs)
-	delete(ctx.custom_uis)
-	delete(ctx.texts)
-	delete(ctx.glyphs)
-	delete(ctx.cache.cached)
-	delete(ctx.text_ids_to_tmp_layouts)
-}
 
 ui_add_child :: proc(of: ^DivElement, child: Ui) {
 	append(&of.children, child)
 }
 
-ui_div :: proc(div: Div, id: UiId = NO_ID) -> ^DivElement {
-	UI_CTX_PTR.divs[UI_CTX_PTR.divs_len] = DivElement {
+div :: proc(div: Div, id: UiId = NO_ID) -> ^DivElement {
+	UI_CTX.divs[UI_CTX.divs_len] = DivElement {
 		base = UiElementBase{id = id},
 		div = div,
 		children = make([dynamic]Ui, allocator = context.temp_allocator),
 	}
 	#no_bounds_check {
-		ptr := &UI_CTX_PTR.divs[UI_CTX_PTR.divs_len]
-		UI_CTX_PTR.divs_len += 1
+		ptr := &UI_CTX.divs[UI_CTX.divs_len]
+		UI_CTX.divs_len += 1
 		return ptr
 	}
 }
 
-ui_text :: proc(text: Text, id: UiId = NO_ID) -> ^TextElement {
-	UI_CTX_PTR.texts[UI_CTX_PTR.texts_len] = TextElement {
+text :: proc(text: Text, id: UiId = NO_ID) -> ^TextElement {
+	UI_CTX.texts[UI_CTX.texts_len] = TextElement {
 		base = UiElementBase{id = id},
 		text = text,
 	}
 	#no_bounds_check {
-		ptr := &UI_CTX_PTR.texts[UI_CTX_PTR.texts_len]
-		UI_CTX_PTR.texts_len += 1
+		ptr := &UI_CTX.texts[UI_CTX.texts_len]
+		UI_CTX.texts_len += 1
 		return ptr
 	}
 }
@@ -608,7 +675,7 @@ ui_custom :: proc(
 	data_dst: ^T = cast(^T)&custom_element.data
 	data_dst^ = data
 
-	ctx := &UI_CTX_PTR
+	ctx := &UI_CTX
 	ctx.custom_uis[ctx.custom_uis_len] = custom_element
 	#no_bounds_check {
 		ptr := &ctx.custom_uis[ctx.custom_uis_len]
@@ -617,114 +684,76 @@ ui_custom :: proc(
 	}
 }
 
-// important! This should be done AFTER hit info was calculated!
-ui_ctx_start_frame :: proc(platform: ^Platform, world_hit_pos: Vec2) {
-	screen_size := platform.screen_size_f32
-	cache := &UI_CTX_PTR.cache
-	cache.delta_secs = platform.delta_secs
-	// swap the cached id-element hashmaps:
-	cache.cached, cache.new_cached = cache.new_cached, cache.cached
-	clear(&cache.new_cached)
+ui_system_start_frame_clearing_arenas :: proc() {
+	// swap old and new caches:
+	UI_CTX.old_cache, UI_CTX.new_cache = UI_CTX.new_cache, UI_CTX.old_cache
+	clear(&UI_CTX.new_cache)
+	UI_CTX.divs_len = 0
+	UI_CTX.texts_len = 0
+	UI_CTX.custom_uis_len = 0
+	UI_CTX.glyphs_len = 0
+}
 
-	cache.cursor_pos = screen_to_layout_space(
-		platform.cursor_pos,
-		platform.settings.screen_ui_reference_size,
-		screen_size,
-	)
-	cache.cursor_pos_world = Vec2{world_hit_pos.x, -world_hit_pos.y} * platform.settings.world_ui_px_per_unit
-
-	_ui_ctx_clear_arrays(UI_CTX_PTR)
+ui_system_get_hovered_id_and_tag :: proc() -> (hovered_id: UiId, hovered_tag: UiTag) {
 	// todo: this could probably also be done, by using the div tree as a space partitioning structure 
 	// (assuming non-overlapping divs for the most part!)
 	// figure out if any ui element with an id is hovered. If many, select the one with highest z value
-	hovered: UiId = 0
-	hovered_tag: UiTag = 0
+	hovered_id = 0
+	hovered_tag = 0
 	highest_z := ZInfo{}
-	for id, cached in cache.cached {
-		if cached.pointer_pass_through {
+	u_vals := UI_CTX.user_provided_values
+	for id, el in UI_CTX.old_cache {
+		if el.pointer_pass_through || !z_gte(el.z_info, highest_z) {
 			continue
 		}
-		if z_gte(cached.z_info, highest_z) {
 
-			// determine where the cursor would land in the ui
-			cursor_pos: Vec2 = ---
-			switch cached.space {
-			case .Screen:
-				cursor_pos = cache.cursor_pos
-			case .World:
-				cursor_pos = cache.cursor_pos_world
-				trans := cached.transform.data.world_transform
-				if trans != WORLD_UI_UNIT_TRANSFORM {
-					// do this shit, because ui y direction and world y are opposed and cursor_pos is scaled by px per world unit
-					cursor_pos /= platform.settings.world_ui_px_per_unit
-					cursor_pos.y = -cursor_pos.y
-					cursor_pos = ui_world_transform_reverse(cached.transform.data.world_transform, cursor_pos)
-					cursor_pos *= platform.settings.world_ui_px_per_unit
-					cursor_pos.y = -cursor_pos.y
-				}
+
+		// determine where the cursor would land in the ui
+		cursor_pos: Vec2 = ---
+		switch el.transform.space {
+		case .Screen:
+			cursor_pos = u_vals.screen_layout_cursor_pos
+		case .World2D:
+			cursor_pos = u_vals.world_2d_cursor_pos
+			transform := el.transform.data.transform2d
+			if transform != WORLD_UI_UNIT_TRANSFORM_2D {
+				// do this shit, because ui y direction and world y are opposed and cursor_pos is scaled by px per world unit
+				cursor_pos /= u_vals.world_2d_px_per_unit
+				cursor_pos.y = -cursor_pos.y
+				cursor_pos = ui_transform_2d_reverse(transform, cursor_pos)
+				cursor_pos *= u_vals.world_2d_px_per_unit
+				cursor_pos.y = -cursor_pos.y
 			}
+		case .World3D:
+			unimplemented()
+		}
 
-			cursor_in_bounds :=
-				cursor_pos.x >= cached.pos.x &&
-				cursor_pos.y >= cached.pos.y &&
-				cursor_pos.x <= cached.pos.x + cached.size.x &&
-				cursor_pos.y <= cached.pos.y + cached.size.y
+		cursor_in_bounds :=
+			cursor_pos.x >= el.pos.x &&
+			cursor_pos.y >= el.pos.y &&
+			cursor_pos.x <= el.pos.x + el.size.x &&
+			cursor_pos.y <= el.pos.y + el.size.y
 
-			// for elements that are clipped by parent, the cursor also needs to be in the clipping rect! (hovering a clipped region should not trigger anything)
-			if cached.space == .Screen {
-				if clipped_to, ok := cached.transform.data.clipped_to.(Aabb); cursor_in_bounds && ok {
-					cursor_in_bounds &= aabb_contains(clipped_to, cache.cursor_pos)
-				}
-			}
-
-
-			if cursor_in_bounds {
-				highest_z = cached.z_info
-				hovered = id
-				hovered_tag = cached.tag
+		// for elements that are clipped by parent, the cursor also needs to be in the clipping rect! (hovering a clipped region should not trigger anything)
+		if el.transform.space == .Screen {
+			if clipped_to, ok := el.transform.data.clipped_to.(Aabb); cursor_in_bounds && ok {
+				cursor_in_bounds &= aabb_contains(clipped_to, u_vals.screen_layout_cursor_pos)
 			}
 		}
+
+		if cursor_in_bounds {
+			highest_z = el.z_info
+			hovered_id = id
+			hovered_tag = el.tag
+		}
 	}
-
-	// determine the rest of ids, i.e. \
-	left_btn := PLATFORM.mouse_buttons[.Left]
-	update_interaction_state(&cache.state, hovered, left_btn)
-	update_interaction_state(&cache.tag_state, hovered_tag, left_btn)
-
-	if cache.state.just_pressed != 0 {
-		cache.cursor_pos_start_press = cache.cursor_pos
-		cache.cursor_pos_world_start_press = cache.cursor_pos_world
-	}
+	return hovered_id, hovered_tag
 }
-_ui_ctx_clear_arrays :: proc(ctx: ^UiCtx) {
-	ctx.divs_len = 0
-	ctx.texts_len = 0
-	ctx.custom_uis_len = 0
-	ctx.glyphs_len = 0
-}
-
-// ui_end_frame :: proc(
-// 	top_level_elements: []Ui,
-// 	max_size: Vec2,
-// 	delta_secs: f32,
-// 	out_batches: ^UiBatches,
-// ) {
-// 	assert(
-// 		UI_CTX_PTR.cache.platform != nil,
-// 		"platform ptr must be set on UI_CTX_PTR.cache, because it contains the asset manager that we need for resolving fonts!",
-// 	)
-// 	for ui in top_level_elements {
-// 		layout(ui, max_size) // warning! uses the global context at the moment
-// 	}
-// 	update_ui_cache(delta_secs)
-// 	build_ui_batches_and_attach_z_info(top_level_elements, out_batches)
-// 	return
-// }
 
 // /////////////////////////////////////////////////////////////////////////////
 // SECTION: Layout algorithm
 // /////////////////////////////////////////////////////////////////////////////
-layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
+ui_system_layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
 	initial_pos := Vec2{0, 0}
 	used_size := _set_size(ui, layout_extent)
 
@@ -743,18 +772,23 @@ layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
 
 
 INFINITE_SIZE :: Vec2{max(f32), max(f32)}
-layout_in_world_space :: proc(ui: Ui, world_pos: Vec2, transform: UiWorldTransform, pixels_per_world_unit: f32) {
+ui_system_layout_in_world_2d_space :: proc(
+	ui: Ui,
+	world_pos: Vec2,
+	transform2d: UiTransform2d,
+	pixels_per_world_unit: f32,
+) {
 	used_size := _set_size(ui, INFINITE_SIZE)
 	initial_pos := Vec2{world_pos.x, -world_pos.y} * pixels_per_world_unit - (used_size / 2)
 	transform := UiTransform {
-		space = .World,
-		data = {world_transform = transform},
+		space = .World2D,
+		data = {transform2d = transform2d},
 	}
 	context.user_ptr = &transform
 	_set_position(ui, initial_pos)
 }
 
-measure_ui_size :: proc(ui: Ui, max_size: Maybe(Vec2) = nil) -> Vec2 {
+ui_system_measure :: proc(ui: Ui, max_size: Maybe(Vec2) = nil) -> Vec2 {
 	max_size := max_size.(Vec2) or_else INFINITE_SIZE
 	used_size := _set_size(ui, max_size)
 	return used_size
@@ -768,7 +802,7 @@ _set_size :: proc(ui: Ui, max_size: Vec2) -> (used_size: Vec2) {
 	case ^TextElement:
 		_set_size_for_text(el, max_size)
 		if el.id != 0 {
-			UI_CTX_PTR.text_ids_to_tmp_layouts[el.id] = el.text_layout_ctx
+			UI_CTX.text_ids_to_tmp_layouts[el.id] = el.text_layout_ctx
 		}
 		used_size = el.size
 	case ^CustomUiElement:
@@ -910,7 +944,7 @@ _set_position :: proc(ui: Ui, pos: Vec2) {
 	case ^CustomUiElement:
 		el.pos = pos
 		if el.id != NO_ID {
-			UI_CTX_PTR.cache.new_cached[el.id] = CachedElement {
+			UI_CTX.new_cache[el.id] = CachedElement {
 				pos       = el.pos,
 				size      = el.size,
 				transform = (cast(^UiTransform)context.user_ptr)^,
@@ -925,7 +959,6 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 	div.pos = pos + div.offset
 
 	if div.id != NO_ID {
-		cache := &UI_CTX_PTR.cache
 		new_cached := CachedElement {
 			pos                  = div.pos,
 			size                 = div.size,
@@ -937,7 +970,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 		}
 
 		// lerp and transfer user data if this div existed last frame already
-		if old_cached, has_old_cached := cache.cached[div.id]; has_old_cached {
+		if old_cached, has_old_cached := UI_CTX.old_cache[div.id]; has_old_cached {
 			new_cached.user_data = old_cached.user_data
 
 			lerp_style := .LerpStyle in div.flags
@@ -948,7 +981,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 				if lerp_speed == 0 {
 					lerp_speed = DIV_DEFAULT_LERP_SPEED
 				}
-				t = lerp_speed * cache.delta_secs
+				t = lerp_speed * UI_CTX.user_provided_values.delta_secs
 			}
 			if lerp_style {
 				new_cached.color = lerp(old_cached.color, div.color, t)
@@ -965,8 +998,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 			}
 		}
 
-
-		UI_CTX_PTR.cache.new_cached[div.id] = new_cached
+		UI_CTX.new_cache[div.id] = new_cached
 	}
 
 	// set position of children (important to do this after lerping):
@@ -1088,13 +1120,13 @@ _element_base_ptr :: #force_inline proc "contextless" (ui: Ui) -> ^UiElementBase
 
 _set_position_for_text :: proc(text: ^TextElement, pos: Vec2) {
 	text.pos = pos + text.offset
-	for &g in UI_CTX_PTR.glyphs[text.glyphs_start_idx:text.glyphs_end_idx] {
+	for &g in UI_CTX.glyphs[text.glyphs_start_idx:text.glyphs_end_idx] {
 		g.pos.x += f32(text.pos.x)
 		g.pos.y += f32(text.pos.y)
 	}
 
 	if text.id != NO_ID {
-		UI_CTX_PTR.cache.new_cached[text.id] = CachedElement {
+		UI_CTX.new_cache[text.id] = CachedElement {
 			pos                  = text.pos,
 			size                 = text.size,
 			color                = text.color,
@@ -1148,7 +1180,7 @@ DivAndLineIdx :: struct {
 
 tmp_text_layout_ctx :: proc(max_size: Vec2, additional_line_gap: f32, align: TextAlign) -> ^TextLayoutCtx {
 	ctx := new(TextLayoutCtx, allocator = context.temp_allocator)
-	start_idx := UI_CTX_PTR.glyphs_len
+	start_idx := UI_CTX.glyphs_len
 	ctx^ = TextLayoutCtx {
 		max_size = max_size,
 		max_width = f32(max_size.x),
@@ -1202,7 +1234,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 		ctx.current_line.metrics,
 		scale_line_metrics(font.line_metrics, scale),
 	)
-	text.glyphs_start_idx = UI_CTX_PTR.glyphs_len
+	text.glyphs_start_idx = UI_CTX.glyphs_len
 	resize(&ctx.byte_advances, len(ctx.byte_advances) + len(text.str))
 	ch_loop: for ch, ch_byte_idx in text.str {
 		ctx.last_byte_idx = ch_byte_idx
@@ -1241,7 +1273,7 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 				for j in 0 ..< move_n_to_next_line {
 					oa := ctx.last_non_whitespace_advances[j]
 					glyph_idx := ctx.current_line.glyphs_start_idx + j
-					UI_CTX_PTR.glyphs[glyph_idx].pos.x = ctx.current_line.advance + oa.offset
+					UI_CTX.glyphs[glyph_idx].pos.x = ctx.current_line.advance + oa.offset
 					ctx.current_line.advance += oa.advance
 					last_line.advance -= oa.advance
 				}
@@ -1255,28 +1287,28 @@ _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
 			x_offset := g.xmin
 			y_offset := -g.ymin
 			height := g.height
-			if UI_CTX_PTR.glyphs_len >= GLYPHS_MAX_COUNT {
+			if UI_CTX.glyphs_len >= GLYPHS_MAX_COUNT {
 				log.warn("Too many glyphs! Rest will be cut off.")
 				break ch_loop
 			}
 
-			UI_CTX_PTR.glyphs[UI_CTX_PTR.glyphs_len] = ComputedGlyph {
+			UI_CTX.glyphs[UI_CTX.glyphs_len] = ComputedGlyph {
 				pos  = Vec2{ctx.current_line.advance + x_offset, -height + y_offset},
 				size = Vec2{g.width, g.height},
 				uv   = Aabb{g.uv_min, g.uv_max},
 			}
-			UI_CTX_PTR.glyphs_len += 1
-			ctx.current_line.glyphs_end_idx = UI_CTX_PTR.glyphs_len // ??? idk if we should do this all the time...
+			UI_CTX.glyphs_len += 1
+			ctx.current_line.glyphs_end_idx = UI_CTX.glyphs_len // ??? idk if we should do this all the time...
 			append(&ctx.last_non_whitespace_advances, XOffsetAndAdvance{offset = x_offset, advance = g.advance})
 		}
 		ctx.current_line.advance += g.advance
 		ctx.byte_advances[ch_byte_idx] = ctx.current_line.advance
 	}
-	text.glyphs_end_idx = UI_CTX_PTR.glyphs_len
+	text.glyphs_end_idx = UI_CTX.glyphs_len
 }
 
 break_line :: proc(ctx: ^TextLayoutCtx) {
-	break_idx := UI_CTX_PTR.glyphs_len
+	break_idx := UI_CTX.glyphs_len
 	ctx.current_line.glyphs_end_idx = break_idx
 	ctx.current_line.byte_end_idx = ctx.last_byte_idx
 	append(&ctx.lines, ctx.current_line)
@@ -1287,7 +1319,7 @@ break_line :: proc(ctx: ^TextLayoutCtx) {
 
 finalize_text_layout_ctx_and_return_size :: proc(ctx: ^TextLayoutCtx) -> (used_size: Vec2) {
 	ctx.current_line.byte_end_idx = ctx.last_byte_idx
-	ctx.current_line.glyphs_end_idx = UI_CTX_PTR.glyphs_len
+	ctx.current_line.glyphs_end_idx = UI_CTX.glyphs_len
 	append(&ctx.lines, ctx.current_line)
 	// calculate the y of the character baseline for each line and add it to the y position of each glyphs coordinates
 	base_y: f32 = 0
@@ -1299,7 +1331,7 @@ finalize_text_layout_ctx_and_return_size :: proc(ctx: ^TextLayoutCtx) -> (used_s
 		max_line_width = max(max_line_width, line.advance) // TODO! technically line.advance is not the correct end of the line, instead the last glyphs width should be the cutoff value. The advance could be wider of less wide than the width.
 		// todo! there is a bug here, if the width of the container is too small to hold a single word, the application crashes.
 		// todo! crashes when line.glyphs_end_idx is 0 for whatever reason
-		for &g in UI_CTX_PTR.glyphs[line.glyphs_start_idx:line.glyphs_end_idx] {
+		for &g in UI_CTX.glyphs[line.glyphs_start_idx:line.glyphs_end_idx] {
 			g.pos.y += base_y
 		}
 		base_y += -line.metrics.descent + line.metrics.line_gap
@@ -1337,7 +1369,7 @@ finalize_text_layout_ctx_and_return_size :: proc(ctx: ^TextLayoutCtx) -> (used_s
 			if offset == 0 {
 				continue
 			}
-			for &g in UI_CTX_PTR.glyphs[line.glyphs_start_idx:line.glyphs_end_idx] {
+			for &g in UI_CTX.glyphs[line.glyphs_start_idx:line.glyphs_end_idx] {
 				g.pos.x += offset
 			}
 			line.advance += offset
@@ -1378,10 +1410,9 @@ TopLevelElement :: struct {
 	transform: UiTransform,
 }
 
-// WARNING: calls this at the end of the frame AFTER update_ui_cache!
-// writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
-build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches) {
-	cached: ^map[UiId]CachedElement = &UI_CTX_PTR.cache.new_cached
+// Note: also writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
+// This is done such that 
+ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches) {
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {
@@ -1402,7 +1433,6 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 		z_regions:       [dynamic]ZRegion, // kept sorted by region.z_info.layer
 		batches:         ^UiBatches,
 		current:         CurrentBatch,
-		cached:          ^map[UiId]CachedElement,
 	}
 	_insert_z_region :: proc(z_regions: ^[dynamic]ZRegion, region: ZRegion) {
 		// search from the back to the front, adding when larger or equal to the highest layer up to now:
@@ -1431,7 +1461,6 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 	}
 	// Note: currently no sorting by z here
 	b: Batcher = _batcher_create(top_level_elements, out_batches)
-	b.cached = cached
 	idx := 0
 	for ; idx < len(b.z_regions); idx += 1 {
 		reg: ZRegion = b.z_regions[idx]
@@ -1457,7 +1486,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 		base := _element_base_ptr(ui)
 		if base.id != NO_ID {
 			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
-			cached, ok := &b.cached[base.id]
+			cached, ok := &UI_CTX.new_cache[base.id]
 			assert(ok)
 			screen_or_world_z := SCREEN_UI_Z if b.current.transform.space == .Screen else WORLD_UI_Z
 			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer, screen_or_world_z}
@@ -1521,7 +1550,7 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 			_flush_if_mismatch(b, .Glyph, transmute(TextureOrFontHandle)e.font)
 			// todo: maybe copying them over is stupid, maybe we can create the computed glyphs
 			// directly in the primitives buffer from the get go
-			for g in UI_CTX_PTR.glyphs[e.glyphs_start_idx:e.glyphs_end_idx] {
+			for g in UI_CTX.glyphs[e.glyphs_start_idx:e.glyphs_end_idx] {
 				append(
 					&write.glyphs_instances,
 					UiGlyphInstance {
@@ -1538,19 +1567,8 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 
 			/*
 
-			The user should just do:
-			add_pts
-
-
-			set_texture()
-			add_vertex()
-			...
-
-			set_font()
-
-
-
-
+			TODO: this entire custom primitives thing here is way too complicated and needs rework
+			take inspiration from CustomPainterCtx in Dart/Flutter or whatever.
 			*/
 
 
@@ -1618,7 +1636,6 @@ build_ui_batches_and_attach_z_info :: proc(top_level_elements: []TopLevelElement
 		unreachable()
 	}
 }
-
 
 _add_div_rect :: proc(e: ^DivElement, vertices: ^[dynamic]UiVertex, tris: ^[dynamic]Triangle) {
 	if e.texture.handle != DEFAULT_TEXTURE && .NineSliceUsingBorderWidth in e.flags {
