@@ -67,7 +67,7 @@ color_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached()),
+		bind_group_layouts = bind_group_layouts(shader_globals_bind_group_layout_cached()),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

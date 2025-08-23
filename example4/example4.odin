@@ -107,10 +107,10 @@ main :: proc() {
 		engine.add_window(
 			"Nine slice",
 			{
-				engine.slider_int(&panel_w, 10, 1400),
-				engine.slider_int(&panel_h, 10, 1000),
-				engine.check_box(&use_nine_slice, "Nine Slice"),
-				engine.check_box(&nince_slice_repeat, "Repeat"),
+				q.slider_int(&panel_w, 10, 1400),
+				q.slider_int(&panel_h, 10, 1000),
+				q.check_box(&use_nine_slice, "Nine Slice"),
+				q.check_box(&nince_slice_repeat, "Repeat"),
 			},
 		)
 
@@ -176,15 +176,15 @@ scroll_table :: proc(
 
 	top_slider_interaction := q.ui_interaction(top_slider_id)
 	left_slider_interaction := q.ui_interaction(left_slider_id)
-	cursor_pos, start_drag_cursor_pos := q.ui_cursor_pos()
-	top_slider_c_pos, top_slider_c_size, _ := q.ui_get_cached_no_user_data(top_slider_id)
-	left_slider_c_pos, left_slider_c_size, _ := q.ui_get_cached_no_user_data(left_slider_id)
+	top_slider_c, _ := q.ui_get_cached_no_user_data(top_slider_id)
+	left_slider_c, _ := q.ui_get_cached_no_user_data(left_slider_id)
+	cursor_pos := top_slider_c.cursor_pos
 
 	if top_slider_interaction.pressed {
 		state.top_slider_f = math.remap_clamped(
-			cursor_pos.x,
-			top_slider_c_pos.CachedElementInfo + top_slider_knob_w / 2,
-			top_slider_c_pos.CachedElementInfo + top_slider_c_size.x - top_slider_knob_w / 2,
+			top_slider_c.cursor_pos.x,
+			top_slider_c.pos.x + top_slider_knob_w / 2,
+			top_slider_c.pos.x + top_slider_c.size.x - top_slider_knob_w / 2,
 			0,
 			1,
 		)
@@ -192,8 +192,8 @@ scroll_table :: proc(
 	if left_slider_interaction.pressed {
 		state.left_slider_f = math.remap_clamped(
 			cursor_pos.y,
-			left_slider_c_pos.CachedElementInfo + left_slider_knob_h / 2,
-			left_slider_c_pos.CachedElementInfo + left_slider_c_size.y - left_slider_knob_h / 2,
+			left_slider_c.pos.y + left_slider_knob_h / 2,
+			left_slider_c.pos.y + left_slider_c.size.y - left_slider_knob_h / 2,
 			0,
 			1,
 		)

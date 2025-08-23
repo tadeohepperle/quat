@@ -2,6 +2,8 @@ package quat
 
 import "base:runtime"
 import "core:fmt"
+import "core:math/linalg"
+import "core:os"
 import "core:strings"
 import "core:time"
 import glfw "vendor:glfw"
@@ -12,50 +14,41 @@ import wgpu_glfw "vendor:wgpu/glfwglue"
 is_initialized :: proc() -> bool {
 	return PLATFORM.is_initialized
 }
-init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
+platform_init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	_init_platform(&PLATFORM, settings)
 }
-deinit :: proc() {
-	_ui_system_init()
+platform_deinit :: proc() {
 	destroy_assets()
-
-	uniform_buffer_destroy(&PLATFORM.globals)
 	shader_registry_destroy(&PLATFORM.shader_registry)
-	texture_destroy(&PLATFORM.hdr_screen_texture)
-	texture_destroy(&PLATFORM.depth_screen_texture)
+	texture_destroy(PLATFORM.hdr_screen_texture)
+	texture_destroy(PLATFORM.depth_screen_texture)
 	wgpu.QueueRelease(PLATFORM.queue)
 	wgpu.DeviceDestroy(PLATFORM.device)
 	wgpu.InstanceRelease(PLATFORM.instance)
 }
 
 PlatformSettings :: struct {
-	title:                    string,
-	initial_size:             UVec2,
-	clear_color:              Color,
-	shaders_dir_path:         string,
-	default_font_path:        string,
-	power_preference:         wgpu.PowerPreference,
-	present_mode:             wgpu.PresentMode,
-	hot_reload_shaders:       bool,
-	debug_fps_in_title:       bool,
-	tonemapping:              TonemappingMode,
-	screen_ui_reference_size: Vec2,
-	world_ui_px_per_unit:     f32,
+	title:              string,
+	initial_size:       UVec2,
+	clear_color:        Color,
+	shaders_dir_path:   string,
+	default_font_path:  string,
+	power_preference:   wgpu.PowerPreference,
+	present_mode:       wgpu.PresentMode,
+	hot_reload_shaders: bool,
+	debug_fps_in_title: bool,
 }
 
 PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
-	title                    = "Quat App",
-	initial_size             = {800, 600},
-	clear_color              = ColorBlack,
-	shaders_dir_path         = "./shaders",
-	default_font_path        = "",
-	power_preference         = .LowPower,
-	present_mode             = .Fifo,
-	tonemapping              = .Disabled,
-	debug_fps_in_title       = true,
-	hot_reload_shaders       = true,
-	screen_ui_reference_size = {1920, 1080},
-	world_ui_px_per_unit     = 100,
+	title              = "Quat App",
+	initial_size       = {800, 600},
+	clear_color        = ColorBlack,
+	shaders_dir_path   = "./shaders",
+	default_font_path  = "",
+	power_preference   = .LowPower,
+	present_mode       = .Fifo,
+	debug_fps_in_title = true,
+	hot_reload_shaders = true,
 }
 @(private = "file")
 DEFAULT_FONT_TTF := #load("../assets/Lora-Medium.ttf")
@@ -90,8 +83,8 @@ Platform :: struct {
 	shader_registry:             ShaderRegistry,
 	hdr_screen_texture:          Texture,
 	depth_screen_texture:        DepthTexture,
-	tonemapping_pipeline:        ^RenderPipeline, // owned by ShaderRegistry
-	surface_texture:             wgpu.SurfaceTexture, // a little hacky... acquired before input polling and stored here at start of frame to avoid V-Sync latency.
+	_surface_texture:            wgpu.SurfaceTexture, // a little hacky... acquired before input polling and stored here at start of frame to avoid V-Sync latency.
+	// tonemapping_pipeline:        ^RenderPipeline, // owned by ShaderRegistry
 
 	// input related fields:
 	total_secs_f64:              f64,
@@ -100,8 +93,6 @@ Platform :: struct {
 	delta_secs:                  f32,
 	screen_size:                 UVec2,
 	screen_size_f32:             Vec2,
-	ui_ctx:                      UiCtx,
-	ui_layout_extent:            Vec2, // screen size, scaled such that height is always e.g. 1080px
 	screen_resized:              bool,
 	should_close:                bool,
 	old_cursor_pos:              Vec2,
@@ -115,11 +106,6 @@ Platform :: struct {
 	last_left_just_pressed_time: time.Time,
 	double_clicked:              bool,
 	dropped_file_paths:          []string,
-
-	// globals: 
-	globals_xxx:                 Vec4,
-	globals_data:                ShaderGlobals,
-	globals:                     UniformBuffer(ShaderGlobals),
 }
 
 ShaderGlobals :: struct {
@@ -139,16 +125,31 @@ ShaderGlobals :: struct {
 	_pad_4:                  f32,
 	xxx:                     Vec4, // some floats for testing purposes
 }
+shader_globals_set_camera_2d :: proc(globals: ^ShaderGlobals, camera: Camera, screen_size: Vec2) {
+	camera_proj := camera_projection_matrix(camera, screen_size)
+	globals.camera_proj_col_1 = camera_proj[0]
+	globals.camera_proj_col_2 = camera_proj[1]
+	globals.camera_proj_col_3 = camera_proj[2]
+	globals.camera_pos = camera.focus_pos
+	globals.camera_height = camera.height
+	globals.screen_size = screen_size
+}
 
 // this is honestly a bit stupid:
 _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	assert(platform == &PLATFORM)
+	platform^ = {}
 	platform.settings = settings
+
+	// /////////////////////////////////////////////////////////////////////////////
+	// Setup window and wgpu
+
 	_init_glfw_window(platform)
 	_init_wgpu(platform)
 
-	_ui_system_init()
-	// create default texture (1px white) and default font
+	// /////////////////////////////////////////////////////////////////////////////
+	// Setup Assets (Default 1px white Texture + Default Font)
+
 	platform.assets = Assets{}
 	default_texture_handle := assets_insert(_texture_create_1px_white())
 	assert(DEFAULT_TEXTURE == default_texture_handle)
@@ -163,9 +164,11 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	default_font_handle := assets_insert(default_font)
 	assert(DEFAULT_FONT == default_font_handle)
 
-
 	default_motion_texture_handle := assets_insert(_motion_texture_create_1px_white())
 	assert(DEFAULT_MOTION_TEXTURE == default_motion_texture_handle)
+
+	// /////////////////////////////////////////////////////////////////////////////
+	// Setup hdr screen texture, depth texture shader registery
 
 	platform.hdr_screen_texture = texture_create(platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.screen_size)
@@ -174,42 +177,34 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 		settings.shaders_dir_path,
 		settings.hot_reload_shaders,
 	)
-	uniform_buffer_create_from_bind_group_layout(
-		&platform.globals,
-		platform.device,
-		globals_bind_group_layout_cached(),
-	)
-
-	platform.tonemapping_pipeline = make_render_pipeline(tonemapping_pipeline_config())
 	platform.is_initialized = true
 }
-globals_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
+shader_globals_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
 	if layout == nil {
 		layout = uniform_bind_group_layout(size_of(ShaderGlobals))
 	}
 	return layout
 }
-
-
-platform_prepare :: proc(platform: ^Platform, camera: Camera) {
-	screen_size := platform.screen_size_f32
-	camera_proj := camera_projection_matrix(camera, screen_size)
-	platform.globals_data = ShaderGlobals {
-		camera_proj_col_1       = camera_proj[0],
-		camera_proj_col_2       = camera_proj[1],
-		camera_proj_col_3       = camera_proj[2],
-		camera_pos              = camera.focus_pos,
-		camera_height           = camera.height,
-		time_secs               = platform.total_secs,
-		screen_size             = screen_size,
-		cursor_pos              = platform.cursor_pos,
-		screen_ui_layout_extent = platform.ui_layout_extent,
-		world_ui_px_per_unit    = platform.settings.world_ui_px_per_unit,
-		xxx                     = platform.globals_xxx,
+platform_prepare :: proc() {
+	// screen_size := PLATFORM.screen_size_f32
+	// camera_proj := camera_projection_matrix(camera, screen_size)
+	// PLATFORM.globals_data = ShaderGlobals {
+	// 	camera_proj_col_1 = camera_proj[0],
+	// 	camera_proj_col_2 = camera_proj[1],
+	// 	camera_proj_col_3 = camera_proj[2],
+	// 	camera_pos        = camera.focus_pos,
+	// 	camera_height     = camera.height,
+	// 	time_secs         = PLATFORM.total_secs,
+	// 	screen_size       = screen_size,
+	// 	cursor_pos        = PLATFORM.cursor_pos,
+	// 	xxx               = PLATFORM.globals_xxx,
+	// }
+	// uniform_buffer_write(PLATFORM.queue, &PLATFORM.globals, &PLATFORM.globals_data)
+	update_changed_font_atlas_textures(PLATFORM.queue)
+	if PLATFORM.screen_resized {
+		_platform_resize_frame_buffer()
 	}
-	uniform_buffer_write(platform.queue, &platform.globals, &platform.globals_data)
-	update_changed_font_atlas_textures(platform.queue)
 }
 
 
@@ -247,58 +242,54 @@ platform_start_frame :: proc() -> (should_keep_running: bool) {
 		title := fmt.caprintf("%d fps/ %.2f ms", fps, dt_ms, allocator = context.temp_allocator)
 		glfw.SetWindowTitle(platform.window, title)
 	}
-	_recalculate_ui_layout_extent(platform)
 
 	return true
 }
 
-_recalculate_ui_layout_extent :: proc "contextless" (platform: ^Platform) {
-	ref_size := platform.settings.screen_ui_reference_size
-	screen_aspect := (platform.screen_size_f32.x / platform.screen_size_f32.y)
-	platform.ui_layout_extent = Vec2{ref_size.y * screen_aspect, ref_size.y}
-}
-
-platform_end_render :: proc(
-	platform: ^Platform,
-	surface_view: wgpu.TextureView,
-	command_encoder: wgpu.CommandEncoder,
-) {
-	tonemap(
-		command_encoder,
-		platform.tonemapping_pipeline.pipeline,
-		platform.hdr_screen_texture.bind_group,
-		surface_view,
-		platform.settings.tonemapping,
-	)
+platform_end_render :: proc(surface_view: wgpu.TextureView, command_encoder: wgpu.CommandEncoder) {
+	// tonemap(
+	// 	command_encoder,
+	// 	PLATFORM.tonemapping_pipeline.pipeline,
+	// 	PLATFORM.hdr_screen_texture.bind_group,
+	// 	surface_view,
+	// 	PLATFORM.settings.tonemapping,
+	// )
 	// /////////////////////////////////////////////////////////////////////////////
 	// SECTION: Present
 	// /////////////////////////////////////////////////////////////////////////////
 
 	command_buffer := wgpu.CommandEncoderFinish(command_encoder, nil)
 	wgpu.CommandEncoderRelease(command_encoder)
-	wgpu.QueueSubmit(platform.queue, {command_buffer})
-	wgpu.SurfacePresent(platform.surface)
+	wgpu.QueueSubmit(PLATFORM.queue, {command_buffer})
+	wgpu.SurfacePresent(PLATFORM.surface)
 	// cleanup:
 	wgpu.TextureViewRelease(surface_view)
 	wgpu.CommandBufferRelease(command_buffer)
+
+	PLATFORM.screen_resized = false
 }
 
-platform_start_hdr_pass :: proc(platform: Platform, command_encoder: wgpu.CommandEncoder) -> wgpu.RenderPassEncoder {
+start_hdr_render_pass :: proc(
+	command_encoder: wgpu.CommandEncoder,
+	hdr_screen_texture: Texture,
+	depth_screen_texture: Texture,
+	clear_color: Color,
+) -> wgpu.RenderPassEncoder {
 	hdr_pass := wgpu.CommandEncoderBeginRenderPass(
 		command_encoder,
 		&wgpu.RenderPassDescriptor {
 			label = "surface render pass",
 			colorAttachmentCount = 1,
 			colorAttachments = &wgpu.RenderPassColorAttachment {
-				view = platform.hdr_screen_texture.view,
+				view = hdr_screen_texture.view,
 				resolveTarget = nil,
 				loadOp = .Clear,
 				storeOp = .Store,
-				clearValue = color_to_wgpu(platform.settings.clear_color),
+				clearValue = color_to_wgpu(clear_color),
 			},
 			occlusionQuerySet = nil,
 			depthStencilAttachment = &wgpu.RenderPassDepthStencilAttachment {
-				view = platform.depth_screen_texture.view,
+				view = depth_screen_texture.view,
 				depthLoadOp = .Clear,
 				depthStoreOp = .Store,
 				depthClearValue = 0.0,
@@ -311,35 +302,30 @@ platform_start_hdr_pass :: proc(platform: Platform, command_encoder: wgpu.Comman
 
 // WARNING: MAY BLOCK ON V_SYNC!!!!
 _acquire_surface_texture :: proc(platform: ^Platform) {
-	if platform.surface_texture.texture != nil {
-		wgpu.TextureRelease(platform.surface_texture.texture)
+	if platform._surface_texture.texture != nil {
+		wgpu.TextureRelease(platform._surface_texture.texture)
 	}
-	platform.surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
-	switch platform.surface_texture.status {
+	platform._surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
+	switch platform._surface_texture.status {
 	case .SuccessOptimal, .SuccessSuboptimal:
 	// All good, could check for `surface_texture.suboptimal` here.
 	case .Timeout, .Outdated, .Lost:
 		// Skip this frame, and re-configure surface.
-		_platform_resize()
-		platform.surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
+		_platform_resize_frame_buffer()
+		platform._surface_texture = wgpu.SurfaceGetCurrentTexture(platform.surface)
 		assert(
-			platform.surface_texture.status == .SuccessOptimal ||
-			platform.surface_texture.status == .SuccessSuboptimal,
+			platform._surface_texture.status == .SuccessOptimal ||
+			platform._surface_texture.status == .SuccessSuboptimal,
 		)
 	case .OutOfMemory, .DeviceLost, .Error:
 		// Fatal error
-		fmt.panicf("Fatal error in wgpu.SurfaceGetCurrentTexture, status=", platform.surface_texture.status)
+		fmt.panicf("Fatal error in wgpu.SurfaceGetCurrentTexture, status=", platform._surface_texture.status)
 	}
 }
 
-platform_start_render :: proc(
-	platform: ^Platform,
-) -> (
-	surface_view: wgpu.TextureView,
-	command_encoder: wgpu.CommandEncoder,
-) {
+platform_start_render :: proc() -> (surface_view: wgpu.TextureView, command_encoder: wgpu.CommandEncoder) {
 	surface_view = wgpu.TextureCreateView(
-		platform.surface_texture.texture,
+		PLATFORM._surface_texture.texture,
 		&wgpu.TextureViewDescriptor {
 			label = "surface view",
 			format = SURFACE_FORMAT,
@@ -351,12 +337,14 @@ platform_start_render :: proc(
 			aspect = wgpu.TextureAspect.All,
 		},
 	)
-	command_encoder = wgpu.DeviceCreateCommandEncoder(platform.device, nil)
+	command_encoder = wgpu.DeviceCreateCommandEncoder(PLATFORM.device, nil)
 	return surface_view, command_encoder
 }
 
 // platform
-platform_reset_input_at_end_of_frame :: proc(platform: ^Platform) {
+platform_reset_input_at_end_of_frame :: proc() {
+	platform := &PLATFORM
+
 	platform.scroll = 0
 	platform.chars_len = 0
 	platform.cursor_delta = 0
@@ -389,22 +377,22 @@ _clear_file_paths :: proc(paths: ^[]string) {
 }
 
 @(private)
-_platform_resize :: proc() {
+_platform_resize_frame_buffer :: proc() {
 	platform := &PLATFORM
-	platform.screen_resized = false
 	platform.surface_config.width = platform.screen_size.x
 	platform.surface_config.height = platform.screen_size.y
-	if platform.surface_texture.texture != nil {
-		wgpu.TextureRelease(platform.surface_texture.texture)
+	if platform._surface_texture.texture != nil {
+		wgpu.TextureRelease(platform._surface_texture.texture)
 	}
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
-	texture_destroy(&platform.hdr_screen_texture)
-	texture_destroy(&platform.depth_screen_texture)
+	texture_destroy(platform.hdr_screen_texture)
+	texture_destroy(platform.depth_screen_texture)
 	platform.hdr_screen_texture = texture_create(platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.screen_size)
 	_acquire_surface_texture(platform)
 }
 
+@(private = "file")
 _platform_receive_glfw_char_event :: proc(platform: ^Platform, char: rune) {
 	if platform.chars_len < len(platform.chars) {
 		platform.chars[platform.chars_len] = char
@@ -414,7 +402,7 @@ _platform_receive_glfw_char_event :: proc(platform: ^Platform, char: rune) {
 	}
 }
 
-
+@(private = "file")
 _platform_receive_glfw_key_event :: proc "contextless" (platform: ^Platform, glfw_key, action: i32) {
 	switch key in glfw_int_to_key(glfw_key) {
 	case Key:
@@ -429,6 +417,7 @@ _platform_receive_glfw_key_event :: proc "contextless" (platform: ^Platform, glf
 	}
 }
 
+@(private = "file")
 _platform_receive_glfw_mouse_btn_event :: proc "contextless" (platform: ^Platform, glfw_button, action: i32) {
 	switch button in glfw_int_to_mouse_button(glfw_button) {
 	case MouseButton:
@@ -451,14 +440,16 @@ _platform_receive_glfw_mouse_btn_event :: proc "contextless" (platform: ^Platfor
 	}
 }
 
+@(private = "file")
 _init_glfw_window :: proc(platform: ^Platform) {
 	glfw.Init()
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
 	glfw.WindowHint(glfw.RESIZABLE, 1)
+
 	platform.window = glfw.CreateWindow(
 		i32(platform.settings.initial_size.x),
 		i32(platform.settings.initial_size.y),
-		strings.clone_to_cstring(platform.settings.title),
+		tmp_cstr(platform.settings.title),
 		nil,
 		nil,
 	)
@@ -473,7 +464,6 @@ _init_glfw_window :: proc(platform: ^Platform) {
 		platform.screen_resized = true
 		platform.screen_size = {u32(w), u32(h)}
 		platform.screen_size_f32 = {f32(w), f32(h)}
-		_recalculate_ui_layout_extent(platform)
 	}
 	glfw.SetFramebufferSizeCallback(platform.window, framebuffer_size_callback)
 
@@ -523,6 +513,8 @@ _init_glfw_window :: proc(platform: ^Platform) {
 	glfw.SetDropCallback(platform.window, drop_callback)
 }
 
+
+@(private = "file")
 _init_wgpu :: proc(platform: ^Platform) {
 	instance_extras := wgpu.InstanceExtras {
 		chain = {next = nil, sType = wgpu.SType.InstanceExtras},
@@ -643,25 +635,150 @@ _init_wgpu :: proc(platform: ^Platform) {
 }
 
 
-platform_set_clipboard :: proc(platform: ^Platform, str: string) {
-	builder := strings.builder_make(allocator = context.temp_allocator)
-	strings.write_string(&builder, str)
-	c_str, err := strings.to_cstring(&builder)
-	assert(err == .None)
-	glfw.SetClipboardString(platform.window, c_str)
+set_clipboard :: proc(str: string) {
+	glfw.SetClipboardString(PLATFORM.window, tmp_cstr(str))
 }
-platform_get_clipboard :: proc(platform: ^Platform) -> string {
-	return glfw.GetClipboardString(platform.window)
+get_clipboard :: proc() -> string {
+	return glfw.GetClipboardString(PLATFORM.window)
 }
-platform_just_pressed_or_repeated :: proc(platform: ^Platform, key: Key) -> bool {
-	return PressFlags{.JustPressed, .JustRepeated} & platform.keys[key] != PressFlags{}
+get_input_chars :: proc() -> []rune {
+	return PLATFORM.chars[:PLATFORM.chars_len]
 }
-platform_just_pressed :: proc(platform: ^Platform, key: Key) -> bool {
-	return .JustPressed in platform.keys[key]
+is_ctrl_pressed :: proc() -> bool {
+	return .Pressed in PLATFORM.keys[.LEFT_CONTROL] || .Pressed in PLATFORM.keys[.RIGHT_CONTROL]
 }
-platform_is_pressed :: proc(platform: ^Platform, key: Key) -> bool {
-	return .Pressed in platform.keys[key]
+is_shift_pressed :: proc() -> bool {
+	return .Pressed in PLATFORM.keys[.LEFT_SHIFT] || .Pressed in PLATFORM.keys[.RIGHT_SHIFT]
 }
-platform_maximize :: proc(platform: ^Platform) {
-	glfw.MaximizeWindow(platform.window)
+is_alt_pressed :: proc() -> bool {
+	return .Pressed in PLATFORM.keys[.LEFT_ALT] || .Pressed in PLATFORM.keys[.RIGHT_ALT]
+}
+is_just_pressed_or_repeated :: proc(key: Key) -> bool {
+	return PressFlags{.JustPressed, .JustRepeated} & PLATFORM.keys[key] != PressFlags{}
+}
+is_just_pressed :: proc(key: Key) -> bool {
+	return .JustPressed in PLATFORM.keys[key]
+}
+is_pressed :: proc(key: Key) -> bool {
+	return .Pressed in PLATFORM.keys[key]
+}
+maximize_window :: proc() {
+	glfw.MaximizeWindow(PLATFORM.window)
+}
+
+
+KeyVecPair :: struct {
+	key: Key,
+	dir: Vec2,
+}
+// rf keys, r = +1, f =-1
+get_rf :: proc() -> f32 {
+	res: f32
+	if .Pressed in PLATFORM.keys[.R] {
+		res += 1
+	} else if .Pressed in PLATFORM.keys[.F] {
+		res -= 1
+	}
+	return res
+}
+// axis of arrow keys or wasd for moving e.g. camera
+get_wasd :: proc() -> Vec2 {
+	mapping := [?]KeyVecPair{{.W, {0, 1}}, {.A, {-1, 0}}, {.S, {0, -1}}, {.D, {1, 0}}}
+	dir: Vec2
+	for m in mapping {
+		if .Pressed in PLATFORM.keys[m.key] {
+			dir += m.dir
+		}
+	}
+	if dir != {0, 0} {
+		return linalg.normalize(dir)
+	}
+	return {0, 0}
+}
+get_arrows :: proc() -> (res: Vec2) {
+	keys := ARROW_KEYS
+	dirs := [4]Vec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+	for key, idx in keys {
+		if .Pressed in PLATFORM.keys[key] {
+			res += dirs[idx]
+		}
+	}
+	return res
+}
+
+ARROW_KEYS :: [4]Key{.LEFT, .RIGHT, .DOWN, .UP}
+WASD_KEYS :: [4]Key{.A, .D, .S, .W}
+
+get_arrows_just_pressed_or_repeated :: proc(keys := ARROW_KEYS) -> (res: IVec2) {
+	dirs := [4]IVec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+	for key, idx in keys {
+		flags := PLATFORM.keys[key]
+		if .JustPressed in flags || .JustRepeated in flags {
+			res += dirs[idx]
+		}
+	}
+	return res
+}
+get_aspect_ratio :: proc() -> f32 {
+	return PLATFORM.screen_size_f32.x / PLATFORM.screen_size_f32.y
+}
+get_delta_secs :: proc() -> f32 {
+	return PLATFORM.delta_secs
+}
+get_delta_secs_f64 :: proc() -> f64 {
+	return PLATFORM.delta_secs_f64
+}
+get_total_secs :: proc() -> f32 {
+	return PLATFORM.total_secs
+}
+get_total_secs_f64 :: proc() -> f64 {
+	return PLATFORM.total_secs_f64
+}
+get_screen_size :: proc() -> Vec2 {
+	return PLATFORM.screen_size_f32
+}
+get_cursor_pos :: proc() -> Vec2 {
+	return PLATFORM.cursor_pos
+}
+get_cursor_delta :: proc() -> Vec2 {
+	return PLATFORM.cursor_delta
+}
+is_double_clicked :: proc() -> bool {
+	return PLATFORM.double_clicked
+}
+is_left_just_pressed :: proc() -> bool {
+	return .JustPressed in PLATFORM.mouse_buttons[.Left]
+}
+is_left_pressed :: proc() -> bool {
+	return .Pressed in PLATFORM.mouse_buttons[.Left]
+}
+is_left_just_released :: proc() -> bool {
+	return .JustReleased in PLATFORM.mouse_buttons[.Left]
+}
+is_right_just_pressed :: proc() -> bool {
+	return .JustPressed in PLATFORM.mouse_buttons[.Right]
+}
+is_right_pressed :: proc() -> bool {
+	return .Pressed in PLATFORM.mouse_buttons[.Right]
+}
+is_right_just_released :: proc() -> bool {
+	return .JustReleased in PLATFORM.mouse_buttons[.Right]
+}
+is_key_pressed :: #force_inline proc(key: Key) -> bool {
+	return .Pressed in PLATFORM.keys[key]
+}
+is_key_just_pressed :: #force_inline proc(key: Key) -> bool {
+	return .JustPressed in PLATFORM.keys[key]
+}
+is_key_just_released :: #force_inline proc(key: Key) -> bool {
+	return .JustReleased in PLATFORM.keys[key]
+}
+is_key_just_repeated :: #force_inline proc(key: Key) -> bool {
+	return .JustRepeated in PLATFORM.keys[key]
+}
+is_key_just_pressed_or_repeated :: #force_inline proc(key: Key) -> bool {
+	return PressFlags{.JustPressed, .JustRepeated} & PLATFORM.keys[key] != PressFlags{}
+}
+get_key :: proc(key: Key) -> PressFlags {
+	return PLATFORM.keys[key]
 }

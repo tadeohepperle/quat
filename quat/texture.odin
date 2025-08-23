@@ -309,7 +309,7 @@ texture_create :: proc(size: UVec2, settings: TextureSettings = TEXTURE_SETTINGS
 }
 
 
-texture_destroy :: proc(texture: ^Texture) {
+texture_destroy :: proc(texture: Texture) {
 	wgpu.BindGroupRelease(texture.bind_group)
 	wgpu.SamplerRelease(texture.sampler)
 	wgpu.TextureViewRelease(texture.view)
@@ -422,12 +422,10 @@ texture_array_create :: proc(
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	array.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
-	return
+	return array
 }
 
 texture_array_from_image_paths :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
 	paths: []string,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
@@ -457,7 +455,7 @@ texture_array_from_image_paths :: proc(
 		}
 		append(&images, img)
 	}
-	array = texture_array_from_images(device, queue, images[:], settings)
+	array = texture_array_from_images(images[:], settings)
 
 	for &img in images {
 		image_drop(&img)
@@ -468,8 +466,6 @@ texture_array_from_image_paths :: proc(
 
 
 texture_array_from_images :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
 	images: []Image,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
@@ -482,7 +478,7 @@ texture_array_from_images :: proc(
 	}
 	size := UVec2{u32(images[0].size.x), u32(images[0].size.y)}
 	layers := u32(len(images))
-	array = texture_array_create(device, size, layers, settings)
+	array = texture_array_create(PLATFORM.device, size, layers, settings)
 
 	assert(settings.format == IMAGE_FORMAT)
 	block_size: u32 = 4
@@ -500,7 +496,7 @@ texture_array_from_images :: proc(
 			aspect   = .All,
 		}
 		wgpu.QueueWriteTexture(
-			queue,
+			PLATFORM.queue,
 			&image_copy,
 			raw_data(img.pixels),
 			uint(len(img.pixels) * 4),

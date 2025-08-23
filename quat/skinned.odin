@@ -251,7 +251,7 @@ skinned_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(),
+			shader_globals_bind_group_layout_cached(),
 			bones_storage_buffer_bind_group_layout_cached(),
 			rgba_bind_group_layout_cached(),
 		),

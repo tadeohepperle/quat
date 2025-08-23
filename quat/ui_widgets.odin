@@ -1,6 +1,5 @@
-package engine
+package quat
 
-import q "../"
 import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
@@ -10,17 +9,30 @@ import "core:strings"
 import edit "core:text/edit"
 import wgpu "vendor:wgpu"
 
-
-color_from_hex :: q.color_from_hex
-UiId :: q.UiId
-Ui :: q.Ui
-UiDiv :: ^q.DivElement
-UiText :: ^q.TextElement
-Interaction :: q.Interaction
-Div :: q.Div
-Text :: q.Text
-UiWithInteraction :: q.UiWithInteraction
-
+// not a constant, so can be switched out.
+UI_THEME: UiTheme = UiTheme {
+	font_size_sm      = 14,
+	font_size         = 18,
+	font_size_lg      = 24,
+	text_shadow       = 0.8,
+	disabled_opacity  = 0.4,
+	border_width      = 2.0,
+	border_radius     = 8.0,
+	border_radius_sm  = 4.0,
+	control_width_lg  = 196,
+	control_width_sm  = 48,
+	control_height    = 24,
+	control_height_sm = 18,
+	control_height_lg = 30,
+	text              = color_from_hex("#EFF4F7"),
+	text_secondary    = color_from_hex("#777F8B"),
+	background        = color_from_hex("#252833"),
+	success           = color_from_hex("#68B767"),
+	highlight         = color_from_hex("#F7EFB2"),
+	surface           = color_from_hex("#577383"),
+	surface_border    = color_from_hex("#8CA6BE"),
+	surface_deep      = color_from_hex("#16181D"),
+}
 UiTheme :: struct {
 	font_size_sm:      f32,
 	font_size:         f32,
@@ -45,79 +57,47 @@ UiTheme :: struct {
 	surface_deep:      Color,
 }
 
-// not a constant, so can be switched out.
-THEME: UiTheme = UiTheme {
-	font_size_sm      = 14,
-	font_size         = 18,
-	font_size_lg      = 24,
-	text_shadow       = 0.8,
-	disabled_opacity  = 0.4,
-	border_width      = 2.0,
-	border_radius     = 8.0,
-	border_radius_sm  = 4.0,
-	control_width_lg  = 196,
-	control_width_sm  = 48,
-	control_height    = 24,
-	control_height_sm = 18,
-	control_height_lg = 30,
-	text              = color_from_hex("#EFF4F7"),
-	text_secondary    = color_from_hex("#777F8B"),
-	background        = color_from_hex("#252833"),
-	success           = color_from_hex("#68B767"),
-	highlight         = color_from_hex("#F7EFB2"),
-	surface           = color_from_hex("#577383"),
-	surface_border    = color_from_hex("#8CA6BE"),
-	surface_deep      = color_from_hex("#16181D"),
-}
 
 child :: #force_inline proc(parent: UiDiv, ch: Ui) {
-	q.ui_add_child(parent, ch)
+	ui_add_child(parent, ch)
 }
-child_res :: #force_inline proc(parent: UiDiv, ch: q.UiWithInteraction) -> Interaction {
-	q.ui_add_child(parent, ch.ui)
+child_res :: #force_inline proc(parent: UiDiv, ch: UiWithInteraction) -> Interaction {
+	ui_add_child(parent, ch.ui)
 	return ch.res
 }
 
 with_children :: #force_inline proc(parent: UiDiv, children: []Ui) -> UiDiv {
 	for ch in children {
-		q.ui_add_child(parent, ch)
+		ui_add_child(parent, ch)
 	}
 	return parent
 }
 
-child_div :: #force_inline proc(parent: UiDiv, div: Div, id: UiId = 0) -> UiDiv {
-	child := q.div(div, id)
-	q.ui_add_child(parent, child)
-	return child
+child_div :: #force_inline proc(parent: UiDiv, child: Div, id: UiId = 0) -> UiDiv {
+	child_el := div(child, id)
+	ui_add_child(parent, child_el)
+	return child_el
 }
 
-child_text :: #force_inline proc(parent: UiDiv, text: Text, id: UiId = 0) -> UiText {
-	child := q.text(text, id)
-	q.ui_add_child(parent, child)
-	return child
+child_text :: #force_inline proc(parent: UiDiv, child: Text, id: UiId = 0) -> UiText {
+	child_el := text(child, id)
+	ui_add_child(parent, child_el)
+	return child_el
 }
 
 // child_div :: #force_inline proc(of: UiDiv, ch: UiDiv) -> UiDiv {
-// 	q.ui_child(of, Ui(ch))
+// 	ui_child(of, Ui(ch))
 // 	return ch
 // }
 
-div :: q.div
-
-text :: proc {
-	q.text,
-	text_from_string,
-	text_from_any,
-}
-
 text_from_string :: proc(s: string, id: UiId = 0) -> UiText {
-	return q.text(
-		q.Text {
+	return text(
+		Text {
 			str = s,
-			font = q.DEFAULT_FONT,
-			color = THEME.text,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
+			font = DEFAULT_FONT,
+			color = UI_THEME.text,
+			font_size = UI_THEME.font_size,
+			shadow = UI_THEME.text_shadow,
 		},
 	)
 }
@@ -125,7 +105,7 @@ text_from_string :: proc(s: string, id: UiId = 0) -> UiText {
 row :: proc(children: []Ui, gap: f32 = 0) -> Ui {
 	row := div(Div{gap = gap, flags = {.AxisX, .CrossAlignCenter}})
 	for ch in children {
-		q.ui_add_child(row, ch)
+		ui_add_child(row, ch)
 	}
 	return row
 }
@@ -134,37 +114,47 @@ text_from_any :: proc(text: any, id: UiId = 0) -> UiText {
 	return text_from_string(fmt.aprint(text, allocator = context.temp_allocator), id)
 }
 
-add_window :: proc(title: string, content: []Ui, window_width: f32 = 0) {
-	id := q.ui_id(title)
-	cached_pos, cached_size, _is_world_ui, window_pos_start_drag, ok := q.ui_get_cached(id, Vec2)
-	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos()
-	layout_extent := get_ui_layout_extent()
+window_widget :: proc(title: string, content: []Ui, window_width: f32 = 0) -> Ui {
+	id := ui_id(title)
 
-	res := q.ui_interaction(id)
+
+	WindowCache :: struct {
+		drag_start_window_pos: Vec2,
+		drag_start_cursor_pos: Vec2,
+	}
+
+	cached, window_cache, ok := ui_get_cached(id, WindowCache)
+	cursor_pos := cached.cursor_pos
+
+	res := ui_interaction(id)
 	if res.just_pressed {
-		window_pos_start_drag^ = cached_pos
+		window_cache.drag_start_cursor_pos = cached.cursor_pos
+		window_cache.drag_start_window_pos = cached.pos
 	}
 
 
 	window_pos: Vec2 = ---
 	if ok {
 		if res.pressed {
-			window_pos = window_pos_start_drag^ + cursor_pos - cursor_pos_start_press
+			window_pos = window_cache.drag_start_window_pos + cursor_pos - window_cache.drag_start_cursor_pos
 		} else {
-			window_pos = cached_pos
+			window_pos = cached.pos
 		}
 	} else {
 		window_pos = Vec2{0, 0}
 	}
-	max_pos := layout_extent - cached_size
-	window_pos.x = clamp(window_pos.x, 0, max_pos.x)
-	window_pos.y = clamp(window_pos.y, 0, max_pos.y)
+
+	if cached.space == .Screen {
+		max_pos := ui_get_screen_layout_extent() - cached.size
+		window_pos.x = clamp(window_pos.x, 0, max_pos.x)
+		window_pos.y = clamp(window_pos.y, 0, max_pos.y)
+	}
 
 	window := div(
 		Div {
 			offset = window_pos,
-			border_radius = THEME.border_radius,
-			color = THEME.background,
+			border_radius = UI_THEME.border_radius,
+			color = UI_THEME.background,
 			flags = {.Absolute},
 			padding = {16, 16, 8, 16},
 			gap = 12,
@@ -178,36 +168,31 @@ add_window :: proc(title: string, content: []Ui, window_width: f32 = 0) {
 
 	child_text(
 		window,
-		Text {
-			color = q.ColorLightGrey if res.hovered else q.ColorMiddleGrey,
-			font_size = 18.0,
-			str = title,
-			shadow = 0.5,
-		},
+		Text{color = ColorLightGrey if res.hovered else ColorMiddleGrey, font_size = 18.0, str = title, shadow = 0.5},
 	)
 	for ch in content {
 		if ch != nil {
-			q.ui_add_child(window, ch)
+			ui_add_child(window, ch)
 		}
 	}
-	add_ui(window)
+	return window
 }
 
 button :: proc(title: string, id: string = "") -> UiWithInteraction {
-	id := q.ui_id(id) if id != "" else q.ui_id(title)
-	action := q.ui_interaction(id)
+	id := ui_id(id) if id != "" else ui_id(title)
+	action := ui_interaction(id)
 
 	color: Color = ---
 	border_color: Color = ---
 	if action.pressed {
-		color = THEME.surface_deep
-		border_color = THEME.text
+		color = UI_THEME.surface_deep
+		border_color = UI_THEME.text
 	} else if action.hovered {
-		color = THEME.surface_border
-		border_color = THEME.text
+		color = UI_THEME.surface_border
+		border_color = UI_THEME.text
 	} else {
-		color = THEME.surface
-		border_color = THEME.surface_border
+		color = UI_THEME.surface
+		border_color = UI_THEME.surface_border
 	}
 
 	ui := div(
@@ -215,30 +200,33 @@ button :: proc(title: string, id: string = "") -> UiWithInteraction {
 			lerp_speed = 16,
 			flags = {.CrossAlignCenter, .HeightPx, .AxisX, .LerpStyle},
 			padding = {12, 12, 0, 0},
-			height = THEME.control_height_lg,
+			height = UI_THEME.control_height_lg,
 			color = color,
 			border_color = border_color,
-			border_radius = THEME.border_radius,
-			border_width = THEME.border_width,
+			border_radius = UI_THEME.border_radius,
+			border_width = UI_THEME.border_width,
 		},
 		id,
 	)
-	child_text(ui, Text{str = title, font_size = THEME.font_size, color = THEME.text, shadow = THEME.text_shadow})
+	child_text(
+		ui,
+		Text{str = title, font_size = UI_THEME.font_size, color = UI_THEME.text, shadow = UI_THEME.text_shadow},
+	)
 
 	return {ui, action}
 }
 
 toggle :: proc(value: ^bool, title: string) -> Ui {
 	id := u64(uintptr(value))
-	res := q.ui_interaction(id)
+	res := ui_interaction(id)
 	active := value^
 	if res.just_pressed {
 		active = !active
 		value^ = active
 	}
 
-	pill_height := THEME.control_height
-	pill_width := THEME.control_width_sm
+	pill_height := UI_THEME.control_height
+	pill_width := UI_THEME.control_width_sm
 	ui := div(Div{height = pill_height, flags = {.AxisX, .CrossAlignCenter, .HeightPx}, gap = 8})
 
 	circle_color: Color = ---
@@ -246,18 +234,18 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 	text_color: Color = ---
 
 	if active {
-		circle_color = THEME.text
-		text_color = THEME.text
-		pill_color = THEME.success
+		circle_color = UI_THEME.text
+		text_color = UI_THEME.text
+		pill_color = UI_THEME.success
 	} else {
-		circle_color = THEME.text
-		text_color = THEME.text_secondary
-		pill_color = THEME.text_secondary
+		circle_color = UI_THEME.text
+		text_color = UI_THEME.text_secondary
+		pill_color = UI_THEME.text_secondary
 	}
 	if res.hovered {
-		pill_color = q.highlight(pill_color)
+		pill_color = highlight(pill_color)
 	}
-	pill_flags: q.DivFlags = {.AxisX, .WidthPx, .HeightPx}
+	pill_flags: DivFlags = {.AxisX, .WidthPx, .HeightPx}
 	if active {
 		pill_flags |= {.MainAlignEnd}
 	}
@@ -275,7 +263,7 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 		},
 		id = id,
 	)
-	flags := q.DivFlags{.WidthPx, .HeightPx, .LerpStyle, .LerpTransform, .PointerPassThrough}
+	flags := DivFlags{.WidthPx, .HeightPx, .LerpStyle, .LerpTransform, .PointerPassThrough}
 	child_div(
 		pill,
 		Div {
@@ -286,10 +274,13 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 			flags = flags,
 			border_radius = 12,
 		},
-		id = q.ui_id_next(id),
+		id = ui_id_next(id),
 	)
 	child(ui, pill)
-	child_text(ui, Text{str = title, color = text_color, font_size = THEME.font_size, shadow = THEME.text_shadow})
+	child_text(
+		ui,
+		Text{str = title, color = text_color, font_size = UI_THEME.font_size, shadow = UI_THEME.text_shadow},
+	)
 	return ui
 }
 
@@ -297,108 +288,107 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 slider :: proc {
 	slider_f32,
 	slider_f64,
-	slider_int,
+// slider_int,
 }
 
 
-slider_int :: proc(
-	value: ^int,
-	min: int = 0,
-	max: int = 1,
-	id: UiId = 0,
-	slider_width: f32 = 0,
-	custom_text: Maybe(string) = nil,
-) -> Ui {
-	slider_width := slider_width
-	if slider_width == 0 {
-		slider_width = THEME.control_width_lg
-	}
-	knob_width: f32 = THEME.font_size
-	id := id if id != 0 else u64(uintptr(value))
-	val: int = value^
+// slider_int :: proc(
+// 	value: ^int,
+// 	min: int = 0,
+// 	max: int = 1,
+// 	id: UiId = 0,
+// 	slider_width: f32 = 0,
+// 	custom_text: Maybe(string) = nil,
+// ) -> Ui {
+// 	slider_width := slider_width
+// 	if slider_width == 0 {
+// 		slider_width = THEME.control_width_lg
+// 	}
+// 	knob_width: f32 = THEME.font_size
+// 	id := id if id != 0 else u64(uintptr(value))
+// 	val: int = value^
 
-	cached_pos, cached_size, is_world_ui, start_drag_slider_value, ok := q.ui_get_cached(id, int)
-	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos(is_world_ui)
+// 	cached, start_drag_slider_value, ok := ui_get_cached(id, int)
 
-	f := (f32(val) - f32(min)) / (f32(max) - f32(min))
-	res := q.ui_interaction(id)
-
-
-	scroll := get_scroll()
-	if res.just_pressed {
-		f = (cursor_pos.x - knob_width / 2 - cached_pos.CachedElementInfo) / (cached_size.x - knob_width)
-		val = int(math.round(f32(min) + f * f32(max - min)))
-		start_drag_slider_value^ = val
-	} else if res.pressed || (scroll != 0 && res.hovered) {
-
-		if res.pressed {
-			cursor_x := cursor_pos.x
-			cursor_x_start_active := cursor_pos_start_press.x
-			f_shift := (cursor_x - cursor_x_start_active) / (slider_width - knob_width)
-			start_f := f32(start_drag_slider_value^ - min) / f32(max - min)
-			f = start_f + f_shift
-		} else {
-			f -= scroll * 0.05
-		}
-
-		if f < 0 {
-			f = 0
-		}
-		if f > 1 {
-			f = 1
-		}
-		val = int(math.round_f32(f32(min) + f * f32(max - min)))
-		value^ = val
-	}
+// 	f := (f32(val) - f32(min)) / (f32(max) - f32(min))
+// 	res := ui_interaction(id)
 
 
-	container := div(
-		Div {
-			width = slider_width,
-			height = THEME.control_height,
-			flags = {.WidthPx, .HeightPx, .AxisX, .CrossAlignCenter, .MainAlignCenter},
-		},
-	)
-	child_div(
-		container,
-		Div {
-			width = 1,
-			height = THEME.control_height - 2,
-			color = THEME.text_secondary,
-			border_radius = THEME.border_radius_sm,
-			flags = {.WidthFraction, .HeightPx, .Absolute},
-			absolute_unit_pos = {0.5, 0.5},
-		},
-		id = id,
-	)
-	knob_border_color: Color = THEME.surface if !res.hovered else THEME.surface_border
-	f_rounded := math.round(f * f32(max - min)) / f32(max - min)
-	child_div(
-		container,
-		Div {
-			width = knob_width,
-			height = THEME.control_height,
-			color = THEME.surface_deep,
-			border_width = THEME.border_width,
-			border_color = knob_border_color,
-			flags = {.WidthPx, .HeightPx, .Absolute, .LerpStyle, .PointerPassThrough},
-			border_radius = THEME.border_radius_sm,
-			absolute_unit_pos = {f_rounded, 0.5},
-			lerp_speed = 20.0,
-		},
-		id = q.ui_id_next(id),
-	)
-	child_text(
-		container,
-		Text {
-			str = custom_text.(string) or_else fmt.tprint(val),
-			color = THEME.text,
-			font_size = THEME.font_size,
-			shadow = THEME.text_shadow,
-		},
-	)
-	return container
-}
+// 	scroll := get_scroll()
+// 	if res.just_pressed {
+// 		f = (info.cursor_pos.x - knob_width / 2 - cached.pos.CachedElementInfo) / (cached.size.x - knob_width)
+// 		val = int(math.round(f32(min) + f * f32(max - min)))
+// 		start_drag_slider_value^ = val
+// 	} else if res.pressed || (scroll != 0 && res.hovered) {
+
+// 		if res.pressed {
+// 			cursor_x := cursor_pos.x
+// 			cursor_x_start_active := cursor_pos_start_press.x
+// 			f_shift := (cursor_x - cursor_x_start_active) / (slider_width - knob_width)
+// 			start_f := f32(start_drag_slider_value^ - min) / f32(max - min)
+// 			f = start_f + f_shift
+// 		} else {
+// 			f -= scroll * 0.05
+// 		}
+
+// 		if f < 0 {
+// 			f = 0
+// 		}
+// 		if f > 1 {
+// 			f = 1
+// 		}
+// 		val = int(math.round_f32(f32(min) + f * f32(max - min)))
+// 		value^ = val
+// 	}
+
+
+// 	container := div(
+// 		Div {
+// 			width = slider_width,
+// 			height = THEME.control_height,
+// 			flags = {.WidthPx, .HeightPx, .AxisX, .CrossAlignCenter, .MainAlignCenter},
+// 		},
+// 	)
+// 	child_div(
+// 		container,
+// 		Div {
+// 			width = 1,
+// 			height = THEME.control_height - 2,
+// 			color = THEME.text_secondary,
+// 			border_radius = THEME.border_radius_sm,
+// 			flags = {.WidthFraction, .HeightPx, .Absolute},
+// 			absolute_unit_pos = {0.5, 0.5},
+// 		},
+// 		id = id,
+// 	)
+// 	knob_border_color: Color = THEME.surface if !res.hovered else THEME.surface_border
+// 	f_rounded := math.round(f * f32(max - min)) / f32(max - min)
+// 	child_div(
+// 		container,
+// 		Div {
+// 			width = knob_width,
+// 			height = THEME.control_height,
+// 			color = THEME.surface_deep,
+// 			border_width = THEME.border_width,
+// 			border_color = knob_border_color,
+// 			flags = {.WidthPx, .HeightPx, .Absolute, .LerpStyle, .PointerPassThrough},
+// 			border_radius = THEME.border_radius_sm,
+// 			absolute_unit_pos = {f_rounded, 0.5},
+// 			lerp_speed = 20.0,
+// 		},
+// 		id = ui_id_next(id),
+// 	)
+// 	child_text(
+// 		container,
+// 		Text {
+// 			str = custom_text.(string) or_else fmt.tprint(val),
+// 			color = THEME.text,
+// 			font_size = THEME.font_size,
+// 			shadow = THEME.text_shadow,
+// 		},
+// 	)
+// 	return container
+// }
 
 // todo! maybe the slider_f32 should be the wrapper instead.
 slider_f64 :: proc(value: ^f64, min: f64 = 0, max: f64 = 1, id: UiId = 0) -> Ui {
@@ -413,31 +403,35 @@ slider_f64 :: proc(value: ^f64, min: f64 = 0, max: f64 = 1, id: UiId = 0) -> Ui 
 slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider_width: f32 = 0) -> Ui {
 	slider_width := slider_width
 	if slider_width == 0 {
-		slider_width = THEME.control_width_lg
+		slider_width = UI_THEME.control_width_lg
 	}
-	knob_width: f32 = THEME.font_size
+	knob_width: f32 = UI_THEME.font_size
 	id := id if id != 0 else u64(uintptr(value))
 	val: f32 = value^
 
-	cached_pos, cached_size, is_world_ui, start_drag_slider_value, ok := q.ui_get_cached(id, f32)
-	cursor_pos, cursor_pos_start_press := q.ui_cursor_pos(is_world_ui)
+	SliderCache :: struct {
+		start_drag_value:      f32,
+		start_drag_cursor_pos: Vec2,
+	}
 
+	cached, slider_cache, ok := ui_get_cached(id, SliderCache)
+	cursor_pos := cached.cursor_pos
 
 	f := (val - min) / (max - min)
-	res := q.ui_interaction(id)
+	res := ui_interaction(id)
 
-	scroll := get_scroll()
+	scroll := PLATFORM.scroll
 	if res.just_pressed {
-		f = (cursor_pos.x - knob_width / 2 - cached_pos.CachedElementInfo) / (cached_size.x - knob_width)
+		f = (cursor_pos.x - knob_width / 2 - cached.pos.x) / (cached.size.x - knob_width)
 		val = min + f * (max - min)
-		start_drag_slider_value^ = val
+		slider_cache.start_drag_value = val
 	} else if res.pressed || (scroll != 0 && res.hovered) {
 
 		if res.pressed {
 			cursor_x := cursor_pos.x
-			cursor_x_start_active := cursor_pos_start_press.x
+			cursor_x_start_active := slider_cache.start_drag_cursor_pos.x
 			f_shift := (cursor_x - cursor_x_start_active) / (slider_width - knob_width)
-			start_f := (start_drag_slider_value^ - min) / (max - min)
+			start_f := (slider_cache.start_drag_value - min) / (max - min)
 			f = start_f + f_shift
 		} else {
 			f -= scroll * 0.05
@@ -457,7 +451,7 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 	container := div(
 		Div {
 			width = slider_width,
-			height = THEME.control_height,
+			height = UI_THEME.control_height,
 			flags = {.WidthPx, .HeightPx, .AxisX, .CrossAlignCenter, .MainAlignCenter},
 		},
 	)
@@ -465,34 +459,34 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 		container,
 		Div {
 			width = 1,
-			height = THEME.control_height - 4,
-			color = THEME.text_secondary,
-			border_radius = THEME.border_radius_sm,
+			height = UI_THEME.control_height - 4,
+			color = UI_THEME.text_secondary,
+			border_radius = UI_THEME.border_radius_sm,
 			flags = {.WidthFraction, .HeightPx, .Absolute},
 			absolute_unit_pos = {0.5, 0.5},
 		},
 		id = id,
 	)
-	knob_border_color: Color = THEME.surface if !res.hovered else THEME.surface_border
+	knob_border_color: Color = UI_THEME.surface if !res.hovered else UI_THEME.surface_border
 	child_div(
 		container,
 		Div {
 			width = knob_width,
-			height = THEME.control_height,
-			color = THEME.surface_deep,
-			border_width = THEME.border_width,
+			height = UI_THEME.control_height,
+			color = UI_THEME.surface_deep,
+			border_width = UI_THEME.border_width,
 			border_color = knob_border_color,
 			flags = {.WidthPx, .HeightPx, .Absolute, .LerpStyle, .PointerPassThrough},
-			border_radius = THEME.border_radius_sm,
+			border_radius = UI_THEME.border_radius_sm,
 			absolute_unit_pos = {f, 0.5},
 			lerp_speed = 20.0,
 		},
-		id = q.ui_id_next(id),
+		id = ui_id_next(id),
 	)
 	text_str := fmt.aprintf("%f", val, allocator = context.temp_allocator)
 	child_text(
 		container,
-		Text{str = text_str, color = THEME.text, font_size = THEME.font_size, shadow = THEME.text_shadow},
+		Text{str = text_str, color = UI_THEME.text, font_size = UI_THEME.font_size, shadow = UI_THEME.text_shadow},
 	)
 
 	return container
@@ -533,20 +527,22 @@ enum_dropdown :: proc(value: ^$T, id: UiId = 0) -> Ui where intrinsics.type_is_e
 }
 
 dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
-	action := q.ui_interaction(id)
+	action := ui_interaction(id)
 	cur_idx := clamp(current_idx^, 0, len(values))
 
 	assert(len(values) > 0)
 	id := id if id != 0 else u64(uintptr(current_idx))
 
-	container := div(Div{width = THEME.control_width_lg, height = THEME.control_height, flags = {.WidthPx, .HeightPx}})
+	container := div(
+		Div{width = UI_THEME.control_width_lg, height = UI_THEME.control_height, flags = {.WidthPx, .HeightPx}},
+	)
 
-	first_id := q.ui_id_combined(q.ui_id_combined(id, q.ui_id(values[cur_idx])), q.ui_id("first"))
+	first_id := ui_id_combined(ui_id_combined(id, ui_id(values[cur_idx])), ui_id("first"))
 	first_el, first_el_res := _field(values[cur_idx], first_id, false)
 	child(container, first_el)
 	if first_el_res.focused || first_el_res.just_unfocused {
 		for v, idx in values {
-			field_id := q.ui_id_combined(id, q.ui_id(v))
+			field_id := ui_id_combined(id, ui_id(v))
 			field, field_res := _field(v, field_id, true)
 			child(container, field)
 			if field_res.just_pressed {
@@ -557,33 +553,33 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 
 	return container
 
-	_field :: proc(str: string, field_id: UiId, on_top: bool) -> (^q.DivElement, q.Interaction) {
-		action := q.ui_interaction(field_id)
-		color: Color = THEME.surface
-		border_color: Color = THEME.surface_border
+	_field :: proc(str: string, field_id: UiId, on_top: bool) -> (^DivElement, Interaction) {
+		action := ui_interaction(field_id)
+		color: Color = UI_THEME.surface
+		border_color: Color = UI_THEME.surface_border
 		if action.pressed || action.focused {
-			color = THEME.surface_deep
+			color = UI_THEME.surface_deep
 			if action.pressed {
-				border_color = THEME.text
+				border_color = UI_THEME.text
 			}
 		} else if action.hovered {
-			color = THEME.surface_border
-			border_color = THEME.text
+			color = UI_THEME.surface_border
+			border_color = UI_THEME.text
 		}
 		field := div(
 			Div {
 				z_layer = 3 if on_top else 0,
-				width = THEME.control_width_lg,
-				height = THEME.control_height,
+				width = UI_THEME.control_width_lg,
+				height = UI_THEME.control_height,
 				color = color,
 				border_color = border_color,
-				border_radius = THEME.border_radius,
-				border_width = THEME.border_width,
+				border_radius = UI_THEME.border_radius,
+				border_width = UI_THEME.border_width,
 				flags = {.WidthPx, .HeightPx, .CrossAlignCenter, .LerpStyle, .MainAlignCenter},
 			},
 			field_id,
 		)
-		child_text(field, Text{str = str, font_size = THEME.font_size, color = THEME.text, shadow = 0.5})
+		child_text(field, Text{str = str, font_size = UI_THEME.font_size, color = UI_THEME.text, shadow = 0.5})
 
 		return field, action
 	}
@@ -592,33 +588,36 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 
 @(private)
 _check_box_inner :: #force_inline proc(checked: bool, label: string, id: UiId) -> UiWithInteraction {
-	action := q.ui_interaction(id)
+	action := ui_interaction(id)
 	text_color: Color = ---
 	knob_inner_color: Color = ---
 	if checked || action.pressed {
-		text_color = THEME.text
-		knob_inner_color = THEME.surface_deep
+		text_color = UI_THEME.text
+		knob_inner_color = UI_THEME.surface_deep
 	} else if action.hovered {
-		text_color = THEME.highlight
-		knob_inner_color = THEME.text_secondary
+		text_color = UI_THEME.highlight
+		knob_inner_color = UI_THEME.text_secondary
 	} else {
-		text_color = THEME.text_secondary
-		knob_inner_color = THEME.text_secondary
+		text_color = UI_THEME.text_secondary
+		knob_inner_color = UI_THEME.text_secondary
 	}
-	ui := div(Div{height = THEME.control_height, gap = 8, flags = {.AxisX, .CrossAlignCenter, .HeightPx}}, id = id)
+	ui := div(Div{height = UI_THEME.control_height, gap = 8, flags = {.AxisX, .CrossAlignCenter, .HeightPx}}, id = id)
 	child_div(
 		ui,
 		Div {
-			width = THEME.control_height_sm,
-			height = THEME.control_height_sm,
+			width = UI_THEME.control_height_sm,
+			height = UI_THEME.control_height_sm,
 			color = knob_inner_color,
 			border_color = text_color,
 			flags = {.WidthPx, .HeightPx, .MainAlignCenter, .CrossAlignCenter},
-			border_radius = THEME.border_radius_sm,
+			border_radius = UI_THEME.border_radius_sm,
 			border_width = {3, 3, 3, 3},
 		},
 	)
-	child_text(ui, Text{str = label, color = text_color, font_size = THEME.font_size, shadow = THEME.text_shadow})
+	child_text(
+		ui,
+		Text{str = label, color = text_color, font_size = UI_THEME.font_size, shadow = UI_THEME.text_shadow},
+	)
 	return {ui, action}
 }
 
@@ -626,7 +625,7 @@ enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui wh
 
 	ui := div(Div{})
 	if horizontal {
-		ui.flags = q.DivFlags{.AxisX}
+		ui.flags = DivFlags{.AxisX}
 		ui.gap = 16
 	} else {
 		ui.gap = 2
@@ -636,7 +635,7 @@ enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui wh
 	if title != "" {
 		child_text(
 			ui,
-			Text{str = title, color = THEME.text, font_size = THEME.font_size_lg, shadow = THEME.text_shadow},
+			Text{str = title, color = UI_THEME.text, font_size = UI_THEME.font_size_lg, shadow = UI_THEME.text_shadow},
 		)
 	}
 	if !horizontal {
@@ -645,7 +644,7 @@ enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui wh
 
 	for variant in T {
 		str := fmt.aprint(variant, allocator = context.temp_allocator)
-		id := q.ui_id(str) ~ u64(uintptr(value))
+		id := ui_id(str) ~ u64(uintptr(value))
 		label := fmt.aprint(variant, allocator = context.temp_allocator)
 		interaction := _check_box_inner(value^ == variant, label, id)
 		if interaction.res.just_pressed {
@@ -686,11 +685,8 @@ DisplayValue :: struct {
 }
 
 // just shows a value in some part of the screen
-_display_values :: proc(values: []DisplayValue) {
-	if len(values) == 0 {
-		return
-	}
-	cover := div(q.COVER_DIV)
+display_values_widget :: proc(values: []DisplayValue) -> Ui {
+	cover := div(COVER_DIV)
 	upos_div := child_div(
 		cover,
 		Div {
@@ -705,11 +701,11 @@ _display_values :: proc(values: []DisplayValue) {
 		parent := upos_div
 		if val.label != "" {
 			parent = child_div(upos_div, Div{flags = {.AxisX, .CrossAlignCenter}, gap = 8})
-			child_text(parent, Text{str = val.label, font_size = 20.0, color = q.ColorLightBlue, shadow = 0.4})
+			child_text(parent, Text{str = val.label, font_size = 20.0, color = ColorLightBlue, shadow = 0.4})
 		}
 		child_text(parent, Text{str = val.value, font_size = 16.0, color = {1, 1, 1, 1}, shadow = 0.4})
 	}
-	add_ui(cover)
+	return cover
 }
 
 
@@ -721,34 +717,34 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 	@(thread_local)
 	g_id: UiId
 	@(thread_local)
-	g_hsv: q.Hsv
+	g_hsv: Hsv
 
 	id: UiId = u64(uintptr(value)) if id == 0 else id
-	dialog_id := q.ui_id_next(id)
-	square_id := q.ui_id_next(dialog_id)
-	hue_slider_id := q.ui_id_next(square_id)
-	text_edit_id := q.ui_id_next(hue_slider_id)
+	dialog_id := ui_id_next(id)
+	square_id := ui_id_next(dialog_id)
+	hue_slider_id := ui_id_next(square_id)
+	text_edit_id := ui_id_next(hue_slider_id)
 
 	color_picker_ids := [?]UiId{id, dialog_id, square_id, hue_slider_id, text_edit_id}
-	show_dialog := q.ui_any_pressed_or_focused(color_picker_ids[:])
-	res_knob := q.ui_interaction(id)
+	show_dialog := ui_any_pressed_or_focused(color_picker_ids[:])
+	res_knob := ui_interaction(id)
 
 
 	if show_dialog {
-		res_dialog := q.ui_interaction(dialog_id)
-		res_square := q.ui_interaction(square_id)
-		res_hue_slider := q.ui_interaction(hue_slider_id)
+		res_dialog := ui_interaction(dialog_id)
+		res_square := ui_interaction(square_id)
+		res_hue_slider := ui_interaction(hue_slider_id)
 		if id != g_id {
 			g_id = id
-			color_rgb := q.color_to_rgb(value^)
-			g_hsv = q.rbg_to_hsv(color_rgb)
+			color_rgb := color_to_rgb(value^)
+			g_hsv = rbg_to_hsv(color_rgb)
 		}
 
-		cursor_pos, _ := q.ui_cursor_pos()
-		cached_square_pos, cached_square_size, ok := q.ui_get_cached_no_user_data(square_id)
+		cached_square, ok := ui_get_cached_no_user_data(square_id)
+		cursor_pos := cached_square.cursor_pos
 		if ok {
 			if res_square.pressed {
-				unit_pos_in_square: Vec2 = (cursor_pos - cached_square_pos) / cached_square_size
+				unit_pos_in_square: Vec2 = (cursor_pos - cached_square.pos) / cached_square.size
 				unit_pos_in_square.x = clamp(unit_pos_in_square.x, 0, 1)
 				unit_pos_in_square.y = clamp(unit_pos_in_square.y, 0, 1)
 				g_hsv.s = f64(unit_pos_in_square.x)
@@ -756,45 +752,50 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 			}
 		}
 
-		cached_hue_slider_pos, cached_hue_slider_size, h_ok := q.ui_get_cached_no_user_data(hue_slider_id)
+		cached_hue_slider, h_ok := ui_get_cached_no_user_data(hue_slider_id)
 		if h_ok {
 			if res_hue_slider.pressed {
-				fract_in_slider: f32 = (cursor_pos.x - cached_square_pos.CachedElementInfo) / cached_square_size.x
+				fract_in_slider: f32 = (cursor_pos.x - cached_hue_slider.pos.x) / cached_hue_slider.size.x
 				fract_in_slider = clamp(fract_in_slider, 0, 1)
 				g_hsv.h = f64(fract_in_slider) * 359.8 // so that we dont loop around
 			}
 		}
-		value^ = q.color_from_hsv(g_hsv) // write the transformed color pack to ptr
+		value^ = color_from_hsv(g_hsv) // write the transformed color pack to ptr
 
-		color_picker_str := q.color_to_hex(value^)
+		color_picker_str := color_to_hex(value^)
 
 	}
 	color := value^
 
 
-	ui := div(Div{height = THEME.control_height, gap = 8, flags = {.AxisX, .CrossAlignCenter, .HeightPx}}, id)
+	ui := div(Div{height = UI_THEME.control_height, gap = 8, flags = {.AxisX, .CrossAlignCenter, .HeightPx}}, id)
 	knob := child_div(
 		ui,
 		Div {
 			color = color,
-			border_radius = THEME.border_radius,
-			border_width = THEME.border_width,
-			width = THEME.control_width_sm,
-			height = THEME.control_height,
+			border_radius = UI_THEME.border_radius,
+			border_width = UI_THEME.border_width,
+			width = UI_THEME.control_width_sm,
+			height = UI_THEME.control_height,
 			flags = {.WidthPx, .HeightPx},
 		},
 		id = id,
 	)
 	if res_knob.hovered {
-		knob.border_color = THEME.text
+		knob.border_color = UI_THEME.text
 	} else {
-		knob.border_color = THEME.surface_border
+		knob.border_color = UI_THEME.surface_border
 	}
 
 	if title != "" {
 		child_text(
 			ui,
-			Text{str = title, color = THEME.text_secondary, font_size = THEME.font_size, shadow = THEME.text_shadow},
+			Text {
+				str = title,
+				color = UI_THEME.text_secondary,
+				font_size = UI_THEME.font_size,
+				shadow = UI_THEME.text_shadow,
+			},
 		)
 	}
 
@@ -803,10 +804,10 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 			ui,
 			Div {
 				padding           = 16,
-				color             = THEME.surface_deep,
-				border_width      = THEME.border_width,
-				border_radius     = THEME.border_radius,
-				border_color      = THEME.surface_border,
+				color             = UI_THEME.surface_deep,
+				border_width      = UI_THEME.border_width,
+				border_radius     = UI_THEME.border_radius,
+				border_color      = UI_THEME.surface_border,
 				absolute_unit_pos = Vec2{0, 0},
 				z_layer           = 1,
 				flags             = {.Absolute},
@@ -823,7 +824,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 			for x in 0 ..< colors_n_x {
 				va_fact := 1.0 - f64(y) / f64(colors_n_y - 1)
 				sat_fact := f64(x) / f64(colors_n_x - 1)
-				col := q.color_from_hsv(q.Hsv{g_hsv.h, sat_fact, va_fact})
+				col := color_from_hsv(Hsv{g_hsv.h, sat_fact, va_fact})
 				colors[y * colors_n_x + x] = col
 			}
 		}
@@ -844,7 +845,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 		hue_colors := make([]Color, hue_colors_n * 2, allocator = context.temp_allocator)
 		for x in 0 ..< hue_colors_n {
 			hue_fact := f64(x) / f64(hue_colors_n - 1) * 360.0
-			col := q.color_from_hsv(q.Hsv{hue_fact, 1, 1})
+			col := color_from_hsv(Hsv{hue_fact, 1, 1})
 			hue_colors[x] = col
 			hue_colors[x + hue_colors_n] = col
 		}
@@ -880,7 +881,7 @@ crosshair_at_unit_pos :: proc(unit_pos: Vec2) -> Ui {
 			color = {1.0, 1.0, 1.0, 0.0},
 			border_radius = 8,
 			border_width = 2,
-			border_color = THEME.text,
+			border_color = UI_THEME.text,
 			flags = {.WidthPx, .HeightPx, .Absolute},
 			absolute_unit_pos = Vec2{0.5, 0.5},
 		},
@@ -909,12 +910,12 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 	set_size :: proc(data: ^ColorGradientRect, max_size: Vec2) -> (used_size: Vec2) {
 		return Vec2{data.width_px, data.height_px}
 	}
-	add_primitives :: proc(data: ^ColorGradientRect, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
+	add_primitives :: proc(data: ^ColorGradientRect, pos: Vec2, size: Vec2) -> []CustomPrimitives {
 		n_x := data.colors_n_x
 		n_y := data.colors_n_y
 
-		verts := make([dynamic]q.UiVertex, allocator = context.temp_allocator)
-		tris := make([dynamic]q.Triangle, allocator = context.temp_allocator)
+		verts := make([dynamic]UiVertex, allocator = context.temp_allocator)
+		tris := make([dynamic]Triangle, allocator = context.temp_allocator)
 		// add vertices:
 		for y in 0 ..< n_y {
 			for x in 0 ..< n_x {
@@ -924,13 +925,13 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 				vertex_pos := pos + size * unit_pos
 				append(
 					&verts,
-					q.UiVertex {
+					UiVertex {
 						pos = vertex_pos,
 						color = color,
 						border_radius = 0,
 						size = size,
 						flags = 0,
-						border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+						border_width = BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
 						border_color = {},
 					},
 				)
@@ -943,21 +944,20 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 				idx_1 := idx_0 + u32(n_x)
 				idx_2 := idx_0 + u32(n_x) + 1
 				idx_3 := idx_0 + 1
-				append(&tris, q.Triangle{idx_0, idx_1, idx_2})
-				append(&tris, q.Triangle{idx_0, idx_2, idx_3})
+				append(&tris, Triangle{idx_0, idx_1, idx_2})
+				append(&tris, Triangle{idx_0, idx_2, idx_3})
 			}
 		}
-		tmp_slice := make([]q.CustomPrimitives, 1, allocator = context.temp_allocator)
-		tmp_slice[0] = q.CustomUiMesh {
+		tmp_slice := make([]CustomPrimitives, 1, allocator = context.temp_allocator)
+		tmp_slice[0] = CustomUiMesh {
 			vertices  = verts[:],
 			triangles = tris[:],
-			texture   = 0,
 		}
 		return tmp_slice
 	}
 
 
-	return q.ui_custom(rect, set_size, add_primitives)
+	return ui_custom(rect, set_size, add_primitives)
 }
 
 
@@ -965,33 +965,36 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 colored_triangle :: proc() -> Ui {
 	SIZE :: Vec2{200, 150}
 
-	v :: proc(pos: Vec2, color: q.Color) -> q.UiVertex {
-		return q.UiVertex {
+	v :: proc(pos: Vec2, color: Color) -> UiVertex {
+		return UiVertex {
 			pos           = pos,
 			color         = color,
 			border_radius = {0, 0, 0, 0},
 			size          = SIZE,
 			flags         = 0,
-			// border_width = q.BorderWidth{-10.0, -10.0, -10.0, -10.0},
+			// border_width = BorderWidth{-10.0, -10.0, -10.0, -10.0},
 			border_color  = {},
 		}
 	}
 	set_size :: proc(e: ^Empty, max_size: Vec2) -> Vec2 {
 		return SIZE
 	}
-	add_primitives :: proc(e: ^Empty, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
-		verts := make([]q.UiVertex, 3, allocator = context.temp_allocator)
-		verts[0] = v({0, 0}, q.ColorSoftBlue)
-		verts[1] = v({100, 150}, q.ColorSoftGreen)
-		verts[2] = v({200, 0}, q.ColorSoftPink)
-		tris := make([]q.Triangle, 1, context.temp_allocator)
+	add_primitives :: proc(e: ^Empty, pos: Vec2, size: Vec2) -> []CustomPrimitives {
+		verts := make([]UiVertex, 3, allocator = context.temp_allocator)
+		verts[0] = v({0, 0}, ColorSoftBlue)
+		verts[1] = v({100, 150}, ColorSoftGreen)
+		verts[2] = v({200, 0}, ColorSoftPink)
+		tris := make([]Triangle, 1, context.temp_allocator)
 		tris[0] = {0, 1, 2}
-		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-		res[0] = q.CustomUiMesh{verts, tris, 0}
+		res := make([]CustomPrimitives, 1, context.temp_allocator)
+		res[0] = CustomUiMesh {
+			vertices  = verts,
+			triangles = tris,
+		}
 		return res
 	}
 	Empty :: struct {}
-	return q.ui_custom(Empty{}, set_size, add_primitives)
+	return ui_custom(Empty{}, set_size, add_primitives)
 }
 
 
@@ -1002,7 +1005,7 @@ StringOrBuilderPtr :: union #no_nil {
 
 TextEditUiWithInteraction :: struct {
 	ui:          Ui,
-	res:         q.Interaction,
+	res:         Interaction,
 	just_edited: bool,
 }
 
@@ -1011,12 +1014,12 @@ TextEditUiWithInteraction :: struct {
 text_edit :: proc(
 	value: StringOrBuilderPtr,
 	id: UiId = 0,
-	width_px: f32 = THEME.control_width_lg,
+	width_px: f32 = UI_THEME.control_width_lg,
 	max_characters: int = 10000,
-	font_size: f32 = THEME.font_size,
-	align: q.TextAlign = .Left,
+	font_size: f32 = UI_THEME.font_size,
+	align: TextAlign = .Left,
 	placeholder: string = "Type something...",
-	line_break: q.LineBreak = .OnCharacter,
+	line_break: LineBreak = .OnCharacter,
 ) -> TextEditUiWithInteraction {
 	@(thread_local)
 	g_id: UiId = 0
@@ -1040,9 +1043,9 @@ text_edit :: proc(
 		}
 	}
 
-	font_size := font_size if font_size != 0 else THEME.font_size
-	text_id := q.ui_id_next(id)
-	res := q.ui_interaction(id)
+	font_size := font_size if font_size != 0 else UI_THEME.font_size
+	text_id := ui_id_next(id)
+	res := ui_interaction(id)
 	just_edited := false
 
 	display_str: string = "INVALID!"
@@ -1078,19 +1081,19 @@ text_edit :: proc(
 		is_ctrl_pressed := is_ctrl_pressed()
 		is_shift_pressed := is_shift_pressed()
 
-		if is_key_just_pressed_or_repeated(.BACKSPACE) {
+		if is_just_pressed_or_repeated(.BACKSPACE) {
 			edit.delete_to(&g_state, .Left)
 			just_edited = true
 		}
-		if is_key_just_pressed_or_repeated(.DELETE) {
+		if is_just_pressed_or_repeated(.DELETE) {
 			edit.delete_to(&g_state, .Right)
 			just_edited = true
 		}
-		if is_key_just_pressed_or_repeated(.ENTER) {
+		if is_just_pressed_or_repeated(.ENTER) {
 			edit.perform_command(&g_state, .New_Line)
 		}
 		if is_ctrl_pressed {
-			if is_key_just_pressed(.A) {
+			if is_just_pressed(.A) {
 				edit.perform_command(&g_state, .Select_All)
 			}
 			// if input_just_pressed(input, .Z) { // nor working at the moment, I don't understand the undo API of text edit.
@@ -1099,20 +1102,20 @@ text_edit :: proc(
 			// if input_just_pressed(input, .Y) {
 			// 	edit.perform_command(&g_state, .Redo)
 			// }
-			if is_key_just_pressed(.C) {
+			if is_just_pressed(.C) {
 				set_clipboard(edit.current_selected_text(&g_state))
 			}
-			if is_key_just_pressed(.X) {
+			if is_just_pressed(.X) {
 				set_clipboard(edit.current_selected_text(&g_state))
 				edit.selection_delete(&g_state)
 				just_edited = true
 			}
-			if is_key_just_pressed(.V) {
+			if is_just_pressed(.V) {
 				edit.input_text(&g_state, get_clipboard())
 				just_edited = true
 			}
 		}
-		if is_key_just_pressed_or_repeated(.LEFT) {
+		if is_just_pressed_or_repeated(.LEFT) {
 			if is_shift_pressed {
 				if is_ctrl_pressed {
 					edit.select_to(&g_state, .Word_Left)
@@ -1128,7 +1131,7 @@ text_edit :: proc(
 			}
 		}
 
-		if is_key_just_pressed_or_repeated(.RIGHT) {
+		if is_just_pressed_or_repeated(.RIGHT) {
 			if is_shift_pressed {
 				if is_ctrl_pressed {
 					edit.select_to(&g_state, .Word_Right)
@@ -1163,18 +1166,18 @@ text_edit :: proc(
 	}
 
 
-	border_color: Color = THEME.surface_border if res.focused else THEME.surface
-	bg_color: Color = THEME.surface_deep
+	border_color: Color = UI_THEME.surface_border if res.focused else UI_THEME.surface
+	bg_color: Color = UI_THEME.surface_deep
 
-	caret_opacity: f32 = 1.0 if math.sin(ENGINE.platform.total_secs * 8.0) > 0.0 else 0.0
+	caret_opacity: f32 = 1.0 if math.sin(PLATFORM.total_secs * 8.0) > 0.0 else 0.0
 	markers_data: MarkersData = {
 		text_id         = text_id,
 		just_pressed    = res.just_pressed,
 		just_released   = res.just_released,
 		pressed         = res.pressed,
 		caret_width     = 3,
-		caret_color     = {THEME.text.r, THEME.text.g, THEME.text.b, caret_opacity},
-		selection_color = THEME.surface,
+		caret_color     = {UI_THEME.text.r, UI_THEME.text.g, UI_THEME.text.b, caret_opacity},
+		selection_color = UI_THEME.surface,
 		shift_pressed   = is_shift_pressed(),
 	}
 
@@ -1183,15 +1186,15 @@ text_edit :: proc(
 			width = width_px,
 			color = bg_color,
 			border_color = border_color,
-			border_width = THEME.border_width,
-			border_radius = THEME.border_radius,
-			padding = q.padding_symmetric(8, 4),
+			border_width = UI_THEME.border_width,
+			border_radius = UI_THEME.border_radius,
+			padding = padding_symmetric(8, 4),
 			flags = {.AxisX, .WidthPx},
 		},
 		id,
 	)
 	if res.focused {
-		child(ui, q.ui_custom(markers_data, set_markers_size, add_markers_elements))
+		child(ui, ui_custom(markers_data, set_markers_size, add_markers_elements))
 	}
 	if !res.focused && len(display_str) == 0 {
 		child_text(
@@ -1199,8 +1202,8 @@ text_edit :: proc(
 			Text {
 				str = placeholder,
 				font_size = font_size,
-				color = THEME.text_secondary,
-				shadow = THEME.text_shadow,
+				color = UI_THEME.text_secondary,
+				shadow = UI_THEME.text_shadow,
 				line_break = line_break,
 				pointer_pass_through = true,
 				align = align,
@@ -1213,8 +1216,8 @@ text_edit :: proc(
 			Text {
 				str = display_str,
 				font_size = font_size,
-				color = THEME.text,
-				shadow = THEME.text_shadow,
+				color = UI_THEME.text,
+				shadow = UI_THEME.text_shadow,
 				line_break = line_break,
 				pointer_pass_through = true,
 				align = align,
@@ -1240,19 +1243,20 @@ text_edit :: proc(
 		return Vec2{0, 0}
 	}
 
-	add_markers_elements :: proc(data: ^MarkersData, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
-		vertices: [dynamic]q.UiVertex = make([dynamic]q.UiVertex, context.temp_allocator)
-		tris: [dynamic]q.Triangle = make([dynamic]q.Triangle, context.temp_allocator)
+	add_markers_elements :: proc(data: ^MarkersData, pos: Vec2, size: Vec2) -> []CustomPrimitives {
+		vertices: [dynamic]UiVertex = make([dynamic]UiVertex, context.temp_allocator)
+		tris: [dynamic]Triangle = make([dynamic]Triangle, context.temp_allocator)
 
 
+		ui_ctx := get_ui_ctx()
 		// really hacky:
-		text_ctx, ok := ENGINE.ui_ctx.text_ids_to_tmp_layouts[data.text_id] // nil if text is empty string!
+		text_ctx, ok := ui_ctx.text_ids_to_tmp_layouts[data.text_id] // nil if text is empty string!
 		assert(ok)
 		assert(text_ctx != nil)
 		byte_count := len(text_ctx.byte_advances)
 
 		// get the glyph we are currently on:
-		cursor_pos := ENGINE.ui_ctx.cache.cursor_pos
+		cursor_pos := ui_ctx.user_provided_values.screen_layout_cursor_pos
 		rel_cursor_pos := cursor_pos - pos
 		current_byte_idx := byte_count
 		byte_start_idx := 0
@@ -1328,7 +1332,7 @@ text_edit :: proc(
 				rect_size := Vec2{x_right - x_left, line.metrics.ascent - line.metrics.descent}
 
 
-				q.add_rect(&vertices, &tris, rect_pos, rect_size, data.selection_color, {}, {}, {2, 2, 2, 2}, {})
+				add_rect(&vertices, &tris, rect_pos, rect_size, data.selection_color, {}, {}, {2, 2, 2, 2}, {})
 				if is_last {
 					break
 				}
@@ -1340,7 +1344,7 @@ text_edit :: proc(
 		if should_draw_caret {
 			caret_byte_idx := g_state.selection[0]
 
-			care_line: ^q.LineRun
+			care_line: ^LineRun
 			for &line in text_ctx.lines {
 				care_line = &line
 				if line.byte_end_idx >= caret_byte_idx {
@@ -1354,11 +1358,11 @@ text_edit :: proc(
 				pos.y + care_line.baseline_y - care_line.metrics.ascent,
 			}
 			pipe_size := Vec2{data.caret_width, care_line.metrics.ascent - care_line.metrics.descent}
-			q.add_rect(&vertices, &tris, pipe_pos, pipe_size, data.caret_color, {}, {}, {2, 2, 2, 2}, {})
+			add_rect(&vertices, &tris, pipe_pos, pipe_size, data.caret_color, {}, {}, {2, 2, 2, 2}, {})
 		}
 
-		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-		res[0] = q.CustomUiMesh{vertices[:], tris[:], 0}
+		res := make([]CustomPrimitives, 1, context.temp_allocator)
+		res[0] = CustomUiMesh{vertices[:], tris[:], DEFAULT_TEXTURE}
 		return res
 	}
 
@@ -1402,7 +1406,7 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 
 	text_to_show := fmt.tprintf("%.2f, %.2f, %.2f", weights.x, weights.y, weights.z)
 	id := id if id != 0 else u64(uintptr(weights))
-	res := q.ui_interaction(id)
+	res := ui_interaction(id)
 
 	A_REL_POS :: Vec2{0, 1}
 	B_REL_POS :: Vec2{1, 1}
@@ -1410,9 +1414,8 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 
 
 	if res.pressed {
-		cursor_pos, _ := q.ui_cursor_pos()
-		cached_pos, cached_size, _ := q.ui_get_cached_no_user_data(id)
-		rel := (cursor_pos - cached_pos) / cached_size
+		cached, _ := ui_get_cached_no_user_data(id)
+		rel := (cached.cursor_pos - cached.pos) / cached.size
 		w := barycentric_coordinates_non_zero(A_REL_POS, B_REL_POS, C_REL_POS, rel)
 		weights^ = w
 		// text_to_show = fmt.tprintf("%f,%f", rel.x, rel.y)
@@ -1420,7 +1423,7 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 	knob_rel_pos := A_REL_POS * weights[0] + B_REL_POS * weights[1] + C_REL_POS * weights[2]
 	ui := div(Div{flags = {.MainAlignCenter, .CrossAlignCenter}, padding = {8, 8, 8, 8}, gap = 8})
 	tri_container := child_div(ui, Div{}, id)
-	child(tri_container, equilateral_triangle(side_len, THEME.surface_border if res.pressed else THEME.surface))
+	child(tri_container, equilateral_triangle(side_len, UI_THEME.surface_border if res.pressed else UI_THEME.surface))
 	knob_zero_size_container := child_div(
 		tri_container,
 		Div {
@@ -1432,17 +1435,22 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 		knob_zero_size_container,
 		Div {
 			flags = {.WidthPx, .HeightPx},
-			color = THEME.background,
+			color = UI_THEME.background,
 			width = 16,
 			height = 16,
 			border_radius = 8,
 			border_width = 2,
-			border_color = THEME.text if res.pressed else THEME.text_secondary,
+			border_color = UI_THEME.text if res.pressed else UI_THEME.text_secondary,
 		},
 	)
 	child_text(
 		ui,
-		Text{str = text_to_show, color = q.ColorLightGrey, font_size = THEME.font_size, shadow = THEME.text_shadow},
+		Text {
+			str = text_to_show,
+			color = ColorLightGrey,
+			font_size = UI_THEME.font_size,
+			shadow = UI_THEME.text_shadow,
+		},
 	)
 	return ui
 }
@@ -1495,20 +1503,20 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 	widget_data := RoundedEquilateralTriangle {
 		side_length  = side_length,
 		color        = color,
-		border_color = q.ColorDarkTeal,
+		border_color = ColorDarkTeal,
 	}
-	v :: proc(pos: Vec2, color: q.Color) -> q.UiVertex {
-		return q.UiVertex {
+	v :: proc(pos: Vec2, color: Color) -> UiVertex {
+		return UiVertex {
 			pos = pos,
 			color = color,
 			border_radius = 0,
-			border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+			border_width = BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
 		}
 	}
 	set_size :: proc(data: ^RoundedEquilateralTriangle, max_size: Vec2) -> Vec2 {
 		return Vec2{data.side_length, math.SQRT_THREE / 2 * data.side_length}
 	}
-	add_primitives :: proc(data: ^RoundedEquilateralTriangle, pos: Vec2, size: Vec2) -> []q.CustomPrimitives {
+	add_primitives :: proc(data: ^RoundedEquilateralTriangle, pos: Vec2, size: Vec2) -> []CustomPrimitives {
 		// triangle:
 		//      
 		//      ^ c
@@ -1523,17 +1531,20 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 		a := pos + Vec2{0, size.y}
 		b := pos + size
 		c := pos + Vec2{size.x / 2, 0}
-		verts := make([]q.UiVertex, 3, allocator = context.temp_allocator)
+		verts := make([]UiVertex, 3, allocator = context.temp_allocator)
 		verts[0] = v(a, data.color)
 		verts[1] = v(b, data.color)
 		verts[2] = v(c, data.color)
-		tris := make([]q.Triangle, 3, context.temp_allocator)
+		tris := make([]Triangle, 3, context.temp_allocator)
 		tris[0] = {0, 1, 2}
-		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-		res[0] = q.CustomUiMesh{verts, tris, 0}
+		res := make([]CustomPrimitives, 1, context.temp_allocator)
+		res[0] = CustomUiMesh {
+			vertices  = verts,
+			triangles = tris,
+		}
 		return res
 	}
-	return q.ui_custom(widget_data, set_size, add_primitives)
+	return ui_custom(widget_data, set_size, add_primitives)
 }
 
 NineSlice :: struct {
@@ -1556,14 +1567,14 @@ NineSliceMode :: enum {
 // 	widget_data := RoundedEquilateralTriangle {
 // 		side_length  = side_length,
 // 		color        = color,
-// 		border_color = q.ColorDarkTeal,
+// 		border_color = ColorDarkTeal,
 // 	}
-// 	v :: proc(pos: Vec2, color: q.Color) -> q.UiVertex {
-// 		return q.UiVertex {
+// 	v :: proc(pos: Vec2, color: Color) -> UiVertex {
+// 		return UiVertex {
 // 			pos = pos,
 // 			color = color,
 // 			border_radius = 0,
-// 			border_width = q.BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
+// 			border_width = BORDER_WIDTH_WHEN_NO_CORNER_FLAGS_SUPPLIED,
 // 		}
 // 	}
 // 	set_size :: proc(data: ^RoundedEquilateralTriangle, max_size: Vec2) -> Vec2 {
@@ -1573,7 +1584,7 @@ NineSliceMode :: enum {
 // 		data: ^RoundedEquilateralTriangle,
 // 		pos: Vec2,
 // 		size: Vec2,
-// 	) -> []q.CustomPrimitives {
+// 	) -> []CustomPrimitives {
 // 		// triangle:
 // 		//      
 // 		//      ^ c
@@ -1588,7 +1599,7 @@ NineSliceMode :: enum {
 // 		a := pos + Vec2{0, size.y}
 // 		b := pos + size
 // 		c := pos + Vec2{size.x / 2, 0}
-// 		verts := make([]q.UiVertex, 3, allocator = context.temp_allocator)
+// 		verts := make([]UiVertex, 3, allocator = context.temp_allocator)
 // 		verts[0] = v(a, data.color)
 // 		verts[1] = v(b, data.color)
 // 		verts[2] = v(c, data.color)
@@ -1596,9 +1607,9 @@ NineSliceMode :: enum {
 // 		inds[0] = 0
 // 		inds[1] = 1
 // 		inds[2] = 2
-// 		res := make([]q.CustomPrimitives, 1, context.temp_allocator)
-// 		res[0] = q.CustomUiMesh{verts, inds, 0}
+// 		res := make([]CustomPrimitives, 1, context.temp_allocator)
+// 		res[0] = CustomUiMesh{verts, inds, 0}
 // 		return res
 // 	}
-// 	return q.ui_custom(widget_data, set_size, add_primitives)
+// 	return ui_custom(widget_data, set_size, add_primitives)
 // }

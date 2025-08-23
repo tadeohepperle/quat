@@ -16,21 +16,13 @@ ShaderRegistry :: struct {
 	hot_reload_shaders:               bool,
 }
 
-ShaderSourceWgsl :: struct {
-	path:            string,
-	last_write_time: os.File_Time,
-	wgsl_code:       string,
-}
-
-ShaderCompositedWgsl :: struct {
-	wgsl_code: string,
-	imports:   [dynamic]string,
-}
-
 Shader :: struct {
-	src:           ShaderSourceWgsl,
-	composited:    ShaderCompositedWgsl,
-	shader_module: wgpu.ShaderModule, // nullable, only shaders with entry points create modules, not some wgsl snippets.
+	src_path:            string,
+	src_wgsl:            string,
+	src_file_mod_time:   os.File_Time,
+	composited_wgsl:     string,
+	import_shader_names: [dynamic]string,
+	shader_module:       Maybe(wgpu.ShaderModule), // nullable, only shaders with entry points create modules, not some wgsl snippets.
 }
 
 // shader_destroy :: proc(shader: ^Shader) {
@@ -51,8 +43,16 @@ shader_registry_destroy :: proc(reg: ^ShaderRegistry) {
 		assert(pipeline.layout != nil)
 		assert(pipeline.pipeline != nil)
 		wgpu.PipelineLayoutRelease(pipeline.layout)
+		wgpu.RenderPipelineRelease(pipeline.pipeline)
+		free(pipeline)
 	}
 	delete(reg.pipelines)
+	for name, shader in reg.shaders {
+		if mod, ok := shader.shader_module.(wgpu.ShaderModule); ok {
+			wgpu.ShaderModuleRelease(mod)
+		}
+	}
+	delete(reg.shaders)
 	// todo: likely more to delete here, but should not matter much, because only happens at end of program
 }
 
@@ -65,24 +65,38 @@ shader_registry_create :: proc(
 		device = device,
 		shaders_dir_path = shaders_dir_path,
 		hot_reload_shaders = hot_reload_shaders,
+		shaders = make(map[string]Shader, context.allocator),
+		pipelines = make([dynamic]^RenderPipeline, context.allocator),
 	}
 }
 
-shader_registry_get :: proc(reg: ^ShaderRegistry, shader_name: string) -> wgpu.ShaderModule {
-	shader, err := get_or_load_shader(reg, shader_name, true)
-
-	if err != "" {
-		fmt.panicf("shader_registry_get should not panic (at least not on hot-reload): %s", err)
+shader_registry_get_or_load_shader_module :: proc(
+	reg: ^ShaderRegistry,
+	shader_name: string,
+) -> (
+	module: wgpu.ShaderModule,
+	err: Error,
+) {
+	shader := get_or_load_shader(reg, shader_name) or_return
+	if module, ok := shader.shader_module.(wgpu.ShaderModule); ok {
+		return module, nil
+	} else {
+		module, err := create_shader_module(shader_name, shader.composited_wgsl)
+		if err, has_err := err.(WgpuError); has_err {
+			return {}, tprint(err)
+		} else {
+			shader.shader_module = module
+			return module, nil
+		}
 	}
-	return shader.shader_module
 }
 
 make_render_pipeline :: proc(config: RenderPipelineConfig) -> ^RenderPipeline {
 	pipeline := new(RenderPipeline)
 	pipeline.config = config
 	err := _create_or_reload_render_pipeline(&PLATFORM.shader_registry, pipeline)
-	if err != nil {
-		fmt.panicf("Failed to create Render Pipeline \"{}\": {}", pipeline.config.debug_name, err.(WgpuError).message)
+	if err, has_err := err.(string); has_err {
+		fmt.panicf("Failed to create Render Pipeline \"{}\": {}", pipeline.config.debug_name, err)
 	}
 	assert(pipeline.layout != nil)
 	assert(pipeline.pipeline != nil)
@@ -94,9 +108,13 @@ wgpu_optional_bool :: proc(b: bool) -> wgpu.OptionalBool {
 	return .True if b else .False
 }
 
-SHADERS_DIRECTORY: []runtime.Load_Directory_File = #load_directory("../shaders")
-_create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^RenderPipeline) -> MaybeWgpuError {
+// SHADERS_DIRECTORY: []runtime.Load_Directory_File = #load_directory("../shaders")
+_create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^RenderPipeline) -> (err: Error) {
 	config := &pipeline.config
+
+	vs_shader_module := shader_registry_get_or_load_shader_module(reg, config.vs_shader) or_return
+	fs_shader_module := shader_registry_get_or_load_shader_module(reg, config.fs_shader) or_return
+
 	wgpu.DevicePushErrorScope(reg.device, .Validation)
 	if pipeline.layout == nil {
 		push_consts := config.push_constant_ranges
@@ -114,9 +132,6 @@ _create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^Rende
 
 		pipeline.layout = wgpu.DeviceCreatePipelineLayout(reg.device, &layout_desc)
 	}
-
-	vs_shader_module := shader_registry_get(reg, config.vs_shader)
-	fs_shader_module := shader_registry_get(reg, config.fs_shader)
 
 	vert_attibutes := make([dynamic]wgpu.VertexAttribute, context.temp_allocator)
 	vert_layouts := make([dynamic]wgpu.VertexBufferLayout, context.temp_allocator)
@@ -208,137 +223,123 @@ _create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^Rende
 		primitive = wgpu.PrimitiveState{topology = config.topology, cullMode = .None},
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 	}
-	pipeline_handle := wgpu.DeviceCreateRenderPipeline(reg.device, &pipeline_descriptor)
-	err := wgpu_pop_error_scope(reg.device)
-	if err == nil {
+	wgpu_pipeline := wgpu.DeviceCreateRenderPipeline(reg.device, &pipeline_descriptor)
+	wgpu_err := wgpu_pop_error_scope(reg.device)
+	if wgpu_err, has_err := wgpu_err.(WgpuError); has_err {
+		return tprint(wgpu_err)
+	} else {
+		// swap out old pipeline for new pipeline
 		old_pipeline := pipeline.pipeline
-		pipeline.pipeline = pipeline_handle
+		pipeline.pipeline = wgpu_pipeline
 		if old_pipeline != nil {
 			wgpu.RenderPipelineRelease(old_pipeline)
 		}
+		return nil
 	}
-
-	return err
 }
 
 // Note: does not create shader module
-get_or_load_shader :: proc(
-	reg: ^ShaderRegistry,
-	shader_name: string,
-	create_module: bool,
-) -> (
-	shader: ^Shader,
-	err: string,
-) {
+get_or_load_shader :: proc(reg: ^ShaderRegistry, shader_name: string) -> (shader: ^Shader, err: Error) {
 	if shader_name not_in reg.shaders {
-		loaded_shader: Shader
-		err = load_shader_wgsl(reg, shader_name, &loaded_shader)
-		if err != "" {
-			return
+		shader: Shader
+		src_path := shader_src_path(reg, shader_name)
+		src_wgsl, src_file_mod_time := load_shader_wgsl(reg, src_path) or_return
+		composited_wgsl, import_shader_names := composite_wgsl_code(reg, src_wgsl) or_return
+		reg.shaders[shader_name] = Shader {
+			src_path            = src_path,
+			src_wgsl            = src_wgsl,
+			src_file_mod_time   = src_file_mod_time,
+			composited_wgsl     = composited_wgsl,
+			shader_module       = nil,
+			import_shader_names = import_shader_names,
 		}
-		err = composite_wgsl_code(reg, &loaded_shader) // TODO or_return usable here
-		if err != "" {
-			return
-		}
-		if create_module {
-			err = create_shader_module(reg.device, &loaded_shader)
-			if err != "" {
-				return
-			}
-		}
-		reg.shaders[shader_name] = loaded_shader
 	}
-	shader = &reg.shaders[shader_name]
-	return
+	return &reg.shaders[shader_name], nil
 }
 
 // Note: does not create shader module
-create_shader_module :: proc(device: wgpu.Device, shader: ^Shader) -> (err: string) {
-	wgpu.DevicePushErrorScope(device, .Validation)
-	shader.shader_module = wgpu.DeviceCreateShaderModule(
-		device,
+create_shader_module :: proc(
+	label: string,
+	composited_wgsl: string,
+) -> (
+	module: wgpu.ShaderModule,
+	err: MaybeWgpuError,
+) {
+	wgpu.DevicePushErrorScope(PLATFORM.device, .Validation)
+	module = wgpu.DeviceCreateShaderModule(
+		PLATFORM.device,
 		&wgpu.ShaderModuleDescriptor {
-			label = shader.src.path,
-			nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = shader.composited.wgsl_code},
+			label = label,
+			nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = composited_wgsl},
 		},
 	)
-	switch create_shader_err in wgpu_pop_error_scope(device) {
-	case WgpuError:
-		err = create_shader_err.message
-	case:
+	if err, has_err := wgpu_pop_error_scope(PLATFORM.device).(WgpuError); has_err {
+		return {}, err
+	} else {
+		return module, nil
 	}
-	return
 }
 
-composite_wgsl_code :: proc(reg: ^ShaderRegistry, shader: ^Shader) -> (err: string) {
-	wgsl_code: string
-	imports: [dynamic]string
+composite_wgsl_code :: proc(
+	reg: ^ShaderRegistry,
+	src_wgsl: string,
+) -> (
+	composited_wgsl: string,
+	import_shader_names: [dynamic]string,
+	err: Error,
+) {
 	// replace the #import statements in the code with contents of that shader.
-	lines := strings.split_lines(shader.src.wgsl_code, context.temp_allocator)
+	lines := strings.split_lines(src_wgsl, context.temp_allocator)
 	b: strings.Builder
+	strings.builder_init(&b, NEVER_FREE_ALLOCATOR)
+	import_shader_names = make([dynamic]string, NEVER_FREE_ALLOCATOR)
+
 	for line in lines {
 		if strings.has_prefix(line, "#import ") {
 			if !strings.has_suffix(line, ".wgsl") {
-				err = strings.clone(line)
-				return
+				return {}, {}, fmt.tprintf("#import file needs to have .wgsl ending, instead, got: {}", line)
 			}
 			import_shader_name := strings.trim_space(line[7:len(line) - 5])
 			import_shader: ^Shader
-			import_shader, err = get_or_load_shader(reg, import_shader_name, false)
-			if err != "" {
-				return
-			}
-			append(&imports, import_shader_name)
+			import_shader = get_or_load_shader(reg, import_shader_name) or_return
+			append(&import_shader_names, import_shader_name)
 			// replace the import line by the wgsl code in the imported file:
-			strings.write_string(&b, import_shader.composited.wgsl_code)
+			strings.write_string(&b, import_shader.composited_wgsl)
 		} else {
 			strings.write_string(&b, line)
 			strings.write_rune(&b, '\n')
 		}
-		// else if strings.has_prefix(line, "#") {
-		// 	flag_prefix := fmt.tprintf("#{} ", flag)
-		// 	if strings.starts_with(line, flag_prefix) {
-		// 		strings.write_string(&b, line[len(flag_prefix):])
-		// 	} else {
-		// 		// ignore line
-		// 	}
-		// }
 	}
-	wgsl_code = strings.to_string(b)
-	shader.composited = ShaderCompositedWgsl{wgsl_code, imports}
-	return
+	return strings.to_string(b), import_shader_names, nil
+}
+
+shader_src_path :: proc(reg: ^ShaderRegistry, shader_name: string) -> string {
+	return fmt.aprintf("{}/{}.wgsl", reg.shaders_dir_path, shader_name, allocator = NEVER_FREE_ALLOCATOR)
 }
 
 /// Note: Does not create the actual shader module!
-load_shader_wgsl :: proc(reg: ^ShaderRegistry, shader_name: string, shader: ^Shader) -> (err: string) {
-	shader.src.path = fmt.aprintf("%s/%s.wgsl", reg.shaders_dir_path, shader_name)
-	src_time, src_err := os.last_write_time_by_name(shader.src.path)
-	if src_err != 0 {
-		//try load it from static SHADERS_DIRECTORY included instead
-		if !reg.hot_reload_shaders {
-			for included_file in SHADERS_DIRECTORY {
-				if included_file.name[:len(included_file.name) - 5] == shader_name {
-					shader.src.wgsl_code = strings.clone(transmute(string)included_file.data)
-					if reg.shaders_dir_path != "" {
-						// if was specified as "" we just assume the user wanted no hotrelaod and the static sources in the first place
-						print(shader.src.path, "not found using static wgsl instead.")
-					}
-					shader.src.last_write_time = 0
-					return
-				}
-			}
-		}
-		err = fmt.aprint("file does not exist:", shader.src.path)
-		return
+load_shader_wgsl :: proc(
+	reg: ^ShaderRegistry,
+	src_path: string,
+) -> (
+	src_wgsl: string,
+	src_file_mod_time: os.File_Time,
+	err: Error,
+) {
+	defer if err != nil {
+		delete(src_path)
 	}
-	content, _ := os.read_entire_file(shader.src.path)
-	if len(content) == 0 {
-		err = fmt.aprintf("Empty shader file: %s", shader.src.path, allocator = context.temp_allocator)
-		return
+	src_file_modification_time, src_err := os.last_write_time_by_name(src_path)
+	if src_err != nil {
+		return {}, {}, tprint(src_err)
 	}
-	shader.src.wgsl_code = string(content)
-	shader.src.last_write_time = src_time
-	return
+	content, success := os.read_entire_file_from_filename(src_path, NEVER_FREE_ALLOCATOR)
+	if len(content) == 0 || !success {
+		err = fmt.tprintf("Empty shader file: {}", src_path)
+		return {}, {}, err
+	}
+	src_wgsl = string(content)
+	return src_wgsl, src_file_modification_time, nil
 }
 
 
@@ -352,16 +353,16 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 	if len(reg.pipelines) == 0 {
 		return
 	}
-	// try to find a shader file that has changed:
+	// try to find a shader file that has changed (finding one per frame is enough! if multiple changed the total hot reload is just spread across frames)
 	changed_shader_name: string
 	changed_shader: ^Shader
+	// note: should probably randomize iteration order!
 	for name, &shader in reg.shaders {
-		last_write_time, err := os.last_write_time_by_name(shader.src.path)
-		if err != 0 {
+		last_write_time, err := os.last_write_time_by_name(shader.src_path)
+		if err != nil {
 			continue
-			// fmt.panicf("Shader file at %s got deleted", shader.src.path)
 		}
-		if shader.src.last_write_time >= last_write_time {
+		if shader.src_file_mod_time >= last_write_time {
 			continue
 		}
 		changed_shader_name = name
@@ -372,16 +373,18 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 		return
 	}
 
-	print("Detected file change in ", changed_shader.src.path)
+	fmt.println("Detected file change in ", changed_shader.src_path)
 	// reload the wgsl from the file for that shader:
-	old_src := changed_shader.src
-	load_err := load_shader_wgsl(reg, changed_shader_name, changed_shader)
-	if load_err != "" {
-		fmt.eprintfln("Error loading shader at %s: %s", changed_shader.src.path, load_err)
+
+
+	new_src_wgsl, new_src_file_mod_time, load_err := load_shader_wgsl(reg, changed_shader.src_path)
+	if load_err, has_load_err := load_err.(string); has_load_err {
+		fmt.eprintfln("Error loading shader at %s: %s", changed_shader.src_path, load_err)
 		return
 	}
-	delete(old_src.path)
-	delete(old_src.wgsl_code)
+	changed_shader.src_wgsl = new_src_wgsl
+	changed_shader.src_file_mod_time = new_src_file_mod_time
+
 	// print_line("read content:")
 	// print(changed_shader.src.wgsl_code)
 	// set a chain reaction in motion updating this shader and all its dependants:
@@ -391,50 +394,55 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 	for len(queue) > 0 {
 		shader_name := pop_front(&queue)
 		shader := &reg.shaders[shader_name]
-		old_composited := shader.composited
-		composite_err := composite_wgsl_code(reg, shader)
 
-		// print_line("old:")
-		// print(old_composited.wgsl_code.str)
-		// print_line("new:")
-		// print(shader.composited.wgsl_code.str)
-		// print_line()
-		if composite_err != "" {
-			fmt.eprintfln("Error compositing wgsl for %s: %s", shader.src.path, composite_err)
-			return
+		new_composited_wgsl, new_import_shader_names, composite_err := composite_wgsl_code(reg, shader.src_wgsl)
+		if composite_err, has_err := composite_err.(string); has_err {
+			fmt.eprintfln("Error compositing wgsl for %s: %s", shader.src_path, composite_err)
+			continue
 		}
-		if shader.shader_module != nil && old_composited.wgsl_code != shader.composited.wgsl_code {
-			old_shader_module := shader.shader_module
-			create_err := create_shader_module(reg.device, shader)
-			if create_err != "" {
-				fmt.printfln("Error creating shader module %s:\n%s", shader.src.path, create_err)
-				return
-			}
-			wgpu.ShaderModuleRelease(old_shader_module)
-			shaders_with_changed_modules[shader_name] = None{}
+		if new_composited_wgsl == shader.composited_wgsl {
+			continue
 		}
-		for other, shader in reg.shaders {
-			if other == shader_name {
+
+		if old_shader_module, ok := shader.shader_module.(wgpu.ShaderModule); ok {
+			new_shader_module, create_err := create_shader_module(shader_name, new_composited_wgsl)
+			if create_err, has_err := create_err.(WgpuError); has_err {
+				fmt.printfln("Error creating shader module %s:\n%s", shader.src_path, create_err)
 				continue
 			}
-			if slice.contains(shader.composited.imports[:], shader_name) {
-				append(&queue, other)
+
+			// swap out shader module:
+			delete(shader.composited_wgsl)
+			wgpu.ShaderModuleRelease(old_shader_module)
+
+			shader.shader_module = new_shader_module
+			shader.composited_wgsl = new_composited_wgsl
+			shader.import_shader_names = new_import_shader_names
+
+			shaders_with_changed_modules[shader_name] = None{}
+		}
+
+		// inefficient but good enough for <50 shaders I guess
+		for other, shader in reg.shaders {
+			if other != shader_name {
+				if slice.contains(shader.import_shader_names[:], shader_name) {
+					append(&queue, other)
+				}
 			}
 		}
 	}
-	// if we get until here, no error has occurred, we can recreate pipelines using any o
+
+	// if we get until here, no error has occurred, we can recreate pipelines:
 	for pipeline in reg.pipelines {
 		should_recreate_pipeline :=
 			pipeline.config.vs_shader in shaders_with_changed_modules ||
 			pipeline.config.fs_shader in shaders_with_changed_modules
 		if should_recreate_pipeline {
 			err := _create_or_reload_render_pipeline(reg, pipeline)
-			switch e in err {
-			case WgpuError:
+			if err, has_err := err.(string); has_err {
 				fmt.eprintfln("Error creating pipeline %s: %s", pipeline.config.debug_name, err)
-				continue
-			case:
-				print("Hot reloaded pipeline:", pipeline.config.debug_name)
+			} else {
+				fmt.printfln("Hot reloaded pipeline:", pipeline.config.debug_name)
 			}
 		}
 	}

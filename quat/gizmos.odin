@@ -181,7 +181,7 @@ gizmos_pipeline_config :: proc() -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached()),
+		bind_group_layouts = bind_group_layouts(shader_globals_bind_group_layout_cached()),
 		push_constant_ranges = push_const_ranges(
 			wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(GizmosMode)},
 		),

@@ -18,7 +18,6 @@ print :: q.print
 GIZMOS_COLOR := q.Color{1, 0, 0, 1}
 
 PLATFORM := &q.PLATFORM
-
 EngineSettings :: struct {
 	using platform:           q.PlatformSettings,
 	bloom_enabled:            bool,
@@ -26,13 +25,19 @@ EngineSettings :: struct {
 	debug_ui_gizmos:          bool,
 	debug_collider_gizmos:    bool,
 	use_simple_sprite_shader: bool, // does not use the depth calculations
+	screen_ui_reference_size: Vec2, // should be e.g. 1920x1080
+	world_2d_ui_px_per_unit:  f32,
+	tonemapping:              q.TonemappingMode,
 }
 DEFAULT_ENGINE_SETTINGS := EngineSettings {
-	platform              = q.PLATFORM_SETTINGS_DEFAULT,
-	bloom_enabled         = true,
-	bloom_settings        = q.BLOOM_SETTINGS_DEFAULT,
-	debug_ui_gizmos       = false,
-	debug_collider_gizmos = true,
+	platform                 = q.PLATFORM_SETTINGS_DEFAULT,
+	bloom_enabled            = true,
+	bloom_settings           = q.BLOOM_SETTINGS_DEFAULT,
+	debug_ui_gizmos          = false,
+	debug_collider_gizmos    = true,
+	screen_ui_reference_size = {1920, 1080},
+	world_2d_ui_px_per_unit  = 100,
+	tonemapping              = q.TonemappingMode.Disabled,
 }
 
 Pipeline :: ^q.RenderPipeline
@@ -54,6 +59,11 @@ Engine :: struct {
 	motion_particles_render_commands: [dynamic]q.MotionParticlesRenderCommand,
 	motion_particles_buffer:          q.DynamicBuffer(q.MotionParticleInstance),
 	top_level_elements_scratch:       [dynamic]q.TopLevelElement,
+	ui_id_interaction:                q.InteractionState(q.UiId),
+	ui_tag_interaction:               q.InteractionState(q.UiTag),
+	screen_ui_layout_extent:          Vec2,
+	shader_globals:                   q.ShaderGlobals,
+	shader_globals_uniform:           q.UniformBuffer(q.ShaderGlobals),
 }
 
 SpriteBuffers :: struct {
@@ -76,6 +86,7 @@ sprite_buffers_batch_and_prepare :: proc(this: ^SpriteBuffers, sprites: []q.Spri
 }
 
 PipelineType :: enum {
+	Tonemapping,
 	HexChunk,
 	SpriteCutout,
 	SpriteSimple,
@@ -103,7 +114,7 @@ UiAtWorldPos :: struct {
 
 // roughly in render order
 Scene :: struct {
-	camera:                         q.Camera,
+	camera:                         q.Camera, // 2d camera
 	// geometry:
 	tritex_meshes:                  [dynamic]q.TritexMesh,
 	tritex_textures:                q.TextureArrayHandle, // not owned! just set by the user.
@@ -125,7 +136,7 @@ Scene :: struct {
 	motion_particles_draw_commands: [dynamic]_MotionParticleDrawCommand,
 	annotations:                    [dynamic]Annotation, // put into ui_world_layer
 	hex_chunks:                     [dynamic]q.HexChunkUniform,
-	display_values:                 [dynamic]DisplayValue,
+	display_values:                 [dynamic]q.DisplayValue,
 }
 
 HitInfo :: struct {
@@ -196,7 +207,8 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	assert(settings.screen_ui_reference_size.y > 0)
 	engine.settings = settings
 
-	q.init(settings.platform)
+	q.platform_init(settings.platform)
+	q.ui_system_init()
 
 	_scene_create(&engine.scene)
 
@@ -217,9 +229,10 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
 	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.Screen))
 	p[.ScreenUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.Screen))
-	p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.World))
-	p[.WorldUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.World))
+	p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.World2D))
+	p[.WorldUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.World2D))
 	p[.MotionParticles] = q.make_render_pipeline(q.motion_particles_pipeline_config())
+	p[.Tonemapping] = q.make_render_pipeline(q.tonemapping_pipeline_config())
 
 
 	engine.cutout_sprites = sprite_buffers_create()
@@ -229,6 +242,12 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 
 	engine.world_ui_buffers = q.ui_render_buffers_create()
 	engine.screen_ui_buffers = q.ui_render_buffers_create()
+
+	engine.shader_globals = q.ShaderGlobals{}
+	engine.shader_globals_uniform = q.uniform_buffer_create(
+		q.ShaderGlobals,
+		q.shader_globals_bind_group_layout_cached(),
+	)
 
 	q.dynamic_buffer_init(&engine.motion_particles_buffer, {.Vertex})
 }
@@ -252,7 +271,11 @@ _engine_destroy :: proc(engine: ^Engine) {
 	delete(engine.motion_particles_render_commands)
 	delete(engine.top_level_elements_scratch)
 
-	q.deinit()
+
+	q.uniform_buffer_destroy(&engine.shader_globals_uniform)
+
+	q.ui_system_deinit()
+	q.platform_deinit()
 }
 
 
@@ -280,13 +303,64 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 		return false
 	}
 	_engine_recalculate_hit_info(engine)
-	q.ui_ctx_start_frame(&engine.platform, engine.hit.hit_pos)
-	_engine_recalculate_ui_hit_info(engine)
+	q.ui_system_start_frame_clearing_arenas()
+
+
+	screen_size := PLATFORM.screen_size_f32
+	cursor_pos := PLATFORM.cursor_pos
+
+	engine.screen_ui_layout_extent = q.screen_to_layout_space(
+		screen_size,
+		engine.settings.screen_ui_reference_size,
+		screen_size,
+	)
+
+	screen_layout_cursor_pos := q.screen_to_layout_space(
+		cursor_pos,
+		engine.settings.screen_ui_reference_size,
+		screen_size,
+	)
+	world_2d_cursor_pos := q.screen_to_world_pos(engine.scene.camera, cursor_pos, screen_size)
+
+
+	hovered_id, hovered_tag := q.ui_system_get_hovered_id_and_tag()
+	left_press := PLATFORM.mouse_buttons[.Left]
+	q.update_interaction_state(&engine.ui_id_interaction, hovered_id, left_press)
+	q.update_interaction_state(&engine.ui_tag_interaction, hovered_tag, left_press)
+	q.ui_system_set_user_provided_values(
+		q.UiUserProvidedValues {
+			delta_secs = PLATFORM.delta_secs,
+			id_state = engine.ui_id_interaction,
+			tag_state = engine.ui_tag_interaction,
+			screen_ui_layout_extent = engine.screen_ui_layout_extent,
+			screen_layout_cursor_pos = screen_layout_cursor_pos,
+			world_2d_cursor_pos = engine.hit.hit_pos,
+			world_2d_px_per_unit = engine.settings.world_2d_ui_px_per_unit,
+		},
+	)
+	engine.hit.is_on_world_ui = false
+	engine.hit.is_on_screen_ui = false
+	if hovered_id != 0 {
+		cached_info, ok := q.ui_get_cached_no_user_data(hovered_id)
+		switch cached_info.space {
+		case .Screen:
+			engine.hit.is_on_screen_ui = true
+		case .World2D:
+			engine.hit.is_on_world_ui = true
+		case .World3D:
+			unimplemented()
+		}
+	}
+
 	return true
 }
 
+add_window :: proc(title: string, content: []q.Ui, window_width: f32 = 0) {
+	add_ui(q.window_widget(title, content, window_width))
+}
+
 _engine_recalculate_hit_info :: proc(engine: ^Engine) {
-	hit_pos := q.screen_to_world_pos(engine.scene.camera, engine.platform.cursor_pos, engine.platform.screen_size_f32)
+	hit_pos := q.screen_to_world_pos(engine.scene.camera, PLATFORM.cursor_pos, PLATFORM.screen_size_f32)
 
 	highest_z_collider_hit: int = min(int)
 	hit_collider_idx := -1
@@ -304,27 +378,12 @@ _engine_recalculate_hit_info :: proc(engine: ^Engine) {
 	engine.hit.hit_collider = hit_collider
 	engine.hit.hit_collider_idx = hit_collider_idx
 }
-_engine_recalculate_ui_hit_info :: proc(engine: ^Engine) {
 
-	hovered_id := PLATFORM.ui_ctx.cache.state.hovered
-	engine.hit.is_on_world_ui = false
-	engine.hit.is_on_screen_ui = false
-	if hovered_id != 0 {
-		cached_element := PLATFORM.ui_ctx.cache.cached[hovered_id]
-		switch cached_element.transform.space {
-		case .Screen:
-			engine.hit.is_on_screen_ui = true
-		case .World:
-			engine.hit.is_on_world_ui = true
-		}
-	}
-}
 
 _engine_end_frame :: proc(engine: ^Engine) {
 
 	// RESIZE AND END INPUT:
 	if PLATFORM.screen_resized {
-		q.platform_resize()
 		q.bloom_renderer_resize(&engine.bloom_renderer, PLATFORM.screen_size)
 	}
 	// ADD SOME ADDITIONAL DRAW DATA:
@@ -336,9 +395,9 @@ _engine_end_frame :: proc(engine: ^Engine) {
 		_engine_debug_collider_gizmos(engine)
 	}
 
-	q.PLATFORM.settings = engine.settings.platform
-	q.platform_reset_input_at_end_of_frame(&engine.platform)
-	_display_values(engine.scene.display_values[:])
+	PLATFORM.settings = engine.settings.platform
+	q.platform_reset_input_at_end_of_frame()
+	add_ui(q.display_values_widget(engine.scene.display_values[:]))
 
 	// PREPARE
 	_engine_prepare(engine)
@@ -353,22 +412,32 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 _engine_prepare :: proc(engine: ^Engine) {
 	scene := &engine.scene
-	q.platform_prepare(&engine.platform, scene.camera)
+	q.platform_prepare()
+
+	// prepare the globals bindgroup:
+	engine.shader_globals.screen_ui_layout_extent = engine.screen_ui_layout_extent
+	engine.shader_globals.time_secs = PLATFORM.total_secs
+	engine.shader_globals.screen_size = PLATFORM.screen_size_f32
+	engine.shader_globals.cursor_pos = PLATFORM.cursor_pos
+	engine.shader_globals.world_ui_px_per_unit = engine.settings.world_2d_ui_px_per_unit
+	q.shader_globals_set_camera_2d(&engine.shader_globals, engine.scene.camera, PLATFORM.screen_size_f32)
+	q.uniform_buffer_write(&engine.shader_globals_uniform, &engine.shader_globals)
+
 	clear(&engine.top_level_elements_scratch)
 	for e in scene.world_ui {
-		q.ui_system_layout_in_world_space(
+		q.ui_system_layout_in_world_2d_space(
 			e.ui,
 			e.world_pos,
 			q.WORLD_UI_UNIT_TRANSFORM_2D,
-			engine.platform.settings.world_ui_px_per_unit,
+			engine.settings.world_2d_ui_px_per_unit,
 		)
 		append(
 			&engine.top_level_elements_scratch,
-			q.TopLevelElement{e.ui, q.UiTransform{space = .World, data = {world_transform = e.transform}}},
+			q.TopLevelElement{e.ui, q.UiTransform{space = .World2D, data = {transform2d = e.transform}}},
 		)
 	}
 	for ui in scene.screen_ui {
-		q.ui_system_layout_in_screen_space(ui, engine.platform.ui_layout_extent)
+		q.ui_system_layout_in_screen_space(ui, engine.screen_ui_layout_extent)
 		append(
 			&engine.top_level_elements_scratch,
 			q.TopLevelElement{ui, q.UiTransform{space = .Screen, data = {clipped_to = nil}}},
@@ -423,17 +492,20 @@ _engine_prepare :: proc(engine: ^Engine) {
 
 _engine_render :: proc(engine: ^Engine) {
 	// get surface texture view:
-	surface_view, command_encoder := q.platform_start_render(&engine.platform)
+	surface_view, command_encoder := q.platform_start_render()
 
 	// hdr render pass:
-	hdr_pass := q.platform_start_hdr_pass(engine.platform, command_encoder)
-	global_bind_group := engine.platform.globals.bind_group
-	asset_manager := engine.platform.asset_manager
+	hdr_pass := q.start_hdr_render_pass(
+		command_encoder,
+		PLATFORM.hdr_screen_texture,
+		PLATFORM.depth_screen_texture,
+		engine.settings.clear_color,
+	)
 
 	for pipeline in engine.pipelines {
 		assert(pipeline != nil)
 	}
-
+	global_bind_group := engine.shader_globals_uniform.bind_group
 	q.hex_chunks_render(
 		engine.pipelines[.HexChunk].pipeline,
 		hdr_pass,
@@ -483,7 +555,7 @@ _engine_render :: proc(engine: ^Engine) {
 		hdr_pass,
 		global_bind_group,
 	)
-	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, global_bind_group, asset_manager)
+	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, global_bind_group)
 	q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, global_bind_group)
 
 	// sandwich the world ui, e.g. health bars in two layers of transparent sprites + cutout sprites on top:
@@ -500,8 +572,8 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.pipelines[.WorldUiGlyph].pipeline,
 		hdr_pass,
 		global_bind_group,
-		engine.platform.settings.screen_ui_reference_size,
-		engine.platform.screen_size,
+		engine.settings.screen_ui_reference_size,
+		PLATFORM.screen_size,
 	)
 	q.sprite_batches_render(
 		engine.pipelines[.SpriteTransparent].pipeline,
@@ -529,8 +601,8 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.pipelines[.ScreenUiGlyph].pipeline,
 		hdr_pass,
 		global_bind_group,
-		engine.platform.settings.screen_ui_reference_size,
-		engine.platform.screen_size,
+		engine.settings.screen_ui_reference_size,
+		PLATFORM.screen_size,
 	)
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, global_bind_group, .UI)
 	wgpu.RenderPassEncoderEnd(hdr_pass)
@@ -541,22 +613,30 @@ _engine_render :: proc(engine: ^Engine) {
 		q.render_bloom(
 			command_encoder,
 			&engine.bloom_renderer,
-			&engine.platform.hdr_screen_texture,
+			PLATFORM.hdr_screen_texture,
 			global_bind_group,
 			engine.settings.bloom_settings,
 		)
 	}
 
-	q.platform_end_render(&engine.platform, surface_view, command_encoder)
+
+	q.tonemap(
+		command_encoder,
+		engine.pipelines[.Tonemapping].pipeline,
+		PLATFORM.hdr_screen_texture,
+		surface_view,
+		engine.settings.tonemapping,
+	)
+
+	q.platform_end_render(surface_view, command_encoder)
 }
 
 @(private)
 _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
-	cache := &engine.ui_ctx.cache
-	state := &cache.state
+	cache := q.ui_system_view_cache()
+	state := engine.ui_id_interaction
 
 	@(static) last_state: q.InteractionState(q.UiId)
-
 	if state.hovered != last_state.hovered {
 		print("  hovered:", last_state.hovered, "->", state.hovered)
 	}
@@ -566,10 +646,10 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 	if state.focused != last_state.focused {
 		print("  focused:", last_state.focused, "->", state.focused)
 	}
-	last_state = state^
+	last_state = state
 
 
-	for k, v in cache.cached {
+	for k, v in cache {
 		color := q.ColorSoftSkyBlue
 		if state.hovered == k {
 			color = q.ColorYellow
@@ -580,17 +660,17 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 		if state.pressed == k {
 			color = q.ColorRed
 		}
-		switch v.space {
+		switch v.transform.space {
 		case .Screen:
 			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, {v.pos, v.pos + v.size}, color, .UI)
-		case .World:
-			pos := Vec2{v.pos.x, -v.pos.y} / engine.settings.world_ui_px_per_unit
-			size := Vec2{v.size.x, -v.size.y} / engine.settings.world_ui_px_per_unit
+		case .World2D:
+			pos := Vec2{v.pos.x, -v.pos.y} / engine.settings.world_2d_ui_px_per_unit
+			size := Vec2{v.size.x, -v.size.y} / engine.settings.world_2d_ui_px_per_unit
 			a := pos
 			b := pos + Vec2{0, size.y}
 			c := pos + size
 			d := pos + Vec2{size.x, 0}
-			trans := v.transform.data.world_transform
+			trans := v.transform.data.transform2d
 			if trans != q.WORLD_UI_UNIT_TRANSFORM_2D {
 				a = q.ui_transform_2d_apply(trans, a)
 				b = q.ui_transform_2d_apply(trans, b)
@@ -601,6 +681,8 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, b, c, color, .WORLD)
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, c, d, color, .WORLD)
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, d, a, color, .WORLD)
+		case .World3D:
+			unimplemented()
 		}
 	}
 }
@@ -634,18 +716,18 @@ _engine_debug_collider_gizmos :: proc(engine: ^Engine) {
 }
 
 get_mouse_btn :: proc(btn: q.MouseButton = .Left) -> q.PressFlags {
-	return ENGINE.platform.mouse_buttons[btn]
+	return PLATFORM.mouse_buttons[btn]
 }
 // returns nil if no files dropped into window this frame, returned strings are only valid until end of frame
 get_dropped_file_paths :: proc() -> []string {
-	return ENGINE.platform.dropped_file_paths
+	return PLATFORM.dropped_file_paths
 }
 get_scroll :: proc() -> f32 {
-	return ENGINE.platform.scroll
+	return PLATFORM.scroll
 }
 // characters typed this frame
 get_input_chars :: proc() -> []rune {
-	return ENGINE.platform.chars[:ENGINE.platform.chars_len]
+	return PLATFORM.chars[:PLATFORM.chars_len]
 }
 get_hit :: #force_inline proc() -> HitInfo {
 	return ENGINE.hit
@@ -653,99 +735,14 @@ get_hit :: #force_inline proc() -> HitInfo {
 get_hit_pos :: proc() -> Vec2 {
 	return ENGINE.hit.hit_pos
 }
-get_delta_secs :: proc() -> f32 {
-	return ENGINE.platform.delta_secs
-}
-get_delta_secs_f64 :: proc() -> f64 {
-	return ENGINE.platform.delta_secs_f64
-}
-get_total_secs :: proc() -> f32 {
-	return ENGINE.platform.total_secs
-}
-get_total_secs_f64 :: proc() -> f64 {
-	return ENGINE.platform.total_secs_f64
-}
 get_osc :: proc(speed: f32 = 1, amplitude: f32 = 1, bias: f32 = 0, phase: f32 = 0) -> f32 {
-	return math.sin_f32(ENGINE.platform.total_secs * speed + phase) * amplitude + bias
-}
-get_screen_size_f32 :: proc() -> Vec2 {
-	return ENGINE.platform.screen_size_f32
+	return math.sin_f32(PLATFORM.total_secs * speed + phase) * amplitude + bias
 }
 get_ui_layout_extent :: proc() -> Vec2 {
-	return ENGINE.platform.ui_layout_extent
-}
-get_ui_cursor_pos :: proc() -> Vec2 {
-	p, _ := q.ui_cursor_pos()
-	return p
+	return ENGINE.screen_ui_layout_extent
 }
 get_ui_id_hovered :: proc() -> q.UiId {
-	return ENGINE.ui_ctx.cache.state.hovered
-}
-get_cursor_pos :: proc() -> Vec2 {
-	return ENGINE.platform.cursor_pos
-}
-get_cursor_delta :: proc() -> Vec2 {
-	return ENGINE.platform.cursor_delta
-}
-is_double_clicked :: proc() -> bool {
-	return ENGINE.platform.double_clicked
-}
-is_left_just_pressed :: proc() -> bool {
-	return .JustPressed in ENGINE.platform.mouse_buttons[.Left]
-}
-is_left_pressed :: proc() -> bool {
-	return .Pressed in ENGINE.platform.mouse_buttons[.Left]
-}
-is_left_just_released :: proc() -> bool {
-	return .JustReleased in ENGINE.platform.mouse_buttons[.Left]
-}
-is_right_just_pressed :: proc() -> bool {
-	return .JustPressed in ENGINE.platform.mouse_buttons[.Right]
-}
-is_right_pressed :: proc() -> bool {
-	return .Pressed in ENGINE.platform.mouse_buttons[.Right]
-}
-is_right_just_released :: proc() -> bool {
-	return .JustReleased in ENGINE.platform.mouse_buttons[.Right]
-}
-is_key_pressed :: #force_inline proc(key: q.Key) -> bool {
-	return .Pressed in ENGINE.platform.keys[key]
-}
-is_key_just_pressed :: #force_inline proc(key: q.Key) -> bool {
-	return .JustPressed in ENGINE.platform.keys[key]
-}
-is_key_just_released :: #force_inline proc(key: q.Key) -> bool {
-	return .JustReleased in ENGINE.platform.keys[key]
-}
-is_key_just_repeated :: #force_inline proc(key: q.Key) -> bool {
-	return .JustRepeated in ENGINE.platform.keys[key]
-}
-is_key_just_pressed_or_repeated :: #force_inline proc(key: q.Key) -> bool {
-	return q.PressFlags{.JustPressed, .JustRepeated} & ENGINE.platform.keys[key] != q.PressFlags{}
-}
-get_key :: proc(key: q.Key) -> q.PressFlags {
-	return ENGINE.platform.keys[key]
-}
-is_shift_pressed :: #force_inline proc() -> bool {
-	return .Pressed in ENGINE.platform.keys[.LEFT_SHIFT]
-}
-is_ctrl_pressed :: #force_inline proc() -> bool {
-	return .Pressed in ENGINE.platform.keys[.LEFT_CONTROL]
-}
-is_alt_pressed :: proc() -> bool {
-	return .Pressed in ENGINE.platform.keys[.LEFT_ALT]
-}
-set_clipboard :: proc(s: string) {
-	q.platform_set_clipboard(&ENGINE.platform, s)
-}
-get_clipboard :: proc() -> string {
-	return q.platform_get_clipboard(&ENGINE.platform)
-}
-maximize_window :: proc() {
-	q.platform_maximize(&ENGINE.platform)
-}
-create_3d_mesh :: proc() -> q.Mesh3d {
-	return q.mesh_3d_create(ENGINE.platform.device, ENGINE.platform.queue, 0)
+	return ENGINE.ui_id_interaction.hovered
 }
 draw_mesh_3d :: proc(mesh: q.Mesh3d) {
 	append(&ENGINE.scene.meshes_3d, mesh)
@@ -757,7 +754,7 @@ draw_hex_chunk :: proc(chunk: q.HexChunkUniform) {
 	append(&ENGINE.scene.hex_chunks, chunk)
 }
 create_hex_chunk :: proc(chunk_pos: [2]i32) -> q.HexChunkUniform {
-	return q.hex_chunk_uniform_create(ENGINE.platform.device, ENGINE.platform.queue, chunk_pos)
+	return q.hex_chunk_uniform_create(PLATFORM.device, PLATFORM.queue, chunk_pos)
 }
 destroy_hex_chunk :: proc(hex_chunk: ^q.HexChunkUniform) {
 	q.hex_chunk_uniform_destroy(hex_chunk)
@@ -768,40 +765,54 @@ create_skinned_mesh :: proc(
 	bone_count: int,
 	texture: q.TextureHandle = q.DEFAULT_TEXTURE,
 ) -> q.SkinnedMeshHandle {
-	return q.skinned_mesh_register(&ENGINE.platform.triangles, vertices, bone_count, texture)
+	return q.skinned_mesh_register(triangles, vertices, bone_count, texture)
 }
 destroy_skinned_mesh :: proc(handle: q.SkinnedMeshHandle) {
-	q.skinned_mesh_deregister(&ENGINE.platform.handle)
+	q.skinned_mesh_deregister(handle)
 }
 // call this with a slice of bone transforms that has the same length as what the skinned mesh expects
 set_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) {
-	q.skinned_mesh_update_bones(&ENGINE.platform.handle, bones)
+	q.skinned_mesh_update_bones(handle, bones)
 }
 draw_skinned_mesh :: proc(handle: q.SkinnedMeshHandle, pos: Vec2 = Vec2{0, 0}, color: Color = q.ColorWhite) {
 	append(&ENGINE.scene.skinned_render_commands, q.SkinnedRenderCommand{pos, color, handle})
 }
 // expected to be 8bit RGBA png
-load_texture :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureHandle {
-	return q.assets_load_texture(&ENGINE.platform.path, settings)
+load_texture_from_path :: proc(
+	path: string,
+	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
+) -> q.TextureHandle {
+	texture, err := q.texture_from_image_path(path, settings)
+	if err, has_err := err.(string); has_err {
+		panic(err)
+	}
+	return q.assets_insert(texture)
 }
 create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
-	texture := q.texture_from_image(ENGINE.platform.device, ENGINE.platform.queue, img, q.TEXTURE_SETTINGS_RGBA)
-	handle := q.assets_add_texture(&ENGINE.platform.texture)
-	return handle
-}
-destroy_texture :: proc(handle: q.TextureHandle) {
-	q.assets_deregister_texture(&ENGINE.platform.handle)
+	texture := q.texture_from_image(img, q.TEXTURE_SETTINGS_RGBA)
+	return q.assets_insert(texture)
 }
 get_texture_info :: proc(handle: q.TextureHandle) -> q.TextureInfo {
-	return q.assets_get_texture_info(ENGINE.platform.handle)
+	return q.assets_get(handle).info
 }
 write_image_to_texture :: proc(img: q.Image, handle: q.TextureHandle) {
-	texture := q.assets_get_texture(ENGINE.platform.handle)
-	q.texture_write_from_image(ENGINE.platform.queue, texture, img)
+	texture := q.assets_get(handle)
+	q.texture_write_from_image(texture, img)
 }
 // is expected to be 16bit R channel only png
 load_depth_texture :: proc(path: string) -> q.TextureHandle {
-	return q.assets_load_depth_texture(&ENGINE.platform.path)
+	depth_texture, err := q.depth_texture_16bit_r_from_image_path(path)
+	if err, has_err := err.(string); has_err {
+		panic(err)
+	}
+	return q.assets_insert(depth_texture)
+}
+load_texture :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureHandle {
+	texture, err := q.texture_from_image_path(path, settings)
+	if err, has_err := err.(string); has_err {
+		panic(err)
+	}
+	return q.assets_insert(texture)
 }
 load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureTile {
 	return q.TextureTile{load_texture(path, settings), q.UNIT_AABB}
@@ -809,7 +820,7 @@ load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_
 load_texture_as_sprite :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.Sprite {
 	texture_handle := load_texture(path, settings)
 	texture_tile := q.TextureTile{texture_handle, q.UNIT_AABB}
-	texture_info := q.assets_get_texture_info(ENGINE.platform.texture_handle)
+	texture_info := q.assets_get(texture_handle).info
 	sprite_size := Vec2{f32(texture_info.size.x), f32(texture_info.size.y)} / 100.0
 	return q.Sprite {
 		pos = {0, 0},
@@ -819,20 +830,6 @@ load_texture_as_sprite :: proc(path: string, settings: q.TextureSettings = q.TEX
 		rotation = 0,
 		z = 0,
 	}
-}
-
-load_texture_array :: proc(
-	paths: []string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
-) -> q.TextureArrayHandle {
-	return q.assets_load_texture_array(&ENGINE.platform.paths, settings)
-}
-load_font :: proc(path: string) -> q.FontHandle {
-	handle, err := q.assets_load_font(&ENGINE.platform.path)
-	if err, has_err := err.(string); has_err {
-		panic(err)
-	}
-	return handle
 }
 draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 	append(&ENGINE.scene.cutout_sprites, sprite)
@@ -845,8 +842,6 @@ draw_transparent_sprite :: #force_inline proc(sprite: q.Sprite, above_world_ui: 
 	buffer := &ENGINE.scene.transparent_sprites_high if above_world_ui else &ENGINE.scene.transparent_sprites_low
 	append(buffer, sprite)
 }
-// above world ui layer (e.g. health bars)
-
 
 draw_tritex_mesh :: proc(mesh: q.TritexMesh) {
 	append(&ENGINE.scene.tritex_meshes, mesh)
@@ -928,17 +923,17 @@ add_world_ui_at_transform :: proc(transform: q.UiTransform2d, ui: q.Ui) {
 }
 add_ui_next_to_world_point :: proc(
 	world_pos: Vec2,
-	ui: Ui,
+	ui: q.Ui,
 	px_offset: Vec2 = {0, 0},
 	additional_flags: q.DivFlags = q.DivFlags{.MainAlignCenter},
 ) {
-	screen_size := get_screen_size_f32()
+	screen_size := q.get_screen_size()
 	screen_pos := q.world_to_screen_pos(get_camera(), world_pos, screen_size)
 	screen_unit_pos := screen_pos / screen_size
 	flags := q.DivFlags{.Absolute, .ZeroSizeButInfiniteSizeForChildren} + additional_flags
-	at_ptr := div(Div{flags = flags, absolute_unit_pos = screen_unit_pos, offset = px_offset})
+	at_ptr := q.div(q.Div{flags = flags, absolute_unit_pos = screen_unit_pos, offset = px_offset})
 	add_ui(at_ptr)
-	child(at_ptr, ui)
+	q.ui_add_child(at_ptr, ui)
 }
 
 add_circle_collider :: proc(center: Vec2, radius: f32, metadata: q.ColliderMetadata, z: int) {
@@ -955,7 +950,7 @@ set_camera :: proc(camera: q.Camera) {
 	_engine_recalculate_hit_info(&ENGINE) // todo! probably not appropriate??
 }
 access_shader_globals_xxx :: proc() -> ^[4]f32 {
-	return &ENGINE.platform.globals_xxx
+	return &ENGINE.shader_globals.xxx
 }
 set_tritex_textures :: proc(textures: q.TextureArrayHandle) {
 	ENGINE.scene.tritex_textures = textures
@@ -973,65 +968,8 @@ set_bloom_blend_factor :: proc(factor: f64) {
 	ENGINE.settings.bloom_settings.blend_factor = factor
 }
 set_tonemapping_mode :: proc(mode: q.TonemappingMode) {
-	ENGINE.settings.platform.tonemapping = mode
+	ENGINE.settings.tonemapping = mode
 }
-create_tritex_mesh :: proc(vertices: []q.TritexVertex) -> q.TritexMesh {
-	return q.tritex_mesh_create(vertices, ENGINE.platform.device, ENGINE.platform.queue)
-}
-KeyVecPair :: struct {
-	key: q.Key,
-	dir: Vec2,
-}
-
-// rf keys, r = +1, f =-1
-get_rf :: proc() -> f32 {
-	res: f32
-	if .Pressed in ENGINE.platform.keys[.R] {
-		res += 1
-	} else if .Pressed in ENGINE.platform.keys[.F] {
-		res -= 1
-	}
-	return res
-}
-// axis of arrow keys or wasd for moving e.g. camera
-get_wasd :: proc() -> Vec2 {
-	mapping := [?]KeyVecPair{{.W, {0, 1}}, {.A, {-1, 0}}, {.S, {0, -1}}, {.D, {1, 0}}}
-	dir: Vec2
-	for m in mapping {
-		if .Pressed in ENGINE.platform.keys[m.key] {
-			dir += m.dir
-		}
-	}
-	if dir != {0, 0} {
-		return linalg.normalize(dir)
-	}
-	return {0, 0}
-}
-get_arrows :: proc() -> (res: Vec2) {
-	keys := ARROW_KEYS
-	dirs := [4]Vec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
-	for key, idx in keys {
-		if .Pressed in ENGINE.platform.keys[key] {
-			res += dirs[idx]
-		}
-	}
-	return res
-}
-
-ARROW_KEYS :: [4]q.Key{.LEFT, .RIGHT, .DOWN, .UP}
-WASD_KEYS :: [4]q.Key{.A, .D, .S, .W}
-
-get_arrows_just_pressed_or_repeated :: proc(keys := ARROW_KEYS) -> (res: IVec2) {
-	dirs := [4]IVec2{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
-	for key, idx in keys {
-		flags := ENGINE.platform.keys[key]
-		if .JustPressed in flags || .JustRepeated in flags {
-			res += dirs[idx]
-		}
-	}
-	return res
-}
-
 // call before initializing engine!
 enable_max_fps :: proc() {
 	DEFAULT_ENGINE_SETTINGS.power_preference = .HighPerformance
@@ -1045,11 +983,8 @@ enable_v_sync :: proc() {
 access_last_frame_colliders :: proc() -> []q.Collider {
 	return ENGINE.scene.last_frame_colliders[:]
 }
-get_aspect_ratio :: proc() -> f32 {
-	return ENGINE.platform.screen_size_f32.x / ENGINE.platform.screen_size_f32.y
-}
 display_value :: proc(values: ..any, label: string = "") {
-	append(&ENGINE.scene.display_values, DisplayValue{label = label, value = fmt.tprint(..values)})
+	append(&ENGINE.scene.display_values, q.DisplayValue{label = label, value = fmt.tprint(..values)})
 }
 Annotation :: struct {
 	pos:       Vec2,
@@ -1065,7 +1000,7 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 		return
 	}
 
-	screen_size := engine.platform.screen_size_f32
+	screen_size := PLATFORM.screen_size_f32
 	camera := engine.scene.camera
 	half_cam_world_size := Vec2{camera.height * screen_size.x / screen_size.y, camera.height} / 2
 	margin := Vec2{1, 1}
@@ -1081,8 +1016,8 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 		}
 		// red_box := child_div(div_at_pt, q.RED_BOX_DIV)
 
-		ui := text(
-		Text {
+		ui := q.text(
+		q.Text {
 			color     = ann.color,
 			shadow    = 0.5,
 			font_size = ann.font_size, // because UI layout assumes screen is 1080 px in height
@@ -1108,10 +1043,10 @@ draw_motion_particles :: proc(
 
 
 get_default_font_line_metrics :: proc() -> q.LineMetrics {
-	return q.slotmap_get(ENGINE.platform.asset_manager.fonts, 0).line_metrics
+	return q.assets_get(q.DEFAULT_FONT).line_metrics
 }
 
 set_default_font_line_metrics :: proc(line_metrics: q.LineMetrics) {
-	font := q.slotmap_access(&ENGINE.platform.asset_manager.fonts, 0)
+	font: ^q.Font = q.assets_get_ref(q.DEFAULT_FONT)
 	font.line_metrics = line_metrics
 }

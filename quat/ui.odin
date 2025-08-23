@@ -39,18 +39,6 @@ for {
 	ui_render()
 }
 
-ui_render_buffers_batch_and_prepare :: proc(this: ^UiRenderBuffers, top_level_elements: []TopLevelElement) {
-	ui_system_build_batches(top_level_elements, this)
-	// for b in this.batches {
-	// 	print(b)
-	// 	if b.transform.space == .World {
-	// 		print("     W: ", b.transform.data.world_transform)
-	// 	}
-	// }
-	dynamic_buffer_write(&this.vertex_buffer, this.primitives.vertices[:])
-	dynamic_buffer_write(&this.index_buffer, this.primitives.triangles[:])
-	dynamic_buffer_write(&this.glyph_instance_buffer, this.primitives.glyphs_instances[:])
-}
 ui_system_deinit()
 
 // you can use ui_system_measure(my_element) to figure out the size of things while still constructing the ui. Then get_and_set_size will be called twice that frame but that is okay.
@@ -59,15 +47,13 @@ ui_system_deinit()
 */
 
 UiUserProvidedValues :: struct {
-	delta_secs:                           f32, // for lerping UI elements
-	id_state:                             InteractionState(UiId),
-	tag_state:                            InteractionState(UiTag),
-	screen_layout_extent:                 Vec2,
-	screen_layout_cursor_pos:             Vec2,
-	screen_layout_cursor_pos_start_press: Vec2,
-	world_2d_cursor_pos:                  Vec2,
-	world_2d_cursor_pos_start_press:      Vec2,
-	world_2d_px_per_unit:                 f32,
+	delta_secs:               f32, // for lerping UI elements
+	id_state:                 InteractionState(UiId),
+	tag_state:                InteractionState(UiTag),
+	screen_ui_layout_extent:  Vec2,
+	screen_layout_cursor_pos: Vec2,
+	world_2d_cursor_pos:      Vec2,
+	world_2d_px_per_unit:     f32,
 	// todo: 3d ray for cursor pos in 3d
 }
 ui_system_set_user_provided_values :: proc(values: UiUserProvidedValues) {
@@ -76,7 +62,6 @@ ui_system_set_user_provided_values :: proc(values: UiUserProvidedValues) {
 ui_system_view_cache :: proc() -> map[UiId]CachedElement {
 	return UI_CTX.old_cache
 }
-
 
 NO_ID: UiId = 0
 UiId :: u64
@@ -114,6 +99,9 @@ ui_id_from_multiple_anys :: proc(data: ..any) -> UiId {
 		seed = hash.crc64_xz(bytes[:], seed)
 	}
 	return seed
+}
+ui_get_screen_layout_extent :: proc() -> Vec2 {
+	return UI_CTX.user_provided_values.screen_ui_layout_extent
 }
 ui_interaction :: proc "contextless" (id: UiId) -> Interaction {
 	return interaction(id, &UI_CTX.user_provided_values.id_state)
@@ -205,6 +193,10 @@ CachedElementInfo :: struct {
 	pos:        Vec2,
 	size:       Vec2,
 	space:      UiSpace,
+	// The reason the cursor_pos is returned here, instead of being globally accessible is the following:
+	// each element can be in a different ui space where the cursor pos is different. 
+	// for elements on the screen ui, this is just the scaled cursor pos of the platform.
+	// but for e.g. elements in 2d or 3d space this has to be the transformed cursor pos in that space for e.g. sliders to work correctly
 	cursor_pos: Vec2,
 }
 
@@ -217,9 +209,9 @@ ui_get_cached :: proc(
 	ok: bool,
 ) where size_of(CachedUserData) >=
 	size_of(USER_DATA_TY) {
-	el, _ok := &UI_CTX.old_cache.cached[id]
+	el, _ok := &UI_CTX.old_cache[id]
 	if !_ok {
-		return {}, {}, false, nil, false
+		return {}, nil, false
 	}
 	user_data = cast(^USER_DATA_TY)(&el.user_data)
 	return cashed_element_info(el^), user_data, true
@@ -227,7 +219,20 @@ ui_get_cached :: proc(
 
 @(private = "file")
 cashed_element_info :: proc(el: CachedElement) -> CachedElementInfo {
-	info := CachedElementInfo{el.pos, el.size, el.transform.space, {}}
+	cursor_pos := Vec2{0, 0}
+	switch el.transform.space {
+	case .Screen:
+		cursor_pos = screen_to_layout_space(
+			PLATFORM.cursor_pos,
+			UI_CTX.user_provided_values.screen_ui_layout_extent,
+			PLATFORM.screen_size_f32,
+		)
+	case .World2D:
+	case .World3D:
+	}
+
+
+	info := CachedElementInfo{el.pos, el.size, el.transform.space, cursor_pos}
 	return info
 }
 ui_get_cached_no_user_data :: proc(id: UiId) -> (data: CachedElementInfo, ok: bool) {
@@ -236,11 +241,6 @@ ui_get_cached_no_user_data :: proc(id: UiId) -> (data: CachedElementInfo, ok: bo
 		return {}, false
 	}
 	return cashed_element_info(el), true
-}
-
-// cursor pos scaled to the UI layout extent {1920,1080}
-ui_cursor_pos :: proc(world := false) -> (cursor_pos: Vec2, cursor_pos_start_press: Vec2) {
-	unimplemented()
 }
 ui_any_pressed_or_focused :: proc(ids: []UiId) -> bool {
 	for id in ids {
@@ -566,9 +566,14 @@ Ui :: union {
 	^TextElement,
 	^CustomUiElement,
 }
+UiDiv :: ^DivElement
+UiText :: ^TextElement
 
 @(private = "file")
 UI_CTX: UiCtx
+get_ui_ctx :: proc() -> ^UiCtx {
+	return &UI_CTX
+}
 UiCtx :: struct {
 	// all buffers here are fixed size, allocated once because any reallocation could
 	// fuck up the internal ptrs in the childrens arrays!
@@ -594,8 +599,8 @@ TEXTS_MAX_COUNT :: 4096
 CUSTOM_UIS_MAX_COUNT :: 512
 GLYPHS_MAX_COUNT :: 4096 * 16
 
-@(private)
-_ui_system_init :: proc() {
+
+ui_system_init :: proc() {
 	UI_CTX.divs = make([]DivElement, DIVS_MAX_COUNT)
 	UI_CTX.texts = make([]TextElement, TEXTS_MAX_COUNT)
 	UI_CTX.custom_uis = make([]CustomUiElement, CUSTOM_UIS_MAX_COUNT)
@@ -603,22 +608,15 @@ _ui_system_init :: proc() {
 	UI_CTX.temp_alloc = context.temp_allocator
 }
 
-@(private)
-_ui_system_deinit :: proc() {
+ui_system_deinit :: proc() {
 	delete(UI_CTX.divs)
 	delete(UI_CTX.custom_uis)
 	delete(UI_CTX.texts)
 	delete(UI_CTX.glyphs)
 	delete(UI_CTX.text_ids_to_tmp_layouts)
+	delete(UI_CTX.old_cache)
+	delete(UI_CTX.new_cache)
 }
-
-UiElementCounts :: struct {
-	divs:       int,
-	texts:      int,
-	glyphs:     int,
-	custom_uis: int,
-}
-
 
 ui_add_child :: proc(of: ^DivElement, child: Ui) {
 	append(&of.children, child)
@@ -692,6 +690,7 @@ ui_system_start_frame_clearing_arenas :: proc() {
 	UI_CTX.texts_len = 0
 	UI_CTX.custom_uis_len = 0
 	UI_CTX.glyphs_len = 0
+	clear(&UI_CTX.text_ids_to_tmp_layouts)
 }
 
 ui_system_get_hovered_id_and_tag :: proc() -> (hovered_id: UiId, hovered_tag: UiTag) {

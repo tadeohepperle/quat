@@ -27,11 +27,7 @@ Assets :: struct {
 }
 
 assets_insert :: proc(elem: $T) -> Handle(T) {
-	_, punned_slotmap, just_inserted, _ := map_entry(&PLATFORM.assets.slotmaps, T)
-	slotmap: ^Slotmap(T) = cast(^Slotmap(T))punned_slotmap
-	if just_inserted {
-		slotmap_initialize(slotmap)
-	}
+	slotmap: ^Slotmap(T) = assets_get_map_ref(T)
 	return slotmap_insert(slotmap, elem)
 }
 assets_get_map :: proc($T: typeid) -> Slotmap(T) {
@@ -43,11 +39,8 @@ assets_get_map_ref :: proc($T: typeid) -> ^Slotmap(T) {
 	} else when T == Font {
 		return &PLATFORM.assets.fonts
 	} else {
-		_, punned_slotmap, just_inserted, _ := map_entry(&PLATFORM.assets.slotmaps, T)
+		_, punned_slotmap, _just_inserted, _ := map_entry(&PLATFORM.assets.slotmaps, T)
 		slotmap: ^Slotmap(T) = cast(^Slotmap(T))punned_slotmap
-		if just_inserted {
-			slotmap_initialize(slotmap)
-		}
 		return slotmap
 	}
 }
@@ -76,14 +69,9 @@ SlotmapElement :: struct($T: typeid) {
 	element:       T,
 	next_free_idx: u32, // if is NO_FREE_IDX, means that there is an element in here
 }
-NO_FREE_IDX: u32 : max(u32)
-@(private = "file")
-slotmap_initialize :: proc(this: ^Slotmap($T)) {
-	this.next_free_idx = NO_FREE_IDX
-	this.slots = make([dynamic]SlotmapElement(T), context.allocator)
-}
+NO_FREE_IDX :: max(u32)
 slotmap_insert :: proc(this: ^Slotmap($T), element: T) -> (handle: Handle(T)) {
-	if this.next_free_idx == NO_FREE_IDX {
+	if this.next_free_idx >= u32(len(this.slots)) {
 		// append a new element to end of elements array:
 		handle.idx = u32(len(this.slots))
 		append(&this.slots, SlotmapElement(T){element, NO_FREE_IDX})
@@ -162,12 +150,16 @@ slotmap_iter :: proc "contextless" (this: ^Slotmap($T), i: ^int) -> (element: ^T
 	return {}, handle, false
 }
 
+slotmap_drop :: proc(slotmap: ^Slotmap($T)) {
+	delete(slotmap.slots)
+}
+
 @(private)
 destroy_assets :: proc() {
 	textures := assets_get_map_ref(Texture)
 	i := 0
 	for texture, _ in slotmap_iter(textures, &i) {
-		texture_destroy(texture)
+		texture_destroy(texture^)
 	}
 
 	fonts := assets_get_map_ref(Font)
@@ -187,6 +179,13 @@ destroy_assets :: proc() {
 	for mesh, _ in slotmap_iter(skinned_meshes, &i) {
 		_skinned_mesh_drop(mesh)
 	}
+
+	slotmap_drop(&PLATFORM.assets.fonts)
+	slotmap_drop(&PLATFORM.assets.textures)
+	for _, &slotmap in PLATFORM.assets.slotmaps {
+		slotmap_drop(&slotmap)
+	}
+	delete(PLATFORM.assets.slotmaps)
 }
 
 @(private)
@@ -221,4 +220,39 @@ update_changed_font_atlas_textures :: proc(queue: wgpu.Queue) {
 			)
 		}
 	}
+}
+
+// /////////////////////////////////////////////////////////////////////////////
+// SECTION: Some utilities for texture loading:
+// /////////////////////////////////////////////////////////////////////////////
+
+
+load_depth_texture :: proc(path: string) -> TextureHandle {
+	texture, err := depth_texture_16bit_r_from_image_path(path)
+	if err, has_err := err.(string); has_err {
+		fmt.panicf("Panic loading depth 16bit R texture from path {}: {}", path, err)
+	}
+	return assets_insert(texture)
+}
+load_texture :: proc(path: string, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> TextureHandle {
+	texture, err := texture_from_image_path(path, settings)
+	if err, has_err := err.(string); has_err {
+		fmt.panicf("Panic loading texture from path {}: {}", path, err)
+	}
+	return assets_insert(texture)
+}
+
+load_texture_array :: proc(paths: []string, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> TextureArrayHandle {
+	texture, err := texture_array_from_image_paths(paths, settings)
+	if err, has_err := err.(string); has_err {
+		fmt.panicf("Panic loading texture array from paths {}:  {}", paths, err)
+	}
+	return assets_insert(texture)
+}
+load_font :: proc(ttf_path: string) -> FontHandle {
+	font, err := font_from_path(ttf_path)
+	if err, has_err := err.(string); has_err {
+		fmt.panicf("Panic loading font from ttf path {}:  {}", ttf_path, err)
+	}
+	return assets_insert(font)
 }

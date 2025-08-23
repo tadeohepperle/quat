@@ -4,10 +4,13 @@ import "base:runtime"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
+import "core:mem"
+import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
+
 import wgpu "vendor:wgpu"
 
 import "core:math/rand"
@@ -15,6 +18,7 @@ None :: struct {}
 Error :: union {
 	string,
 }
+dbg :: fmt.println
 print :: fmt.println
 // print :: proc(args: ..any, loc := #caller_location) {
 // 	fmt.println(loc, args)
@@ -219,15 +223,37 @@ lorem :: proc(letters := 300) -> string {
 // Note: all these functions (vert_attributes, bind_group_layouts, push_const_ranges)
 // just clone the args from a stack slice into the default allocator
 vert_attributes :: proc(args: ..VertAttibute) -> []VertAttibute {
-	return slice.clone(args)
+	return slice.clone(args, NEVER_FREE_ALLOCATOR)
 }
 bind_group_layouts :: proc(args: ..wgpu.BindGroupLayout) -> []wgpu.BindGroupLayout {
-	return slice.clone(args)
+	return slice.clone(args, NEVER_FREE_ALLOCATOR)
 }
 push_const_ranges :: proc(args: ..wgpu.PushConstantRange) -> []wgpu.PushConstantRange {
-	return slice.clone(args)
+	return slice.clone(args, NEVER_FREE_ALLOCATOR)
 }
 
+
+NEVER_FREE_ALLOCATOR := mem.Allocator {
+	procedure = proc(
+		allocator_data: rawptr,
+		mode: mem.Allocator_Mode,
+		size, alignment: int,
+		old_memory: rawptr,
+		old_size: int,
+		location: runtime.Source_Code_Location,
+	) -> (
+		[]byte,
+		mem.Allocator_Error,
+	) {
+		if NEVER_FREE_ARENA.curr_block == nil {
+			assert(virtual.arena_init_growing(&NEVER_FREE_ARENA) == .None)
+		}
+		return virtual.arena_allocator_proc(&NEVER_FREE_ARENA, mode, size, alignment, old_memory, old_size, location)
+	},
+	data = nil,
+}
+@(private = "file")
+NEVER_FREE_ARENA: virtual.Arena
 // Range :: struct {
 // 	start: int,
 // 	end:   int,

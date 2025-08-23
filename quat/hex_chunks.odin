@@ -150,7 +150,7 @@ hex_chunk_pipeline_config :: proc() -> RenderPipelineConfig {
 		vertex = {},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(),
+			shader_globals_bind_group_layout_cached(),
 			tritex_textures_bind_group_layout_cached(),
 			hex_chunk_data_bind_group_layout_cached(),
 		),

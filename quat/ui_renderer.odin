@@ -198,7 +198,10 @@ ui_rect_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
+		bind_group_layouts = bind_group_layouts(
+			shader_globals_bind_group_layout_cached(),
+			rgba_bind_group_layout_cached(),
+		),
 		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2d)}) if space == .World2D else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -212,6 +215,7 @@ UiPushConstants :: struct {
 	offset: Vec2,
 }
 ui_glyph_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
+	// todo! support 3d!
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
 		vs_shader = "ui",
@@ -230,7 +234,10 @@ ui_glyph_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 				{format = .Float32x2, offset = offset_of(UiGlyphInstance, shadow_and_bias)},
 			),
 		},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
+		bind_group_layouts = bind_group_layouts(
+			shader_globals_bind_group_layout_cached(),
+			rgba_bind_group_layout_cached(),
+		),
 		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2d)}) if space == .World2D else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

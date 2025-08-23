@@ -60,7 +60,7 @@ dynamic_buffer_append_no_resize :: proc(this: ^DynamicBuffer($T), elements: []T,
 	additional_size := u64(len(elements) * size_of(T))
 	assert(this.size >= used_size + additional_size)
 	this.length += len(elements)
-	wgpu.QueueWriteBuffer(this.queue, this.buffer, used_size, raw_data(elements), uint(additional_size))
+	wgpu.QueueWriteBuffer(PLATFORM.queue, this.buffer, used_size, raw_data(elements), uint(additional_size))
 }
 
 dynamic_buffer_write_many :: proc(
@@ -90,14 +90,10 @@ uniform_buffer_destroy :: proc(buffer: ^UniformBuffer($T)) {
 	wgpu.BindGroupLayoutRelease(buffer.bind_group_layout)
 	wgpu.BufferRelease(buffer.buffer) // TODO: What is the difference between BufferDestroy and BufferRelease
 }
-uniform_buffer_create_from_bind_group_layout :: proc(
-	buffer: ^UniformBuffer($T),
-	device: wgpu.Device,
-	bind_group_layout: wgpu.BindGroupLayout,
-) {
+uniform_buffer_create :: proc($T: typeid, bind_group_layout: wgpu.BindGroupLayout) -> (buffer: UniformBuffer(T)) {
 	buffer.usage |= {.CopyDst, .Uniform}
 	buffer.buffer = wgpu.DeviceCreateBuffer(
-		device,
+		PLATFORM.device,
 		&wgpu.BufferDescriptor{usage = buffer.usage, size = size_of(T), mappedAtCreation = false},
 	)
 	buffer.bind_group_layout = bind_group_layout
@@ -105,13 +101,14 @@ uniform_buffer_create_from_bind_group_layout :: proc(
 		wgpu.BindGroupEntry{binding = 0, buffer = buffer.buffer, offset = 0, size = u64(size_of(T))},
 	}
 	buffer.bind_group = wgpu.DeviceCreateBindGroup(
-		device,
+		PLATFORM.device,
 		&wgpu.BindGroupDescriptor {
 			layout = buffer.bind_group_layout,
 			entryCount = 1,
 			entries = raw_data(bind_group_entries[:]),
 		},
 	)
+	return buffer
 }
 uniform_bind_group_layout :: proc(size_of_t: u64) -> wgpu.BindGroupLayout {
 	return wgpu.DeviceCreateBindGroupLayout(
@@ -130,13 +127,13 @@ uniform_bind_group_layout :: proc(size_of_t: u64) -> wgpu.BindGroupLayout {
 		},
 	)
 }
-uniform_buffer_create :: proc(buffer: ^UniformBuffer($T), device: wgpu.Device) {
-	layout := uniform_bind_group_layout(device, size_of(T))
-	uniform_buffer_create_from_bind_group_layout(buffer, device, layout)
-}
+// uniform_buffer_create :: proc(buffer: ^UniformBuffer($T)) {
+// 	layout := uniform_bind_group_layout(size_of(T))
+// 	uniform_buffer_create_from_bind_group_layout(buffer, layout)
+// }
 
-uniform_buffer_write :: proc(queue: wgpu.Queue, buffer: ^UniformBuffer($T), data: ^T) {
-	wgpu.QueueWriteBuffer(queue, buffer.buffer, 0, data, size_of(T))
+uniform_buffer_write :: proc(buffer: ^UniformBuffer($T), data: ^T) {
+	wgpu.QueueWriteBuffer(PLATFORM.queue, buffer.buffer, 0, data, size_of(T))
 }
 
 

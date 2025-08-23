@@ -28,7 +28,7 @@ TonemappingMode :: enum u32 {
 tonemap :: proc(
 	command_encoder: wgpu.CommandEncoder,
 	tonemapping_pipeline: wgpu.RenderPipeline,
-	hdr_texture_bind_group: wgpu.BindGroup,
+	hdr_texture: Texture,
 	sdr_texture_view: wgpu.TextureView,
 	mode: TonemappingMode,
 ) {
@@ -52,7 +52,7 @@ tonemap :: proc(
 	defer wgpu.RenderPassEncoderRelease(tonemap_pass)
 
 	wgpu.RenderPassEncoderSetPipeline(tonemap_pass, tonemapping_pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(tonemap_pass, 0, hdr_texture_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(tonemap_pass, 0, hdr_texture.bind_group)
 	push_constants := mode
 	wgpu.RenderPassEncoderSetPushConstants(tonemap_pass, {.Fragment}, 0, size_of(TonemappingMode), &push_constants)
 	wgpu.RenderPassEncoderDraw(tonemap_pass, 3, 1, 0, 0)

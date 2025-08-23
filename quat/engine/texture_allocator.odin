@@ -29,7 +29,7 @@ motion_texture_allocator_create :: proc(diffuse_size: IVec2, motion_size: IVec2)
 
 	texture := q.motion_texture_create(diffuse_size, motion_size)
 	q.atlas_init(&res.atlas, diffuse_size)
-	res.texture = q.assets_add_motion_texture(texture)
+	res.texture = q.assets_insert(texture)
 	res.diffuse_img = q.image_create(diffuse_size)
 	res.motion_img = q.image_create(motion_size)
 	return res
@@ -119,8 +119,8 @@ motion_texture_allocator_allocate_flipbook :: proc(
 }
 
 _motion_texture_allocator_sync :: proc(this: ^MotionTextureAllocator) {
-	texture := q.assets_get_motion_texture(ENGINE.platform.asset_manager, this.texture)
-	q.motion_texture_write(texture, this.diffuse_img, this.motion_img, ENGINE.platform.queue)
+	texture: q.MotionTexture = q.assets_get(this.texture)
+	q.motion_texture_write(texture, this.diffuse_img, this.motion_img)
 }
 
 // motion_texture_allocator_bind_group :: proc(this: MotionTextureAllocator) -> wgpu.BindGroup {
@@ -189,8 +189,10 @@ texture_allocator_drop :: proc(this: ^TextureAllocator) {
 		q.atlas_drop(&atlas.atlas)
 		q.image_drop(&atlas.image)
 		delete(atlas.src_image_ids)
-		if atlas.texture != 0 {
-			destroy_texture(atlas.texture)
+		if atlas.texture != {} {
+			texture := q.assets_remove(atlas.texture)
+			q.texture_destroy(texture)
+			atlas.texture = {}
 		}
 	}
 	delete(this.atlases)
@@ -320,9 +322,10 @@ _try_add_img :: proc(
 		grew = old_atlas_size != this.atlas.size
 		if grew {
 			q.image_drop(&this.image)
-			if this.texture != 0 {
-				destroy_texture(this.texture)
-				this.texture = 0
+			if this.texture != {} {
+				texture := q.assets_remove(this.texture)
+				q.texture_destroy(texture)
+				this.texture = {}
 			}
 			this.image = q.image_create(this.atlas.size)
 			assert(len(remap_allocs) == len(this.src_image_ids))
@@ -351,7 +354,7 @@ _try_add_img :: proc(
 }
 
 _sync_atlas_texture_to_atlas_image :: proc(this: ^_TextureAtlas, src_images: ^[dynamic]Maybe(SrcImage)) {
-	if this.texture == 0 {
+	if this.texture == {} {
 		if this.atlas.size != 0 {
 			this.texture = create_texture_from_image(this.image)
 		} else {
@@ -364,7 +367,8 @@ _sync_atlas_texture_to_atlas_image :: proc(this: ^_TextureAtlas, src_images: ^[d
 			write_image_to_texture(this.image, this.texture)
 			return
 		} else {
-			destroy_texture(this.texture)
+			texture := q.assets_remove(this.texture)
+			q.texture_destroy(texture)
 			this.texture = create_texture_from_image(this.image)
 		}
 	}

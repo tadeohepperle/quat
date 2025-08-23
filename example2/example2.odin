@@ -5,6 +5,7 @@ import engine "../quat/engine"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
+import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:time"
@@ -12,9 +13,25 @@ import "core:time"
 Vec2 :: [2]f32
 Color :: [4]f32
 
-recorded_dt: [dynamic]f32
-
 main :: proc() {
+
+	when ODIN_DEBUG {
+		track: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&track, context.allocator)
+		context.allocator = mem.tracking_allocator(&track)
+
+		defer {
+			if len(track.allocation_map) > 0 {
+				fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+				for _, entry in track.allocation_map {
+					fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
+				}
+			}
+			mem.tracking_allocator_destroy(&track)
+		}
+	}
+
+
 	settings := engine.DEFAULT_ENGINE_SETTINGS
 	settings.debug_ui_gizmos = true
 	engine.init(settings)
@@ -29,9 +46,15 @@ main :: proc() {
 	forest := [?]Vec2{{0, 0}, {2, 0}, {3, 0}, {5, 2}, {6, 3}}
 
 	snake := snake_create({3, 3})
+	defer {
+		delete(snake.points)
+		delete(snake.triangles)
+		delete(snake.vertices)
+	}
 
 	text_to_edit: strings.Builder
 	strings.write_string(&text_to_edit, "I made this UI from scratch in Odin!")
+	defer strings.builder_destroy(&text_to_edit)
 
 	background_color: Color = Color{0, 0.01, 0.02, 1.0}
 	color2: Color = q.ColorSoftYellow
@@ -50,39 +73,36 @@ main :: proc() {
 	allocated_str := strings.clone("")
 	for engine.next_frame() {
 		engine.camera_controller_update(&cam)
-		append(&recorded_dt, engine.get_delta_secs() * 1000.0)
-
-
-		allocated_str_edit := engine.text_edit(&allocated_str, align = .Center, font_size = engine.THEME.font_size)
+		allocated_str_edit := q.text_edit(&allocated_str, align = .Center, font_size = q.UI_THEME.font_size)
 		if allocated_str_edit.just_edited {
 			fmt.println("Edited allocated string:", allocated_str)
 		}
 		engine.add_window(
 			"Example window",
 			{
-				engine.button("I do nothing").ui,
-				engine.enum_radio(&text_align, "Text Align"),
-				engine.enum_radio(&tonemapping, "Tonemapping"),
-				engine.color_picker(&background_color, "Background"),
-				engine.color_picker(&color2, "Color 2"),
-				engine.color_picker(&color3, "Color 3"),
-				engine.toggle(&bloom_enabled, "Bloom"),
-				engine.toggle(&snake_enabled, "Render Snake"),
-				engine.text("Bloom blend factor:"),
-				engine.slider(&bloom_blend_factor),
-				engine.text_edit(&text_to_edit, align = .Center, font_size = engine.THEME.font_size).ui,
-				engine.dropdown(drop_down_values, &drop_down_idx),
+				q.button("I do nothing").ui,
+				q.enum_radio(&text_align, "Text Align"),
+				q.enum_radio(&tonemapping, "Tonemapping"),
+				q.color_picker(&background_color, "Background"),
+				q.color_picker(&color2, "Color 2"),
+				q.color_picker(&color3, "Color 3"),
+				q.toggle(&bloom_enabled, "Bloom"),
+				q.toggle(&snake_enabled, "Render Snake"),
+				q.text_from_string("Bloom blend factor:"),
+				q.slider(&bloom_blend_factor),
+				q.text_edit(&text_to_edit, align = .Center, font_size = q.UI_THEME.font_size).ui,
+				q.dropdown(drop_down_values, &drop_down_idx),
 				allocated_str_edit.ui,
 			},
 		)
 		engine.draw_annotation({2, -1}, "Hello from the engine!")
-		engine.add_world_ui({2, 1}, engine.button("Hey", "btn1").ui)
+		engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
 		engine.add_world_ui_at_transform(
 			q.UiTransform2d {
 				offset = {0, 2},
 				rot_scale = engine.get_osc(0.4, 0.4, 1.0) * q.rotation_mat_2d(engine.get_osc(1.3)),
 			},
-			engine.button("Click me!", "btn2").ui,
+			q.button("Click me!", "btn2").ui,
 		)
 
 		engine.set_tonemapping_mode(tonemapping)
@@ -107,7 +127,7 @@ main :: proc() {
 			)
 		}
 
-		player_pos += engine.get_wasd() * 20 * engine.get_delta_secs()
+		player_pos += q.get_wasd() * 20 * q.get_delta_secs()
 
 		// poly := [?]q.Vec2{{-5, -5}, {-5, 0}, {0, 0}, {-5, -5}, {0, 0}, {0, -5}}
 		// q.draw_color_mesh(poly[:])
@@ -146,7 +166,7 @@ snake_create :: proc(head_pos: Vec2) -> Snake {
 snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 	prev_pos: Vec2
 	snake.points[0] = head_pos
-	s := engine.get_delta_secs() * SNAKE_LERP_SPEED
+	s := q.get_delta_secs() * SNAKE_LERP_SPEED
 	s = clamp(s, 0, 1)
 	for i in 1 ..< SNAKE_PTS {
 		follow_pos := snake.points[i - 1]

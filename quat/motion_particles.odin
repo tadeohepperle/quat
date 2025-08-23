@@ -306,7 +306,7 @@ motion_particles_pipeline_config :: proc() -> RenderPipelineConfig {
 		vertex = {},
 		instance = {ty_id = MotionParticleInstance, attributes = MOTION_PARTICLE_ATTRIBUTES},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(),
+			shader_globals_bind_group_layout_cached(),
 			motion_texture_bind_group_layout_cached(),
 		),
 		push_constant_ranges = push_const_ranges(

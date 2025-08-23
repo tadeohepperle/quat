@@ -32,7 +32,7 @@ bloom_renderer_destroy :: proc(rend: ^BloomRenderer) {
 	for &e in rend.textures {
 		switch &tex in e {
 		case Texture:
-			texture_destroy(&tex)
+			texture_destroy(tex)
 		case:
 		}
 	}
@@ -43,7 +43,10 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 
 	_create_bloom_textures(rend, PLATFORM.screen_size)
 
-	bind_group_layouts := bind_group_layouts(PLATFORM.globals.bind_group_layout, rgba_bind_group_layout_cached())
+	bind_group_layouts := bind_group_layouts(
+		shader_globals_bind_group_layout_cached(),
+		rgba_bind_group_layout_cached(),
+	)
 	first_downsample_config := RenderPipelineConfig {
 		debug_name           = "bloom first_downsample",
 		vs_shader            = "screen",
@@ -116,16 +119,16 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 render_bloom :: proc(
 	command_encoder: wgpu.CommandEncoder,
 	rend: ^BloomRenderer,
-	hdr_texture: ^Texture,
+	hdr_texture: Texture,
 	globals_bind_group: wgpu.BindGroup,
 	settings: BloomSettings,
 ) {
-	ladder := make([dynamic]^Texture, allocator = context.temp_allocator)
+	ladder := make([dynamic]Texture, allocator = context.temp_allocator)
 	append(&ladder, hdr_texture)
-	for &e in rend.textures {
-		switch &tex in e {
+	for e in rend.textures {
+		switch tex in e {
 		case Texture:
-			append(&ladder, &tex)
+			append(&ladder, tex)
 		case:
 			break
 		}
@@ -215,9 +218,9 @@ _create_bloom_textures :: proc(rend: ^BloomRenderer, size: UVec2) {
 		tex_size := size / factor
 
 		// destroy texture if already set:
-		switch &texture in e {
+		switch texture in e {
 		case Texture:
-			texture_destroy(&texture)
+			texture_destroy(texture)
 			e = nil
 		case:
 		}

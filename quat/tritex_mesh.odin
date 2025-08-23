@@ -30,7 +30,7 @@ tritex_mesh_drop :: proc(tritex_mesh: ^TritexMesh) {
 tritex_mesh_render :: proc(
 	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	globals_bind_group: wgpu.BindGroup,
 	meshes: []TritexMesh,
 	textures: TextureArrayHandle,
 ) {
@@ -42,7 +42,7 @@ tritex_mesh_render :: proc(
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_bind_group)
 
 	texture_array_bindgroup := assets_get(textures).bind_group
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_array_bindgroup)
@@ -70,7 +70,7 @@ tritex_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(),
+			shader_globals_bind_group_layout_cached(),
 			tritex_textures_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},

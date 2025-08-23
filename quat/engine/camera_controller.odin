@@ -49,11 +49,11 @@ camera_controller_set_immediately :: proc(cam: ^CameraController) {
 }
 
 camera_controller_update :: proc(cam: ^CameraController) {
-	screen_size := get_screen_size_f32()
+	screen_size := q.get_screen_size()
 	pan_btn := get_mouse_btn(.Middle)
 	is_on_ui := get_hit().is_on_screen_ui
-	cursor_pos := get_cursor_pos()
-	cursor_delta := get_cursor_delta()
+	cursor_pos := q.get_cursor_pos()
+	cursor_delta := q.get_cursor_delta()
 
 	if .JustPressed in pan_btn && !is_on_ui {
 		cam.is_dragging = true
@@ -77,7 +77,7 @@ camera_controller_update :: proc(cam: ^CameraController) {
 	if !cam.settings.scroll_when_on_ui && is_on_ui {
 		scroll = 0.0
 	}
-	if abs(scroll) > 0 && !is_shift_pressed() && !is_ctrl_pressed() && cam.settings.zoom_enabled {
+	if abs(scroll) > 0 && !q.is_shift_pressed() && !q.is_ctrl_pressed() && cam.settings.zoom_enabled {
 		// calculate new size
 		size_before := cam.current.height
 		size_after := size_before - scroll * size_before * cam.settings.zoom_sensitivity
@@ -92,14 +92,14 @@ camera_controller_update :: proc(cam: ^CameraController) {
 	}
 
 
-	dt := get_delta_secs()
+	dt := q.get_delta_secs()
 
 	move: Vec2
 	if cam.settings.move_with_wasd {
-		move += get_wasd()
+		move += q.get_wasd()
 	}
 	if cam.settings.move_with_arrows {
-		move += get_arrows()
+		move += q.get_arrows()
 	}
 	if cam.settings.move_speed != 0 && move != {0, 0} {
 		cam.target.focus_pos += move * cam.settings.move_speed * cam.current.height * dt

@@ -26,13 +26,7 @@ Mesh3dHexChunkMasked :: struct {
 	hex_chunk_bind_group: wgpu.BindGroup,
 }
 
-mesh_3d_create :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
-	diffuse_texture: TextureHandle = DEFAULT_TEXTURE,
-) -> (
-	this: Mesh3d,
-) {
+mesh_3d_create :: proc(diffuse_texture: TextureHandle = DEFAULT_TEXTURE) -> (this: Mesh3d) {
 	this.diffuse_texture = diffuse_texture
 	dynamic_buffer_init(&this.vertex_buffer, {.Vertex})
 	dynamic_buffer_init(&this.index_buffer, {.Index})
@@ -184,7 +178,10 @@ mesh_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(globals_bind_group_layout_cached(), rgba_bind_group_layout_cached()),
+		bind_group_layouts = bind_group_layouts(
+			shader_globals_bind_group_layout_cached(),
+			rgba_bind_group_layout_cached(),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
@@ -211,7 +208,7 @@ mesh_3d_hex_chunk_masked_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			globals_bind_group_layout_cached(),
+			shader_globals_bind_group_layout_cached(),
 			rgba_bind_group_layout_cached(),
 			hex_chunk_data_bind_group_layout_cached(),
 		),
