@@ -37,7 +37,7 @@ HexChunkUniform :: struct {
 }
 hex_chunk_uniform_destroy :: proc(this: ^HexChunkUniform) {
 	wgpu.BindGroupRelease(this.bind_group)
-	wgpu.BufferDestroy(this.data)
+	wgpu.BufferRelease(this.data)
 }
 
 hex_chunk_uniform_write_data :: proc(this: ^HexChunkUniform, terrain_data: ^HexChunkData) {

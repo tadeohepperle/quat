@@ -1,6 +1,7 @@
 package engine
 import q ".."
 
+import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 
@@ -49,9 +50,10 @@ draw_line :: proc(from: Vec2, to: Vec2, color: Color = q.ColorRed, thickness: f3
 	append(tris, q.Triangle{start, start + 2, start + 3})
 }
 
-@(private)
-unit_circle_points :: proc(segments: int) -> []Vec2 {
-	pts := make([]Vec2, segments)
+
+unit_circle_points :: proc "contextless" (segments: int) -> []Vec2 {
+	context = runtime.default_context()
+	pts := make_slice([]Vec2, segments)
 	for &p, i in pts {
 		angle := f32(i) / f32(segments) * math.PI * 2.0
 		p = Vec2{math.cos(angle), math.sin(angle)}
@@ -59,6 +61,7 @@ unit_circle_points :: proc(segments: int) -> []Vec2 {
 	return pts
 }
 CIRCLE_PTS := unit_circle_points(20)
+
 draw_circle :: proc(pos: Vec2, radius: f32, color: Color = q.ColorRed) {
 	verts, tris, start := access_color_mesh_write_buffers()
 	append(verts, q.ColorMeshVertex{pos = pos, color = color})

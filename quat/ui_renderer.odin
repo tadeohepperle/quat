@@ -108,7 +108,7 @@ ui_render :: proc(
 			}
 		}
 
-		if batch.transform != last_transform {
+		if !ui_transform_eq(batch.transform, last_transform) {
 			if batch.transform.space == .World2D {
 				set_world_transform_push_const = true
 			}

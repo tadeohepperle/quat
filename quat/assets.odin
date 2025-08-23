@@ -1,5 +1,6 @@
 package quat
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:image"
@@ -23,7 +24,11 @@ Assets :: struct {
 	textures: Slotmap(Texture),
 	fonts:    Slotmap(Font),
 	// type punned slot maps
-	slotmaps: map[typeid]Slotmap(None),
+	slotmaps: map[typeid]AnySlotMap,
+}
+
+assets_register_drop_fn :: proc($T: typeid, drop_fn: proc(el: ^T)) {
+	assets_get_map_ref(T).drop_fn = drop_fn
 }
 
 assets_insert :: proc(elem: $T) -> Handle(T) {
@@ -35,12 +40,15 @@ assets_get_map :: proc($T: typeid) -> Slotmap(T) {
 }
 assets_get_map_ref :: proc($T: typeid) -> ^Slotmap(T) {
 	when T == Texture {
+		slotmap_maybe_init(&PLATFORM.assets.textures)
 		return &PLATFORM.assets.textures
 	} else when T == Font {
+		slotmap_maybe_init(&PLATFORM.assets.fonts)
 		return &PLATFORM.assets.fonts
 	} else {
 		_, punned_slotmap, _just_inserted, _ := map_entry(&PLATFORM.assets.slotmaps, T)
 		slotmap: ^Slotmap(T) = cast(^Slotmap(T))punned_slotmap
+		slotmap_maybe_init(slotmap)
 		return slotmap
 	}
 }
@@ -57,21 +65,43 @@ assets_get_ref :: proc(handle: Handle($T)) -> (elem: ^T, ok: bool) #optional_ok 
 	return slotmap_get_ref(slotmap, handle)
 }
 
-
 Handle :: struct($T: typeid) {
 	idx: u32,
 }
 Slotmap :: struct($T: typeid) {
-	slots:         [dynamic]SlotmapElement(T),
-	next_free_idx: u32, // there is a linked stack of next free indices starting here, that can be followed through the slots array until NO_FREE_IDX is hit
+	slots:                      [dynamic]SlotmapElement(T),
+	next_free_idx:              u32, // there is a linked stack of next free indices starting here, that can be followed through the slots array until NO_FREE_IDX is hit
+	drop_fn:                    Maybe(proc(el: ^T)),
+	ty:                         typeid,
+	slot_size:                  uintptr,
+	next_free_idx_field_offset: uintptr,
 }
+AnySlotMap :: struct {
+	slots:                      runtime.Raw_Dynamic_Array,
+	next_free_idx:              u32,
+	drop_fn:                    Maybe(proc(el: rawptr)),
+	ty:                         typeid,
+	slot_size:                  uintptr,
+	next_free_idx_field_offset: uintptr,
+}
+
+slotmap_maybe_init :: proc(this: ^Slotmap($T)) {
+	if this.ty != T {
+		this.next_free_idx = NO_FREE_IDX
+		this.next_free_idx_field_offset = offset_of(SlotmapElement(T), next_free_idx)
+		this.slot_size = size_of(SlotmapElement(T))
+		this.ty = T
+		this.slots = make([dynamic]SlotmapElement(T), 0, 16, allocator = context.allocator)
+	}
+}
+
 SlotmapElement :: struct($T: typeid) {
 	element:       T,
 	next_free_idx: u32, // if is NO_FREE_IDX, means that there is an element in here
 }
 NO_FREE_IDX :: max(u32)
 slotmap_insert :: proc(this: ^Slotmap($T), element: T) -> (handle: Handle(T)) {
-	if this.next_free_idx >= u32(len(this.slots)) {
+	if this.next_free_idx == NO_FREE_IDX {
 		// append a new element to end of elements array:
 		handle.idx = u32(len(this.slots))
 		append(&this.slots, SlotmapElement(T){element, NO_FREE_IDX})
@@ -132,60 +162,53 @@ slotmap_to_tmp_slice :: proc(this: Slotmap($T)) -> []T {
 	}
 	return elements[:]
 }
-// set i to 0 initially
-@(private = "file")
-slotmap_iter :: proc "contextless" (this: ^Slotmap($T), i: ^int) -> (element: ^T, handle: Handle(T), ok: bool) {
-	idx := i^
-	for idx < len(this.slots) {
-		el := &this.slots[idx]
-		if el.next_free_idx == NO_FREE_IDX {
-			i^ = idx + 1
-			handle.idx = u32(idx)
-			return &el.element, handle, true
-		}
-		idx += 1
-	}
-	i^ = idx
-	handle.idx = NO_FREE_IDX
-	return {}, handle, false
-}
+// // set i to 0 initially
+// @(private = "file")
+// slotmap_iter :: proc "contextless" (this: ^Slotmap($T), i: ^int) -> (element: ^T, handle: Handle(T), ok: bool) {
+// 	idx := i^
+// 	for idx < len(this.slots) {
+// 		el := &this.slots[idx]
+// 		if el.next_free_idx == NO_FREE_IDX {
+// 			i^ = idx + 1
+// 			handle.idx = u32(idx)
+// 			return &el.element, handle, true
+// 		}
+// 		idx += 1
+// 	}
+// 	i^ = idx
+// 	handle.idx = NO_FREE_IDX
+// 	return {}, handle, false
+// }
 
-slotmap_drop :: proc(slotmap: ^Slotmap($T)) {
-	delete(slotmap.slots)
+slotmap_drop_any :: proc(slotmap: ^AnySlotMap) -> (n_dropped: int) {
+	if slotmap.drop_fn != nil {
+		drop_fn := transmute(proc(el: rawptr))slotmap.drop_fn
+		for i: int = 0; i < slotmap.slots.len; i += 1 {
+			slot_ptr := uintptr(slotmap.slots.data) + slotmap.slot_size * uintptr(i)
+			slot_next_free_idx := (cast(^u32)(slot_ptr + slotmap.next_free_idx_field_offset))^
+			if slot_next_free_idx == NO_FREE_IDX {
+				// slot has element
+				drop_fn(rawptr(slot_ptr))
+				n_dropped += 1
+			}
+
+		}
+	}
+	bytes_len := slotmap.slots.len * int(slotmap.slot_size)
+	runtime.mem_free_with_size(slotmap.slots.data, bytes_len, slotmap.slots.allocator)
+	return n_dropped
 }
 
 @(private)
-destroy_assets :: proc() {
-	textures := assets_get_map_ref(Texture)
-	i := 0
-	for texture, _ in slotmap_iter(textures, &i) {
-		texture_destroy(texture^)
+assets_drop :: proc(assets: ^Assets) {
+	print("THERE ARE {} textures", assets.textures)
+	fmt.printfln("dropped {} elements of type Texture", slotmap_drop_any(cast(^AnySlotMap)&assets.textures))
+	fmt.printfln("dropped {} elements of type Font", slotmap_drop_any(cast(^AnySlotMap)&assets.fonts))
+	for _, &slotmap in assets.slotmaps {
+		n_dropped := slotmap_drop_any(&slotmap)
+		fmt.printfln("dropped {} elements of type {}", n_dropped, slotmap.ty)
 	}
-
-	fonts := assets_get_map_ref(Font)
-	i = 0
-	for font, _ in slotmap_iter(&PLATFORM.assets.fonts, &i) {
-		font_destroy(font)
-	}
-
-	skinned_geometries := assets_get_map_ref(SkinnedGeometry)
-	i = 0
-	for geom, _ in slotmap_iter(skinned_geometries, &i) {
-		_geometry_drop(geom)
-	}
-
-	skinned_meshes := assets_get_map_ref(SkinnedMesh)
-	i = 0
-	for mesh, _ in slotmap_iter(skinned_meshes, &i) {
-		_skinned_mesh_drop(mesh)
-	}
-
-	slotmap_drop(&PLATFORM.assets.fonts)
-	slotmap_drop(&PLATFORM.assets.textures)
-	for _, &slotmap in PLATFORM.assets.slotmaps {
-		slotmap_drop(&slotmap)
-	}
-	delete(PLATFORM.assets.slotmaps)
+	delete(assets.slotmaps)
 }
 
 @(private)
@@ -193,7 +216,10 @@ update_changed_font_atlas_textures :: proc(queue: wgpu.Queue) {
 	i := 0
 	fonts := assets_get_map_ref(Font)
 	textures := assets_get_map(Texture)
-	for font, _ in slotmap_iter(fonts, &i) {
+
+	for font_slot in fonts.slots {
+		if font_slot.next_free_idx != NO_FREE_IDX do continue
+		font := font_slot.element
 		if sdffont.font_has_atlas_image_changed(font.sdf_font) {
 			log.info("Update font atlas texture because it has changed:", font.name)
 			atlas_image := sdffont.font_get_atlas_image(font.sdf_font)
@@ -219,6 +245,8 @@ update_changed_font_atlas_textures :: proc(queue: wgpu.Queue) {
 				&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 			)
 		}
+
+
 	}
 }
 

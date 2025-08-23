@@ -14,6 +14,16 @@ MotionTexture :: struct {
 	bind_group:      wgpu.BindGroup,
 }
 
+motion_texture_destroy :: proc(texture: ^MotionTexture) {
+	print("DESTROY Motion texture:")
+	wgpu.BindGroupRelease(texture.bind_group)
+	wgpu.SamplerRelease(texture.sampler)
+	wgpu.TextureViewRelease(texture.diffuse_view)
+	wgpu.TextureRelease(texture.diffuse_texture)
+	wgpu.TextureViewRelease(texture.motion_view)
+	wgpu.TextureRelease(texture.motion_texture)
+}
+
 _motion_texture_create_1px_white :: proc() -> MotionTexture {
 	texture := motion_texture_create({1, 1}, {1, 1})
 	block_size: u32 = 4

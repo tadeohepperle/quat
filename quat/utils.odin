@@ -18,8 +18,12 @@ None :: struct {}
 Error :: union {
 	string,
 }
-dbg :: fmt.println
+
 print :: fmt.println
+dbgval :: proc(val: any, label := "", loc := #caller_location, expr := #caller_expression) {
+	print(loc, expr, label, val)
+}
+
 // print :: proc(args: ..any, loc := #caller_location) {
 // 	fmt.println(loc, args)
 // }

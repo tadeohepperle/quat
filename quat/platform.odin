@@ -18,12 +18,16 @@ platform_init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	_init_platform(&PLATFORM, settings)
 }
 platform_deinit :: proc() {
-	destroy_assets()
+	print("MotionTexture  map before drop", assets_get_map(MotionTexture))
+	assets_drop(&PLATFORM.assets)
 	shader_registry_destroy(&PLATFORM.shader_registry)
-	texture_destroy(PLATFORM.hdr_screen_texture)
-	texture_destroy(PLATFORM.depth_screen_texture)
+	texture_destroy(&PLATFORM.hdr_screen_texture)
+	texture_destroy(&PLATFORM.depth_screen_texture)
+	wgpu.TextureRelease(PLATFORM._surface_texture.texture)
+	wgpu.SurfaceRelease(PLATFORM.surface)
 	wgpu.QueueRelease(PLATFORM.queue)
 	wgpu.DeviceDestroy(PLATFORM.device)
+	wgpu.AdapterRelease(PLATFORM.adapter)
 	wgpu.InstanceRelease(PLATFORM.instance)
 }
 
@@ -151,6 +155,13 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	// Setup Assets (Default 1px white Texture + Default Font)
 
 	platform.assets = Assets{}
+
+	assets_register_drop_fn(Texture, texture_destroy)
+	assets_register_drop_fn(Font, font_destroy)
+	assets_register_drop_fn(MotionTexture, motion_texture_destroy)
+	assets_register_drop_fn(SkinnedGeometry, skinned_mesh_geometry_drop)
+	assets_register_drop_fn(SkinnedMesh, skinned_mesh_drop)
+
 	default_texture_handle := assets_insert(_texture_create_1px_white())
 	assert(DEFAULT_TEXTURE == default_texture_handle)
 
@@ -385,8 +396,8 @@ _platform_resize_frame_buffer :: proc() {
 		wgpu.TextureRelease(platform._surface_texture.texture)
 	}
 	wgpu.SurfaceConfigure(platform.surface, &platform.surface_config)
-	texture_destroy(platform.hdr_screen_texture)
-	texture_destroy(platform.depth_screen_texture)
+	texture_destroy(&platform.hdr_screen_texture)
+	texture_destroy(&platform.depth_screen_texture)
 	platform.hdr_screen_texture = texture_create(platform.screen_size, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.screen_size)
 	_acquire_surface_texture(platform)

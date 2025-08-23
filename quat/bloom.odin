@@ -32,7 +32,7 @@ bloom_renderer_destroy :: proc(rend: ^BloomRenderer) {
 	for &e in rend.textures {
 		switch &tex in e {
 		case Texture:
-			texture_destroy(tex)
+			texture_destroy(&tex)
 		case:
 		}
 	}
@@ -213,21 +213,21 @@ _create_bloom_textures :: proc(rend: ^BloomRenderer, size: UVec2) {
 	}
 
 	factor: u32 = 1
-	for &e in rend.textures {
+	for &maybe_texture in rend.textures {
 		factor *= 2
 		tex_size := size / factor
 
 		// destroy texture if already set:
-		switch texture in e {
+		switch &texture in maybe_texture {
 		case Texture:
-			texture_destroy(texture)
-			e = nil
+			texture_destroy(&texture)
+			maybe_texture = nil
 		case:
 		}
 
 		texture_big_enough := max(tex_size.x, tex_size.y) > 12 && min(tex_size.x, tex_size.y) > 1
 		if texture_big_enough {
-			e = texture_create(tex_size, BLOOM_TEXTURE_SETTINGS)
+			maybe_texture = texture_create(tex_size, BLOOM_TEXTURE_SETTINGS)
 		}
 	}
 }

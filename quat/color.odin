@@ -9,7 +9,7 @@ import "core:os"
 import wgpu "vendor:wgpu"
 Color :: [4]f32
 
-color_from_u8 :: proc(r: u8, g: u8, b: u8) -> Color {
+color_from_u8 :: proc "contextless" (r: u8, g: u8, b: u8) -> Color {
 	return {color_map_to_srgb(r), color_map_to_srgb(g), color_map_to_srgb(b), 1.0}
 }
 
@@ -28,8 +28,8 @@ color_to_hex :: proc(color: Color) -> string {
 	return fmt.aprintf("#%02x%02x%02x", r, g, b, allocator = context.temp_allocator)
 }
 
-color_from_hex :: proc(hex: string, alpha: f32 = 1.0) -> Color {
-	hex_digit_value :: proc(c: rune) -> u8 {
+color_from_hex :: proc "contextless" (hex: string, alpha: f32 = 1.0) -> Color {
+	hex_digit_value :: proc "contextless" (c: rune) -> u8 {
 		switch c {
 		case '0' ..= '9':
 			return u8(c - '0')
@@ -42,13 +42,13 @@ color_from_hex :: proc(hex: string, alpha: f32 = 1.0) -> Color {
 		return 0
 	}
 
-	parse_hex_pair :: proc(s: string, start: int) -> u8 {
+	parse_hex_pair :: proc "contextless" (s: string, start: int) -> u8 {
 		return 16 * hex_digit_value(rune(s[start])) + hex_digit_value(rune(s[start + 1]))
 	}
 
 	offset: int = 1 if hex[0] == '#' else 0
 	if len(hex) - offset != 6 {
-		fmt.panicf("Hex color should be formatted `#798B9C` or `798b9c`, got: %s", hex)
+		panic_contextless(hex)
 	}
 
 
@@ -60,7 +60,7 @@ color_from_hex :: proc(hex: string, alpha: f32 = 1.0) -> Color {
 
 
 @(private)
-color_map_to_srgb :: proc(u: u8) -> f32 {
+color_map_to_srgb :: proc "contextless" (u: u8) -> f32 {
 	return math.pow_f32((f32(u) / 255 + 0.055) / 1.055, 2.4)
 }
 

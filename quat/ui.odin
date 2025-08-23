@@ -299,6 +299,20 @@ UiTransform :: struct {
 	},
 }
 
+ui_transform_eq :: proc(a: UiTransform, b: UiTransform) -> bool {
+	if a.space == b.space {
+		switch a.space {
+		case .Screen:
+			return a.data.clipped_to == b.data.clipped_to
+		case .World2D:
+			return a.data.transform2d == b.data.transform2d
+		case .World3D:
+			return a.data.transform3d == b.data.transform3d
+		}
+	}
+	return false
+}
+
 UiTransform2d :: struct {
 	rot_scale: Mat2,
 	offset:    Vec2,
@@ -1464,7 +1478,7 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 	for ; idx < len(b.z_regions); idx += 1 {
 		reg: ZRegion = b.z_regions[idx]
 		b.current_z_layer = reg.z_layer
-		if reg.transform != b.current.transform {
+		if !ui_transform_eq(reg.transform, b.current.transform) {
 			_flush_and_apply_new_clipping_rect(&b, reg.transform)
 		}
 		_add(&b, reg.ui)

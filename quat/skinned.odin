@@ -30,8 +30,9 @@ SkinnedMesh :: struct {
 	bones_bind_group: wgpu.BindGroup,
 	bone_count:       int,
 }
-_skinned_mesh_drop :: proc(this: ^SkinnedMesh) {
-	wgpu.BufferDestroy(this.bones_buffer)
+@(private)
+skinned_mesh_drop :: proc(this: ^SkinnedMesh) {
+	wgpu.BufferRelease(this.bones_buffer)
 	wgpu.BindGroupRelease(this.bones_bind_group)
 }
 
@@ -56,7 +57,7 @@ skinned_mesh_clone :: proc(handle: SkinnedMeshHandle) -> SkinnedMeshHandle {
 skinned_mesh_deregister :: proc(handle: SkinnedMeshHandle) {
 	mesh: SkinnedMesh = assets_remove(handle) or_else panic("skinned mesh not found!")
 	_geometry_deregister(mesh.geometry)
-	_skinned_mesh_drop(&mesh)
+	skinned_mesh_drop(&mesh)
 }
 skinned_mesh_register :: proc(
 	triangles: []Triangle,
@@ -118,7 +119,7 @@ _geometry_deregister :: proc(handle: SkinnedGeometryHandle) {
 	geom.reference_count -= 1
 	if geom.reference_count == 0 {
 		geom_removed := assets_remove(handle)
-		_geometry_drop(&geom_removed)
+		skinned_mesh_geometry_drop(&geom_removed)
 	}
 }
 _geometry_create :: proc(
@@ -138,6 +139,7 @@ _geometry_create :: proc(
 		device,
 		&wgpu.BufferDescriptor{usage = {.CopyDst, .Vertex}, size = v_buffer_size},
 	)
+
 	wgpu.QueueWriteBuffer(queue, index_buffer, 0, raw_data(indices), uint(i_buffer_size))
 	wgpu.QueueWriteBuffer(queue, vertex_buffer, 0, raw_data(vertices), uint(v_buffer_size))
 	return SkinnedGeometry {
@@ -149,10 +151,12 @@ _geometry_create :: proc(
 		texture = texture,
 	}
 }
-_geometry_drop :: proc(geometry: ^SkinnedGeometry) {
-	wgpu.BufferDestroy(geometry.index_buffer)
+
+@(private)
+skinned_mesh_geometry_drop :: proc(geometry: ^SkinnedGeometry) {
+	wgpu.BufferRelease(geometry.index_buffer)
 	delete(geometry.indices)
-	wgpu.BufferDestroy(geometry.vertex_buffer)
+	wgpu.BufferRelease(geometry.vertex_buffer)
 	delete(geometry.vertices)
 }
 

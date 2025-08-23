@@ -191,7 +191,7 @@ texture_allocator_drop :: proc(this: ^TextureAllocator) {
 		delete(atlas.src_image_ids)
 		if atlas.texture != {} {
 			texture := q.assets_remove(atlas.texture)
-			q.texture_destroy(texture)
+			q.texture_destroy(&texture)
 			atlas.texture = {}
 		}
 	}
@@ -324,7 +324,7 @@ _try_add_img :: proc(
 			q.image_drop(&this.image)
 			if this.texture != {} {
 				texture := q.assets_remove(this.texture)
-				q.texture_destroy(texture)
+				q.texture_destroy(&texture)
 				this.texture = {}
 			}
 			this.image = q.image_create(this.atlas.size)
@@ -368,7 +368,7 @@ _sync_atlas_texture_to_atlas_image :: proc(this: ^_TextureAtlas, src_images: ^[d
 			return
 		} else {
 			texture := q.assets_remove(this.texture)
-			q.texture_destroy(texture)
+			q.texture_destroy(&texture)
 			this.texture = create_texture_from_image(this.image)
 		}
 	}

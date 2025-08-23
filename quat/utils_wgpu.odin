@@ -74,7 +74,7 @@ dynamic_buffer_write_many :: proc(
 
 dynamic_buffer_destroy :: proc(buffer: ^DynamicBuffer($T)) {
 	if buffer.buffer != nil {
-		wgpu.BufferDestroy(buffer.buffer)
+		wgpu.BufferRelease(buffer.buffer)
 		buffer.buffer = nil
 	}
 }
@@ -86,9 +86,10 @@ UniformBuffer :: struct($T: typeid) {
 	usage:             wgpu.BufferUsageFlags,
 }
 uniform_buffer_destroy :: proc(buffer: ^UniformBuffer($T)) {
+	dbgval(buffer.bind_group, "uniform_buffer_destroy")
 	wgpu.BindGroupRelease(buffer.bind_group)
 	wgpu.BindGroupLayoutRelease(buffer.bind_group_layout)
-	wgpu.BufferRelease(buffer.buffer) // TODO: What is the difference between BufferDestroy and BufferRelease
+	wgpu.BufferRelease(buffer.buffer) // TODO: What is the difference between BufferRelease and BufferRelease
 }
 uniform_buffer_create :: proc($T: typeid, bind_group_layout: wgpu.BindGroupLayout) -> (buffer: UniformBuffer(T)) {
 	buffer.usage |= {.CopyDst, .Uniform}
@@ -108,6 +109,7 @@ uniform_buffer_create :: proc($T: typeid, bind_group_layout: wgpu.BindGroupLayou
 			entries = raw_data(bind_group_entries[:]),
 		},
 	)
+	dbgval(buffer.bind_group, "uniform_buffer_create")
 	return buffer
 }
 uniform_bind_group_layout :: proc(size_of_t: u64) -> wgpu.BindGroupLayout {

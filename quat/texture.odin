@@ -231,6 +231,7 @@ depth_texture_create :: proc(size: UVec2) -> DepthTexture {
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	texture.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
+	dbgval(texture.bind_group, "depth_texture_create")
 	return DepthTexture{texture}
 }
 depth_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
@@ -256,7 +257,13 @@ depth_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	return LAYOUT
 }
 
-texture_create :: proc(size: UVec2, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> (texture: Texture) {
+texture_create :: proc(
+	size: UVec2,
+	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
+	loc := #caller_location,
+) -> (
+	texture: Texture,
+) {
 	assert(wgpu.TextureUsage.TextureBinding in settings.usage)
 
 	texture.info = TextureInfo{size, settings, 1}
@@ -271,6 +278,7 @@ texture_create :: proc(size: UVec2, settings: TextureSettings = TEXTURE_SETTINGS
 		viewFormats = &texture.info.settings.format,
 	}
 	texture.texture = wgpu.DeviceCreateTexture(PLATFORM.device, &descriptor)
+
 
 	texture_view_descriptor := wgpu.TextureViewDescriptor {
 		format          = settings.format,
@@ -305,17 +313,17 @@ texture_create :: proc(size: UVec2, settings: TextureSettings = TEXTURE_SETTINGS
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	texture.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
+	dbgval(texture.bind_group, "texture_create", loc)
 	return
 }
 
 
-texture_destroy :: proc(texture: Texture) {
+texture_destroy :: proc(texture: ^Texture) {
 	wgpu.BindGroupRelease(texture.bind_group)
 	wgpu.SamplerRelease(texture.sampler)
 	wgpu.TextureViewRelease(texture.view)
 	wgpu.TextureRelease(texture.texture)
 }
-
 
 rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	@(static) layout: wgpu.BindGroupLayout
@@ -389,6 +397,7 @@ texture_array_create :: proc(
 		viewFormats = &array.info.settings.format,
 	}
 	array.texture = wgpu.DeviceCreateTexture(device, &descriptor)
+
 	texture_view_descriptor := wgpu.TextureViewDescriptor {
 		format          = settings.format,
 		dimension       = ._2DArray,
@@ -422,6 +431,8 @@ texture_array_create :: proc(
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	array.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
+	dbgval(array.bind_group, "texture_array_create")
+
 	return array
 }
 
