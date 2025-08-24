@@ -23,12 +23,35 @@ platform_deinit :: proc() {
 	shader_registry_destroy(&PLATFORM.shader_registry)
 	texture_destroy(&PLATFORM.hdr_screen_texture)
 	texture_destroy(&PLATFORM.depth_screen_texture)
-	wgpu.TextureRelease(PLATFORM._surface_texture.texture)
+
+	cached_bind_group_layouts := []wgpu.BindGroupLayout {
+		DIFFUSE_AND_MOTION_TEXTURE_BIND_GROUP_LAYOUT,
+		SHADER_GLOBALS_BIND_GROUP_LAYOUT,
+		TRITEX_TEXTURES_BIND_GROUP_LAYOUT,
+		DEPTH_TEXTURE_BIND_GROUP_LAYOUT,
+		RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT,
+		BONES_STORAGE_BUFFER_BIND_GROUP_LAYOUT,
+		HEX_CHUNK_DATA_BIND_GROUP_LAYOUT,
+	}
+	for layout in cached_bind_group_layouts {
+		if layout != nil do wgpu.BindGroupLayoutRelease(layout)
+	}
+
+
+	if PLATFORM._surface_texture.texture != nil {
+		wgpu.TextureRelease(PLATFORM._surface_texture.texture)
+	}
 	wgpu.SurfaceRelease(PLATFORM.surface)
 	wgpu.QueueRelease(PLATFORM.queue)
+
 	wgpu.DeviceDestroy(PLATFORM.device)
+	wgpu.DeviceRelease(PLATFORM.device)
+
 	wgpu.AdapterRelease(PLATFORM.adapter)
 	wgpu.InstanceRelease(PLATFORM.instance)
+
+	glfw.DestroyWindow(PLATFORM.window)
+	glfw.Terminate()
 }
 
 PlatformSettings :: struct {
@@ -190,12 +213,14 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	)
 	platform.is_initialized = true
 }
+
+
+SHADER_GLOBALS_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 shader_globals_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
-		layout = uniform_bind_group_layout(size_of(ShaderGlobals))
+	if SHADER_GLOBALS_BIND_GROUP_LAYOUT == nil {
+		SHADER_GLOBALS_BIND_GROUP_LAYOUT = uniform_bind_group_layout(size_of(ShaderGlobals))
 	}
-	return layout
+	return SHADER_GLOBALS_BIND_GROUP_LAYOUT
 }
 platform_prepare :: proc() {
 	// screen_size := PLATFORM.screen_size_f32

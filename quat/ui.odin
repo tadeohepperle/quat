@@ -47,15 +47,19 @@ ui_system_deinit()
 */
 
 UiUserProvidedValues :: struct {
-	delta_secs:               f32, // for lerping UI elements
-	id_state:                 InteractionState(UiId),
-	tag_state:                InteractionState(UiTag),
-	screen_ui_layout_extent:  Vec2,
-	screen_layout_cursor_pos: Vec2,
-	world_2d_cursor_pos:      Vec2,
-	world_2d_px_per_unit:     f32,
+	delta_secs:              f32, // for lerping UI elements
+	id_state:                InteractionState(UiId),
+	tag_state:               InteractionState(UiTag),
+	screen_ui_layout_extent: Vec2, // reference screen size
+	world_2d_cursor_pos:     Vec2,
+	world_2d_px_per_unit:    f32,
 	// todo: 3d ray for cursor pos in 3d
 }
+
+UiProjectionInfo :: struct {
+	camera_2d: Camera, // todo: make multiple camera_2ds possible for e.g. multi view, just add array here and iterate over all of them to see what is hit
+}
+
 ui_system_set_user_provided_values :: proc(values: UiUserProvidedValues) {
 	UI_CTX.user_provided_values = values
 }
@@ -193,7 +197,6 @@ CachedElementInfo :: struct {
 	pos:        Vec2,
 	size:       Vec2,
 	space:      UiSpace,
-	// The reason the cursor_pos is returned here, instead of being globally accessible is the following:
 	// each element can be in a different ui space where the cursor pos is different. 
 	// for elements on the screen ui, this is just the scaled cursor pos of the platform.
 	// but for e.g. elements in 2d or 3d space this has to be the transformed cursor pos in that space for e.g. sliders to work correctly
@@ -209,32 +212,49 @@ ui_get_cached :: proc(
 	ok: bool,
 ) where size_of(CachedUserData) >=
 	size_of(USER_DATA_TY) {
-	el, _ok := &UI_CTX.old_cache[id]
-	if !_ok {
-		return {}, nil, false
-	}
+	el := (&UI_CTX.old_cache[id]) or_return
 	user_data = cast(^USER_DATA_TY)(&el.user_data)
 	return cashed_element_info(el^), user_data, true
 }
 
-@(private = "file")
 cashed_element_info :: proc(el: CachedElement) -> CachedElementInfo {
-	cursor_pos := Vec2{0, 0}
-	switch el.transform.space {
-	case .Screen:
-		cursor_pos = screen_to_layout_space(
-			PLATFORM.cursor_pos,
-			UI_CTX.user_provided_values.screen_ui_layout_extent,
-			PLATFORM.screen_size_f32,
-		)
-	case .World2D:
-	case .World3D:
-	}
-
-
-	info := CachedElementInfo{el.pos, el.size, el.transform.space, cursor_pos}
-	return info
+	cursor_pos := calculate_local_cursor_pos(
+		el.transform,
+		PLATFORM.cursor_pos,
+		PLATFORM.screen_size_f32,
+		UI_CTX.user_provided_values,
+	)
+	return CachedElementInfo{el.pos, el.size, el.transform.space, cursor_pos}
 }
+
+calculate_local_cursor_pos :: proc "contextless" (
+	transform: UiTransform,
+	platform_cursor_pos: Vec2,
+	platform_screen_size: Vec2,
+	vals: UiUserProvidedValues,
+) -> Vec2 {
+	switch transform.space {
+	case .Screen:
+		// just scale the x and y of the cursor pos to pretend like however tall the screen is, is like the reference size height
+		return platform_cursor_pos * (vals.screen_ui_layout_extent.y / platform_screen_size.y)
+	case .World2D:
+		cursor_pos := vals.world_2d_cursor_pos
+		transform := transform.data.transform2d
+		if transform != UI_UNIT_TRANSFORM_2D {
+			cursor_pos /= vals.world_2d_px_per_unit
+			cursor_pos.y = -cursor_pos.y
+			cursor_pos = ui_transform_2d_reverse(transform, cursor_pos)
+			cursor_pos *= vals.world_2d_px_per_unit
+			cursor_pos.y = -cursor_pos.y
+		}
+		return cursor_pos
+	case .World3D:
+		unimplemented_contextless()
+	}
+	panic_contextless("invalid transform space")
+}
+
+
 ui_get_cached_no_user_data :: proc(id: UiId) -> (data: CachedElementInfo, ok: bool) {
 	el, _ok := UI_CTX.old_cache[id]
 	if !_ok {
@@ -293,9 +313,9 @@ UiSpace :: enum {
 UiTransform :: struct {
 	space: UiSpace,
 	data:  struct #raw_union {
-		clipped_to:  Maybe(Aabb),
-		transform2d: UiTransform2d,
-		transform3d: UiTransform3d,
+		clipped_to:  Maybe(Aabb), // only supported for screen ui because we rely on wgpu Scissor Clipping, which does not work if the frame is e.g. rotated or in 3d space. Would need extra render target for this stuff... 
+		transform2d: UiTransform2D,
+		transform3d: UiTransform3D,
 	},
 }
 
@@ -313,23 +333,23 @@ ui_transform_eq :: proc(a: UiTransform, b: UiTransform) -> bool {
 	return false
 }
 
-UiTransform2d :: struct {
+UiTransform2D :: struct {
 	rot_scale: Mat2,
 	offset:    Vec2,
 }
-UiTransform3d :: struct {
+UiTransform3D :: struct {
 	// todo
 }
 
-WORLD_UI_UNIT_TRANSFORM_2D :: UiTransform2d {
+UI_UNIT_TRANSFORM_2D :: UiTransform2D {
 	offset    = Vec2{0, 0},
 	rot_scale = Mat2{1, 0, 0, 1},
 }
-ui_transform_2d_apply :: proc "contextless" (this: UiTransform2d, p: Vec2) -> Vec2 {
+ui_transform_2d_apply :: proc "contextless" (this: UiTransform2D, p: Vec2) -> Vec2 {
 	return this.rot_scale * p + this.offset
 }
-ui_transform_2d_reverse :: proc "contextless" (this: UiTransform2d, q: Vec2) -> Vec2 {
-	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset) // 
+ui_transform_2d_reverse :: proc "contextless" (this: UiTransform2D, q: Vec2) -> Vec2 {
+	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset)
 }
 
 ComputedGlyph :: struct {
@@ -714,43 +734,29 @@ ui_system_get_hovered_id_and_tag :: proc() -> (hovered_id: UiId, hovered_tag: Ui
 	hovered_id = 0
 	hovered_tag = 0
 	highest_z := ZInfo{}
-	u_vals := UI_CTX.user_provided_values
 	for id, el in UI_CTX.old_cache {
 		if el.pointer_pass_through || !z_gte(el.z_info, highest_z) {
 			continue
 		}
 
-
 		// determine where the cursor would land in the ui
-		cursor_pos: Vec2 = ---
-		switch el.transform.space {
-		case .Screen:
-			cursor_pos = u_vals.screen_layout_cursor_pos
-		case .World2D:
-			cursor_pos = u_vals.world_2d_cursor_pos
-			transform := el.transform.data.transform2d
-			if transform != WORLD_UI_UNIT_TRANSFORM_2D {
-				// do this shit, because ui y direction and world y are opposed and cursor_pos is scaled by px per world unit
-				cursor_pos /= u_vals.world_2d_px_per_unit
-				cursor_pos.y = -cursor_pos.y
-				cursor_pos = ui_transform_2d_reverse(transform, cursor_pos)
-				cursor_pos *= u_vals.world_2d_px_per_unit
-				cursor_pos.y = -cursor_pos.y
-			}
-		case .World3D:
-			unimplemented()
-		}
+		local_cursor_pos := calculate_local_cursor_pos(
+			el.transform,
+			PLATFORM.cursor_pos,
+			PLATFORM.screen_size_f32,
+			UI_CTX.user_provided_values,
+		)
 
 		cursor_in_bounds :=
-			cursor_pos.x >= el.pos.x &&
-			cursor_pos.y >= el.pos.y &&
-			cursor_pos.x <= el.pos.x + el.size.x &&
-			cursor_pos.y <= el.pos.y + el.size.y
+			local_cursor_pos.x >= el.pos.x &&
+			local_cursor_pos.y >= el.pos.y &&
+			local_cursor_pos.x <= el.pos.x + el.size.x &&
+			local_cursor_pos.y <= el.pos.y + el.size.y
 
 		// for elements that are clipped by parent, the cursor also needs to be in the clipping rect! (hovering a clipped region should not trigger anything)
 		if el.transform.space == .Screen {
 			if clipped_to, ok := el.transform.data.clipped_to.(Aabb); cursor_in_bounds && ok {
-				cursor_in_bounds &= aabb_contains(clipped_to, u_vals.screen_layout_cursor_pos)
+				cursor_in_bounds &= aabb_contains(clipped_to, local_cursor_pos)
 			}
 		}
 
@@ -788,7 +794,7 @@ INFINITE_SIZE :: Vec2{max(f32), max(f32)}
 ui_system_layout_in_world_2d_space :: proc(
 	ui: Ui,
 	world_pos: Vec2,
-	transform2d: UiTransform2d,
+	transform2d: UiTransform2D,
 	pixels_per_world_unit: f32,
 ) {
 	used_size := _set_size(ui, INFINITE_SIZE)

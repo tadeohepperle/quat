@@ -109,7 +109,7 @@ PipelineType :: enum {
 UiAtWorldPos :: struct {
 	ui:        q.Ui,
 	world_pos: Vec2,
-	transform: q.UiTransform2d,
+	transform: q.UiTransform2D,
 }
 
 // roughly in render order
@@ -271,7 +271,6 @@ _engine_destroy :: proc(engine: ^Engine) {
 	delete(engine.motion_particles_render_commands)
 	delete(engine.top_level_elements_scratch)
 
-
 	q.uniform_buffer_destroy(&engine.shader_globals_uniform)
 
 	q.ui_system_deinit()
@@ -333,7 +332,6 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 			id_state = engine.ui_id_interaction,
 			tag_state = engine.ui_tag_interaction,
 			screen_ui_layout_extent = engine.screen_ui_layout_extent,
-			screen_layout_cursor_pos = screen_layout_cursor_pos,
 			world_2d_cursor_pos = engine.hit.hit_pos,
 			world_2d_px_per_unit = engine.settings.world_2d_ui_px_per_unit,
 		},
@@ -428,7 +426,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 		q.ui_system_layout_in_world_2d_space(
 			e.ui,
 			e.world_pos,
-			q.WORLD_UI_UNIT_TRANSFORM_2D,
+			q.UI_UNIT_TRANSFORM_2D,
 			engine.settings.world_2d_ui_px_per_unit,
 		)
 		append(
@@ -671,7 +669,7 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 			c := pos + size
 			d := pos + Vec2{size.x, 0}
 			trans := v.transform.data.transform2d
-			if trans != q.WORLD_UI_UNIT_TRANSFORM_2D {
+			if trans != q.UI_UNIT_TRANSFORM_2D {
 				a = q.ui_transform_2d_apply(trans, a)
 				b = q.ui_transform_2d_apply(trans, b)
 				c = q.ui_transform_2d_apply(trans, c)
@@ -916,9 +914,9 @@ add_ui :: proc(ui: q.Ui) {
 	append(&ENGINE.scene.screen_ui, ui)
 }
 add_world_ui :: proc(world_pos: Vec2, ui: q.Ui) {
-	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos, q.WORLD_UI_UNIT_TRANSFORM_2D})
+	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, world_pos, q.UI_UNIT_TRANSFORM_2D})
 }
-add_world_ui_at_transform :: proc(transform: q.UiTransform2d, ui: q.Ui) {
+add_world_ui_at_transform :: proc(transform: q.UiTransform2D, ui: q.Ui) {
 	append(&ENGINE.scene.world_ui, UiAtWorldPos{ui, Vec2{0, 0}, transform})
 }
 add_ui_next_to_world_point :: proc(

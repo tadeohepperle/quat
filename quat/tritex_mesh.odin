@@ -80,9 +80,9 @@ tritex_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 	}
 }
 
+TRITEX_TEXTURES_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 tritex_textures_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if TRITEX_TEXTURES_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -99,10 +99,10 @@ tritex_textures_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		TRITEX_TEXTURES_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return layout
+	return TRITEX_TEXTURES_BIND_GROUP_LAYOUT
 }

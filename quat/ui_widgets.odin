@@ -1255,8 +1255,10 @@ text_edit :: proc(
 		assert(text_ctx != nil)
 		byte_count := len(text_ctx.byte_advances)
 
+		text_cached_data, _ := ui_get_cached_no_user_data(data.text_id)
+
 		// get the glyph we are currently on:
-		cursor_pos := ui_ctx.user_provided_values.screen_layout_cursor_pos
+		cursor_pos := text_cached_data.cursor_pos
 		rel_cursor_pos := cursor_pos - pos
 		current_byte_idx := byte_count
 		byte_start_idx := 0

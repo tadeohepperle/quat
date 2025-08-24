@@ -72,9 +72,11 @@ hex_chunk_uniform_create :: proc(
 	)
 	return uniform
 }
+
+
+HEX_CHUNK_DATA_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 hex_chunk_data_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if HEX_CHUNK_DATA_BIND_GROUP_LAYOUT == nil {
 		entries := []wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -86,12 +88,12 @@ hex_chunk_data_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		HEX_CHUNK_DATA_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = 1, entries = raw_data(entries)},
 		)
 	}
-	return layout
+	return HEX_CHUNK_DATA_BIND_GROUP_LAYOUT
 }
 
 

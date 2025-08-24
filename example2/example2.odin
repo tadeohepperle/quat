@@ -98,7 +98,7 @@ main :: proc() {
 		engine.draw_annotation({2, -1}, "Hello from the engine!")
 		engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
 		engine.add_world_ui_at_transform(
-			q.UiTransform2d {
+			q.UiTransform2D {
 				offset = {0, 2},
 				rot_scale = engine.get_osc(0.4, 0.4, 1.0) * q.rotation_mat_2d(engine.get_osc(1.3)),
 			},

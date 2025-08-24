@@ -234,9 +234,10 @@ depth_texture_create :: proc(size: UVec2) -> DepthTexture {
 	dbgval(texture.bind_group, "depth_texture_create")
 	return DepthTexture{texture}
 }
+
+DEPTH_TEXTURE_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 depth_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) LAYOUT: wgpu.BindGroupLayout
-	if LAYOUT == nil {
+	if DEPTH_TEXTURE_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -249,12 +250,12 @@ depth_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering}, // maybe comparison here??
 			},
 		}
-		LAYOUT = wgpu.DeviceCreateBindGroupLayout(
+		DEPTH_TEXTURE_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return LAYOUT
+	return DEPTH_TEXTURE_BIND_GROUP_LAYOUT
 }
 
 texture_create :: proc(
@@ -325,9 +326,9 @@ texture_destroy :: proc(texture: ^Texture) {
 	wgpu.TextureRelease(texture.texture)
 }
 
+RBGA_BIND_GROUP_LAYOUT_CACHED: wgpu.BindGroupLayout
 rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if RBGA_BIND_GROUP_LAYOUT_CACHED == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -340,18 +341,17 @@ rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		RBGA_BIND_GROUP_LAYOUT_CACHED = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return layout
+	return RBGA_BIND_GROUP_LAYOUT_CACHED
 }
 
-
+RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 rgba_texture_array_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -368,12 +368,12 @@ rgba_texture_array_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return layout
+	return RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT
 }
 
 texture_array_create :: proc(

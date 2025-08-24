@@ -272,9 +272,9 @@ skinned_pipeline_config :: proc() -> RenderPipelineConfig {
 	}
 }
 
+BONES_STORAGE_BUFFER_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 bones_storage_buffer_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if BONES_STORAGE_BUFFER_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -286,10 +286,10 @@ bones_storage_buffer_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout 
 				},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		BONES_STORAGE_BUFFER_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return layout
+	return BONES_STORAGE_BUFFER_BIND_GROUP_LAYOUT
 }

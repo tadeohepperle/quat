@@ -140,7 +140,7 @@ ui_render :: proc(
 				render_pass,
 				{.Vertex},
 				0,
-				size_of(UiTransform2d),
+				size_of(UiTransform2D),
 				&batch.transform.data.transform2d,
 			)
 		}
@@ -202,7 +202,7 @@ ui_rect_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 			shader_globals_bind_group_layout_cached(),
 			rgba_bind_group_layout_cached(),
 		),
-		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2d)}) if space == .World2D else {},
+		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2D)}) if space == .World2D else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
@@ -238,7 +238,7 @@ ui_glyph_pipeline_config :: proc(space: UiSpace) -> RenderPipelineConfig {
 			shader_globals_bind_group_layout_cached(),
 			rgba_bind_group_layout_cached(),
 		),
-		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2d)}) if space == .World2D else {},
+		push_constant_ranges = push_const_ranges(wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(UiTransform2D)}) if space == .World2D else {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,

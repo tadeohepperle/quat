@@ -212,9 +212,9 @@ motion_texture_write :: proc(this: MotionTexture, diffuse: Image, motion: Image)
 	)
 }
 
+DIFFUSE_AND_MOTION_TEXTURE_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 diffuse_and_motion_texture_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if DIFFUSE_AND_MOTION_TEXTURE_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -232,12 +232,12 @@ diffuse_and_motion_texture_bind_group_layout_cached :: proc(device: wgpu.Device)
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		DIFFUSE_AND_MOTION_TEXTURE_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return layout
+	return DIFFUSE_AND_MOTION_TEXTURE_BIND_GROUP_LAYOUT
 }
 
 
@@ -328,9 +328,9 @@ motion_particles_pipeline_config :: proc() -> RenderPipelineConfig {
 	}
 }
 
+MOTION_TEXTURE_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 motion_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	@(static) layout: wgpu.BindGroupLayout
-	if layout == nil {
+	if MOTION_TEXTURE_BIND_GROUP_LAYOUT == nil {
 		entries := [3]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -348,10 +348,10 @@ motion_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
-		layout = wgpu.DeviceCreateBindGroupLayout(
+		MOTION_TEXTURE_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return layout
+	return MOTION_TEXTURE_BIND_GROUP_LAYOUT
 }
