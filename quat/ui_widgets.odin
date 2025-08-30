@@ -425,6 +425,7 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 		f = (cursor_pos.x - knob_width / 2 - cached.pos.x) / (cached.size.x - knob_width)
 		val = min + f * (max - min)
 		slider_cache.start_drag_value = val
+		slider_cache.start_drag_cursor_pos = cursor_pos
 	} else if res.pressed || (scroll != 0 && res.hovered) {
 
 		if res.pressed {

@@ -152,7 +152,7 @@ ShaderGlobals :: struct {
 	_pad_4:                  f32,
 	xxx:                     Vec4, // some floats for testing purposes
 }
-shader_globals_set_camera_2d :: proc(globals: ^ShaderGlobals, camera: Camera, screen_size: Vec2) {
+shader_globals_set_camera_2d :: proc(globals: ^ShaderGlobals, camera: Camera2D, screen_size: Vec2) {
 	camera_proj := camera_projection_matrix(camera, screen_size)
 	globals.camera_proj_col_1 = camera_proj[0]
 	globals.camera_proj_col_2 = camera_proj[1]

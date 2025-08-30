@@ -14,7 +14,7 @@ main :: proc() {
 	defer engine.deinit()
 
 	can_texture := engine.load_texture_tile("./assets/can.png")
-	camera := q.Camera {
+	camera := q.Camera2D {
 		focus_pos = {0, 0},
 		rotation  = 0,
 		height    = 10,
@@ -64,7 +64,7 @@ main :: proc() {
 
 
 		// q.start_window("Hello World")
-		// q.text("Camera Height")
+		// q.text("Camera2D Height")
 		// q.slider(&camera.height, 0.1, 50.0)
 		// q.end_window()
 

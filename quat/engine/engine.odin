@@ -114,7 +114,7 @@ UiAtWorldPos :: struct {
 
 // roughly in render order
 Scene :: struct {
-	camera:                         q.Camera, // 2d camera
+	camera:                         q.Camera2D, // 2d camera
 	// geometry:
 	tritex_meshes:                  [dynamic]q.TritexMesh,
 	tritex_textures:                q.TextureArrayHandle, // not owned! just set by the user.
@@ -328,12 +328,12 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 	q.update_interaction_state(&engine.ui_tag_interaction, hovered_tag, left_press)
 	q.ui_system_set_user_provided_values(
 		q.UiUserProvidedValues {
-			delta_secs = PLATFORM.delta_secs,
-			id_state = engine.ui_id_interaction,
-			tag_state = engine.ui_tag_interaction,
+			delta_secs              = PLATFORM.delta_secs,
+			id_state                = engine.ui_id_interaction,
+			tag_state               = engine.ui_tag_interaction,
 			screen_ui_layout_extent = engine.screen_ui_layout_extent,
-			world_2d_cursor_pos = engine.hit.hit_pos,
-			world_2d_px_per_unit = engine.settings.world_2d_ui_px_per_unit,
+			world_2d_cursor_pos     = engine.hit.hit_pos, // MAYBE THIS ONE IS WRONG
+			world_2d_px_per_unit    = engine.settings.world_2d_ui_px_per_unit,
 		},
 	)
 	engine.hit.is_on_world_ui = false
@@ -435,7 +435,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 		)
 	}
 	for ui in scene.screen_ui {
-		q.ui_system_layout_in_screen_space(ui, engine.screen_ui_layout_extent)
+		q.ui_system_layout_element(ui, engine.screen_ui_layout_extent)
 		append(
 			&engine.top_level_elements_scratch,
 			q.TopLevelElement{ui, q.UiTransform{space = .Screen, data = {clipped_to = nil}}},
@@ -943,7 +943,7 @@ add_rect_collider :: proc(quad: q.RotatedRect, metadata: q.ColliderMetadata, z: 
 add_triangle_collider :: proc(triangle: q.Triangle2d, metadata: q.ColliderMetadata, z: int) {
 	append(&ENGINE.scene.colliders, q.Collider{shape = triangle, metadata = metadata, z = z})
 }
-set_camera :: proc(camera: q.Camera) {
+set_camera :: proc(camera: q.Camera2D) {
 	ENGINE.scene.camera = camera
 	_engine_recalculate_hit_info(&ENGINE) // todo! probably not appropriate??
 }
@@ -953,7 +953,7 @@ access_shader_globals_xxx :: proc() -> ^[4]f32 {
 set_tritex_textures :: proc(textures: q.TextureArrayHandle) {
 	ENGINE.scene.tritex_textures = textures
 }
-get_camera :: proc() -> q.Camera {
+get_camera :: proc() -> q.Camera2D {
 	return ENGINE.scene.camera
 }
 set_clear_color :: proc(color: q.Color) {

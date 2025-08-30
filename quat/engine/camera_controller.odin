@@ -4,7 +4,7 @@ import q "../"
 import "core:math/linalg"
 
 
-DEFAULT_CAMERA_CONTROLLER_SETTINGS := CameraSettings {
+DEFAULT_CAMERA_CONTROLLER_SETTINGS := Camera2DSettings {
 	min_size          = 2.0,
 	max_size          = 700.0,
 	default_size      = 10.0,
@@ -17,7 +17,7 @@ DEFAULT_CAMERA_CONTROLLER_SETTINGS := CameraSettings {
 	zoom_enabled      = true,
 }
 
-CameraSettings :: struct {
+Camera2DSettings :: struct {
 	min_size:          f32,
 	max_size:          f32,
 	default_size:      f32,
@@ -30,25 +30,25 @@ CameraSettings :: struct {
 	scroll_when_on_ui: bool,
 }
 
-CameraController :: struct {
-	settings:    CameraSettings,
-	target:      q.Camera,
-	current:     q.Camera,
+Camera2DController :: struct {
+	settings:    Camera2DSettings,
+	target:      q.Camera2D,
+	current:     q.Camera2D,
 	is_dragging: bool,
 }
 
 camera_controller_create :: proc(
-	camera: q.Camera = q.DEFAULT_CAMERA,
-	settings: CameraSettings = DEFAULT_CAMERA_CONTROLLER_SETTINGS,
-) -> CameraController {
-	return CameraController{settings = settings, target = camera, current = camera}
+	camera: q.Camera2D = q.DEFAULT_CAMERA,
+	settings: Camera2DSettings = DEFAULT_CAMERA_CONTROLLER_SETTINGS,
+) -> Camera2DController {
+	return Camera2DController{settings = settings, target = camera, current = camera}
 }
 
-camera_controller_set_immediately :: proc(cam: ^CameraController) {
+camera_controller_set_immediately :: proc(cam: ^Camera2DController) {
 	cam.current = cam.target
 }
 
-camera_controller_update :: proc(cam: ^CameraController) {
+camera_controller_update :: proc(cam: ^Camera2DController) {
 	screen_size := q.get_screen_size()
 	pan_btn := get_mouse_btn(.Middle)
 	is_on_ui := get_hit().is_on_screen_ui

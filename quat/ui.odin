@@ -46,21 +46,98 @@ ui_system_deinit()
 
 */
 
+UiProjection :: union {
+	UiScreenProjection,
+	UiWorld2DProjection,
+	UiWorld3DProjection,
+}
+UiSpace :: enum u16 {
+	Screen  = 0,
+	World2D = 1,
+	World3D = 2,
+}
+ui_projection_space :: proc(proj: UiProjection) -> UiSpace {
+	switch proj in proj {
+	case UiScreenProjection:
+		return .Screen
+	case UiWorld2DProjection:
+		return .World2D
+	case UiWorld3DProjection:
+		return .World3D
+	}
+	panic("invalid projection")
+}
+UiScreenProjection :: struct {
+	// the screen size can change dynamically when the user changes the window size.
+	// we want the ui to scale with the window size. So e.g. define all ui px sizes with reference to 1920x1080
+	// and then scale them to the actual screen size, either by x or y axis or a mix of the two
+	reference_screen_size: Vec2,
+	// if x_scaling_factor is 0.0 then px scaling is entirely dictated by the proportion of reference_screen_size.y / screen_size.y
+	// if x_scaling_factor is 1.0 then px scaling is done by horizontal factor
+	x_scaling_factor:      f32,
+	clipped_to:            Maybe(Aabb),
+	// todo could also have min px size and max px size, maybe include scale_factor of monitor!
+}
+
+ui_screen_projection_scaling_factor :: proc "contextless" (proj: UiScreenProjection, screen_size: Vec2) -> f32 {
+	scale := screen_size / proj.reference_screen_size
+	return lerp(scale.y, scale.x, proj.x_scaling_factor)
+}
+
+ui_screen_projection_layout_extent :: proc "contextless" (proj: UiScreenProjection, screen_size: Vec2) -> Vec2 {
+	return screen_size * ui_screen_projection_scaling_factor(proj, screen_size)
+}
+
+UiWorld2DProjection :: struct {
+	transform: UiWorld2DTransform,
+	camera:    Camera2D,
+}
+
+UiWorld3DProjection :: struct {
+	transform: UiWorld3DTransform,
+	camera:    Camera2D,
+}
+
+UiWorld2DTransform :: struct {
+	pos:     Vec2,
+	x_basis: Vec2,
+	z:       f32,
+}
+
+UiWorld3DTransform :: struct {
+	pos:     Vec3,
+	x_basis: Vec3,
+	y_basis: Vec3,
+}
+
+// converts a ui_transform and a 
+ui_projection_to_local_cursor_pos :: proc(proj: UiProjection, cursor_pos: Vec2, screen_size: Vec2) {
+
+	unimplemented()
+}
+
+
+// the returned Mat4 should transform a point vec4(x,y,0,0) in ui layout px space to ndc (normalized device coordinates)
+ui_projection_to_projection_matrix :: proc(proj: UiProjection) -> (m: Mat4) {
+
+	unimplemented()
+}
+
+
 UiUserProvidedValues :: struct {
-	delta_secs:              f32, // for lerping UI elements
-	id_state:                InteractionState(UiId),
-	tag_state:               InteractionState(UiTag),
-	screen_ui_layout_extent: Vec2, // reference screen size
-	world_2d_cursor_pos:     Vec2,
-	world_2d_px_per_unit:    f32,
-	// todo: 3d ray for cursor pos in 3d
+	delta_secs: f32, // for lerping UI elements
+	id_state:   InteractionState(UiId),
+	tag_state:  InteractionState(UiTag),
+	// this can be just PLATFORM.cursor_pos
+	cursor_pos: Vec2,
 }
 
 UiProjectionInfo :: struct {
-	camera_2d: Camera, // todo: make multiple camera_2ds possible for e.g. multi view, just add array here and iterate over all of them to see what is hit
+	camera_2d: Camera2D, // todo: make multiple camera_2ds possible for e.g. multi view, just add array here and iterate over all of them to see what is hit
 }
 
 ui_system_set_user_provided_values :: proc(values: UiUserProvidedValues) {
+	print(values)
 	UI_CTX.user_provided_values = values
 }
 ui_system_view_cache :: proc() -> map[UiId]CachedElement {
@@ -103,9 +180,6 @@ ui_id_from_multiple_anys :: proc(data: ..any) -> UiId {
 		seed = hash.crc64_xz(bytes[:], seed)
 	}
 	return seed
-}
-ui_get_screen_layout_extent :: proc() -> Vec2 {
-	return UI_CTX.user_provided_values.screen_ui_layout_extent
 }
 ui_interaction :: proc "contextless" (id: UiId) -> Interaction {
 	return interaction(id, &UI_CTX.user_provided_values.id_state)
@@ -196,7 +270,6 @@ interaction :: proc "contextless" (id: $T, state: ^InteractionState(T)) -> Inter
 CachedElementInfo :: struct {
 	pos:        Vec2,
 	size:       Vec2,
-	space:      UiSpace,
 	// each element can be in a different ui space where the cursor pos is different. 
 	// for elements on the screen ui, this is just the scaled cursor pos of the platform.
 	// but for e.g. elements in 2d or 3d space this has to be the transformed cursor pos in that space for e.g. sliders to work correctly
@@ -218,42 +291,9 @@ ui_get_cached :: proc(
 }
 
 cashed_element_info :: proc(el: CachedElement) -> CachedElementInfo {
-	cursor_pos := calculate_local_cursor_pos(
-		el.transform,
-		PLATFORM.cursor_pos,
-		PLATFORM.screen_size_f32,
-		UI_CTX.user_provided_values,
-	)
-	return CachedElementInfo{el.pos, el.size, el.transform.space, cursor_pos}
+	cursor_pos := UI_CTX.old_projections[el.proj_idx].local_cursor_pos
+	return CachedElementInfo{el.pos, el.size, cursor_pos}
 }
-
-calculate_local_cursor_pos :: proc "contextless" (
-	transform: UiTransform,
-	platform_cursor_pos: Vec2,
-	platform_screen_size: Vec2,
-	vals: UiUserProvidedValues,
-) -> Vec2 {
-	switch transform.space {
-	case .Screen:
-		// just scale the x and y of the cursor pos to pretend like however tall the screen is, is like the reference size height
-		return platform_cursor_pos * (vals.screen_ui_layout_extent.y / platform_screen_size.y)
-	case .World2D:
-		cursor_pos := vals.world_2d_cursor_pos
-		transform := transform.data.transform2d
-		if transform != UI_UNIT_TRANSFORM_2D {
-			cursor_pos /= vals.world_2d_px_per_unit
-			cursor_pos.y = -cursor_pos.y
-			cursor_pos = ui_transform_2d_reverse(transform, cursor_pos)
-			cursor_pos *= vals.world_2d_px_per_unit
-			cursor_pos.y = -cursor_pos.y
-		}
-		return cursor_pos
-	case .World3D:
-		unimplemented_contextless()
-	}
-	panic_contextless("invalid transform space")
-}
-
 
 ui_get_cached_no_user_data :: proc(id: UiId) -> (data: CachedElementInfo, ok: bool) {
 	el, _ok := UI_CTX.old_cache[id]
@@ -279,12 +319,10 @@ UiTag :: u64
 // - layer of the UI, deliberately chosen, to render stuff earlier in the tree on top of stuff that comes later.
 // can be transmuted into a u64 to be compared with another ZInfo, layer in the high bits is most significant then
 ZInfo :: struct {
-	traversal_idx:     u32, // least significant
-	layer:             u16, // more significant
-	screen_or_world_z: u16, // most significant, world always infront of screen
+	traversal_idx: u32, // least significant
+	layer:         u16, // more significant
+	space_z:       UiSpace, // most significant, screen over world2d/3d
 }
-SCREEN_UI_Z: u16 : 1
-WORLD_UI_Z: u16 : 0
 
 // returns true if a is greater than b
 z_gte :: #force_inline proc "contextless" (a: ZInfo, b: ZInfo) -> bool {
@@ -300,56 +338,8 @@ CachedElement :: struct {
 	color:                Color,
 	user_data:            CachedUserData,
 	z_info:               ZInfo,
-	transform:            UiTransform,
+	proj_idx:             UiProjectionIdx, // points into old_projections
 	tag:                  UiTag, // some tag set by the user explicitly
-}
-
-
-UiSpace :: enum {
-	Screen,
-	World2D,
-	World3D,
-}
-UiTransform :: struct {
-	space: UiSpace,
-	data:  struct #raw_union {
-		clipped_to:  Maybe(Aabb), // only supported for screen ui because we rely on wgpu Scissor Clipping, which does not work if the frame is e.g. rotated or in 3d space. Would need extra render target for this stuff... 
-		transform2d: UiTransform2D,
-		transform3d: UiTransform3D,
-	},
-}
-
-ui_transform_eq :: proc(a: UiTransform, b: UiTransform) -> bool {
-	if a.space == b.space {
-		switch a.space {
-		case .Screen:
-			return a.data.clipped_to == b.data.clipped_to
-		case .World2D:
-			return a.data.transform2d == b.data.transform2d
-		case .World3D:
-			return a.data.transform3d == b.data.transform3d
-		}
-	}
-	return false
-}
-
-UiTransform2D :: struct {
-	rot_scale: Mat2,
-	offset:    Vec2,
-}
-UiTransform3D :: struct {
-	// todo
-}
-
-UI_UNIT_TRANSFORM_2D :: UiTransform2D {
-	offset    = Vec2{0, 0},
-	rot_scale = Mat2{1, 0, 0, 1},
-}
-ui_transform_2d_apply :: proc "contextless" (this: UiTransform2D, p: Vec2) -> Vec2 {
-	return this.rot_scale * p + this.offset
-}
-ui_transform_2d_reverse :: proc "contextless" (this: UiTransform2D, q: Vec2) -> Vec2 {
-	return linalg.matrix2x2_inverse(this.rot_scale) * (q - this.offset)
 }
 
 ComputedGlyph :: struct {
@@ -359,8 +349,9 @@ ComputedGlyph :: struct {
 }
 
 UiBatches :: struct {
-	primitives: Primitives,
-	batches:    [dynamic]UiBatch,
+	primitives:  Primitives,
+	screen_size: Vec2,
+	batches:     [dynamic]UiBatch,
 }
 ui_batches_drop :: proc(batches: ^UiBatches) {
 	delete(batches.primitives.vertices)
@@ -369,7 +360,6 @@ ui_batches_drop :: proc(batches: ^UiBatches) {
 	delete(batches.batches)
 }
 
-
 Primitives :: struct {
 	vertices:         [dynamic]UiVertex,
 	triangles:        [dynamic]Triangle,
@@ -377,13 +367,14 @@ Primitives :: struct {
 }
 
 UiBatch :: struct {
-	start_idx: int, // either triangle idx (take *3 to get index for pipeline!) or glyph idx
-	end_idx:   int,
-	kind:      BatchKind,
-	handle:    TextureOrFontHandle,
-	transform: UiTransform,
+	start_idx:     int, // either triangle idx (take *3 to get index for pipeline!) or glyph idx
+	end_idx:       int,
+	kind:          BatchKind,
+	handle:        TextureOrFontHandle,
+	proj_idx:      UiProjectionIdx,
+	clipping_rect: Maybe(Aabb),
 }
-TextureOrFontHandle :: distinct (u32)
+TextureOrFontHandle :: distinct u32
 BatchKind :: enum {
 	Rect,
 	Glyph,
@@ -411,10 +402,11 @@ UiGlyphInstance :: struct {
 }
 
 UiElementBase :: struct {
-	pos:  Vec2, // computed: in layout (`set_position`)
-	size: Vec2, // computed: in layout (`set_size`)
-	id:   UiId,
-	tag:  UiTag,
+	pos:      Vec2, // computed: in layout (`set_position`)
+	size:     Vec2, // computed: in layout (`set_size`)
+	id:       UiId,
+	tag:      UiTag,
+	proj_idx: UiProjectionIdx,
 }
 
 TextElement :: struct {
@@ -432,7 +424,7 @@ DivElement :: struct {
 	using div:    Div,
 	content_size: Vec2, // computed
 	children:     [dynamic]Ui, // in temp storage, 
-	// todo: optimize children to be 3 usizes only, and store a single child inline: {backing: []Ui | Ui, len: int} because []Ui and Ui are both 2*8 bytes.    
+	// todo: optimize children to be {ptr, len} only (cap can be derived from len!), and store a single child inline: {backing: []Ui | Ui, len: int} because []Ui and Ui are both 2*8 bytes.    
 	// children could also just be: struct {n_children: u32, first_child_idx: u32, sibling_idx: u32}
 }
 
@@ -626,6 +618,14 @@ UiCtx :: struct {
 	old_cache:               map[UiId]CachedElement,
 	new_cache:               map[UiId]CachedElement,
 	user_provided_values:    UiUserProvidedValues,
+	old_projections:         [dynamic]UiProjectionWithCursorPos,
+	new_projections:         [dynamic]UiProjection,
+}
+
+UiProjectionWithCursorPos :: struct {
+	projection:       UiProjection,
+	// cursor pos projected from pos in window to pos in local ui space
+	local_cursor_pos: Vec2,
 }
 
 DIVS_MAX_COUNT :: 4096
@@ -640,6 +640,8 @@ ui_system_init :: proc() {
 	UI_CTX.custom_uis = make([]CustomUiElement, CUSTOM_UIS_MAX_COUNT)
 	UI_CTX.glyphs = make([]ComputedGlyph, GLYPHS_MAX_COUNT)
 	UI_CTX.temp_alloc = context.temp_allocator
+	UI_CTX.old_projections = make([dynamic]UiProjection)
+	UI_CTX.new_projections = make([dynamic]UiProjection)
 }
 
 ui_system_deinit :: proc() {
@@ -650,6 +652,8 @@ ui_system_deinit :: proc() {
 	delete(UI_CTX.text_ids_to_tmp_layouts)
 	delete(UI_CTX.old_cache)
 	delete(UI_CTX.new_cache)
+	delete(UI_CTX.old_projections)
+	delete(UI_CTX.new_projections)
 }
 
 ui_add_child :: proc(of: ^DivElement, child: Ui) {
@@ -720,6 +724,18 @@ ui_system_start_frame_clearing_arenas :: proc() {
 	// swap old and new caches:
 	UI_CTX.old_cache, UI_CTX.new_cache = UI_CTX.new_cache, UI_CTX.old_cache
 	clear(&UI_CTX.new_cache)
+	// swap old and new projections registry:
+
+
+	cursor_pos: Vec2 = PLATFORM.cursor_pos
+	clear(&UI_CTX.old_projections)
+	for p in UI_CTX.new_projections {
+		ui_projection_to_local_cursor_pos()
+	}
+	clear(&UI_CTX.new_projections)
+
+	UI_CTX.old_projections, UI_CTX.new_projections = UI_CTX.new_projections, UI_CTX.old_projections
+	clear(&UI_CTX.new_projections)
 	UI_CTX.divs_len = 0
 	UI_CTX.texts_len = 0
 	UI_CTX.custom_uis_len = 0
@@ -738,14 +754,7 @@ ui_system_get_hovered_id_and_tag :: proc() -> (hovered_id: UiId, hovered_tag: Ui
 		if el.pointer_pass_through || !z_gte(el.z_info, highest_z) {
 			continue
 		}
-
-		// determine where the cursor would land in the ui
-		local_cursor_pos := calculate_local_cursor_pos(
-			el.transform,
-			PLATFORM.cursor_pos,
-			PLATFORM.screen_size_f32,
-			UI_CTX.user_provided_values,
-		)
+		local_cursor_pos := UI_CTX.old_projections[el.proj_idx].local_cursor_pos
 
 		cursor_in_bounds :=
 			local_cursor_pos.x >= el.pos.x &&
@@ -772,46 +781,57 @@ ui_system_get_hovered_id_and_tag :: proc() -> (hovered_id: UiId, hovered_tag: Ui
 // /////////////////////////////////////////////////////////////////////////////
 // SECTION: Layout algorithm
 // /////////////////////////////////////////////////////////////////////////////
-ui_system_layout_in_screen_space :: proc(ui: Ui, layout_extent: Vec2) {
-	initial_pos := Vec2{0, 0}
-	used_size := _set_size(ui, layout_extent)
-
-	// this allows top level divs to be absolute-positioned, relative to screen size
-
-	if absolute_unit_pos, ok := _has_absolute_positioning(ui); ok {
-		initial_pos = (layout_extent - used_size) * absolute_unit_pos
-	}
-	transform := UiTransform {
-		space = .Screen,
-		data = {clipped_to = nil},
-	}
-	context.user_ptr = &transform
-	_set_position(ui, initial_pos)
-}
 
 
 INFINITE_SIZE :: Vec2{max(f32), max(f32)}
-ui_system_layout_in_world_2d_space :: proc(
-	ui: Ui,
-	world_pos: Vec2,
-	transform2d: UiTransform2D,
-	pixels_per_world_unit: f32,
-) {
-	used_size := _set_size(ui, INFINITE_SIZE)
-	initial_pos := Vec2{world_pos.x, -world_pos.y} * pixels_per_world_unit - (used_size / 2)
-	transform := UiTransform {
-		space = .World2D,
-		data = {transform2d = transform2d},
-	}
-	context.user_ptr = &transform
-	_set_position(ui, initial_pos)
-}
-
-ui_system_measure :: proc(ui: Ui, max_size: Maybe(Vec2) = nil) -> Vec2 {
+ui_system_measure_element :: proc(ui: Ui, max_size: Maybe(Vec2) = nil) -> Vec2 {
 	max_size := max_size.(Vec2) or_else INFINITE_SIZE
 	used_size := _set_size(ui, max_size)
 	return used_size
 }
+
+ui_system_layout_element :: proc(ui: Ui, projection: UiProjection) {
+	layout_extent: Vec2
+	if screen_proj, ok := projection.(UiScreenProjection); ok {
+		layout_extent = screen_proj.layout_extent
+	} else {
+		layout_extent = INFINITE_SIZE
+	}
+
+	used_size := _set_size(ui, layout_extent)
+
+	initial_pos := Vec2{0, 0}
+	if screen_proj, ok := projection.(UiScreenProjection); ok {
+		// allows top level elements to be absolute-positioned in the window:
+		if absolute_unit_pos, ok := _has_absolute_positioning(ui); ok {
+			initial_pos = (layout_extent - used_size) * absolute_unit_pos
+		}
+	} else {
+		// some kind of world ui, usually self centered at own position
+		if absolute_unit_pos, ok := _has_absolute_positioning(ui); ok {
+			initial_pos = -used_size * absolute_unit_pos
+		} else {
+			initial_pos = -used_size * 0.5
+		}
+	}
+
+	proj_idx := _get_or_register_projection_idx(projection)
+	context.user_index = int(proj_idx)
+	_set_position(ui, initial_pos)
+}
+
+UiProjectionIdx :: distinct u32
+_get_or_register_projection_idx :: proc(proj: UiProjection) -> UiProjectionIdx {
+	for other, idx in UI_CTX.new_projections {
+		if other == proj {
+			return UiProjectionIdx(idx)
+		}
+	}
+	idx := UiProjectionIdx(len(UI_CTX.new_projections))
+	append(&UI_CTX.new_projections, proj)
+	return idx
+}
+
 
 _set_size :: proc(ui: Ui, max_size: Vec2) -> (used_size: Vec2) {
 	switch el in ui {
@@ -964,10 +984,10 @@ _set_position :: proc(ui: Ui, pos: Vec2) {
 		el.pos = pos
 		if el.id != NO_ID {
 			UI_CTX.new_cache[el.id] = CachedElement {
-				pos       = el.pos,
-				size      = el.size,
-				transform = (cast(^UiTransform)context.user_ptr)^,
-				tag       = el.tag,
+				pos      = el.pos,
+				size     = el.size,
+				tag      = el.tag,
+				proj_idx = UiProjectionIdx(context.user_index),
 			}
 		}
 	}
@@ -984,7 +1004,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2) {
 			color                = div.color,
 			border_color         = div.border_color,
 			pointer_pass_through = .PointerPassThrough in div.flags,
-			transform            = (cast(^UiTransform)context.user_ptr)^,
+			proj_idx             = UiProjectionIdx(context.user_index),
 			tag                  = div.tag,
 		}
 
@@ -1150,7 +1170,7 @@ _set_position_for_text :: proc(text: ^TextElement, pos: Vec2) {
 			size                 = text.size,
 			color                = text.color,
 			pointer_pass_through = text.pointer_pass_through,
-			transform            = (cast(^UiTransform)context.user_ptr)^,
+			proj_idx             = UiProjectionIdx(context.user_index),
 			tag                  = text.tag,
 		}
 	}
@@ -1425,25 +1445,48 @@ PreBatch :: struct {
 }
 
 TopLevelElement :: struct {
-	ui:        Ui,
-	transform: UiTransform,
+	ui:   Ui,
+	proj: UiProjection,
 }
 
 // Note: also writes to `z_info` of every encountered element in the ui hierarchy, setting its traversal_idx and layer.
 // This is done such that 
-ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches) {
+ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches, screen_size: Vec2) {
+	// Note: currently no sorting by z here
+
+	_clear_batches(out_batches)
+	out_batches.screen_size = screen_size
+	clear(&out_batches.projections)
+	for proj in UI_CTX.new_projections {
+		append(&out_batches.projections, proj)
+	}
+
+	b: Batcher = _batcher_create(top_level_elements, out_batches)
+	idx := 0
+	for ; idx < len(b.z_regions); idx += 1 {
+		reg: ZRegion = b.z_regions[idx]
+		b.current_z_layer = reg.z_layer
+		if reg.proj_idx != b.current.proj_idx {
+			_flush_and_apply_new_projection(&b, reg.proj_idx)
+		}
+		_add(&b, reg.ui)
+	}
+	_flush(&b)
+	return
+
 	// different regions can make up a single batch in the end, the regions are only for controlling the 
 	// order (ascending z) in which the ui elements are added to the batches.
 	ZRegion :: struct {
-		ui:        Ui,
-		z_layer:   u16,
-		transform: UiTransform,
+		ui:       Ui,
+		z_layer:  u16,
+		proj_idx: UiProjectionIdx,
 	}
 	CurrentBatch :: struct {
-		start_idx: int, // index into glyph instances or (vertex) indices array
-		kind:      BatchKind,
-		handle:    TextureOrFontHandle,
-		transform: UiTransform,
+		start_idx:  int, // index into glyph instances or (vertex) indices array
+		kind:       BatchKind,
+		handle:     TextureOrFontHandle,
+		proj_idx:   UiProjectionIdx,
+		proj_space: UiSpace,
 	}
 	// a new z region is added for each top level element and for each child div with a non-zero z-layer (offset)
 	Batcher :: struct {
@@ -1455,6 +1498,7 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 	}
 	_insert_z_region :: proc(z_regions: ^[dynamic]ZRegion, region: ZRegion) {
 		// search from the back to the front, adding when larger or equal to the highest layer up to now:
+		// todo: could be binary search!
 		insert_idx := len(z_regions)
 		for ; insert_idx > 0; insert_idx -= 1 {
 			highest_z_layer := z_regions[insert_idx - 1].z_layer
@@ -1465,32 +1509,32 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 		inject_at(z_regions, insert_idx, region)
 	}
 	_batcher_create :: proc(top_level_elements: []TopLevelElement, out_batches: ^UiBatches) -> Batcher {
+
+		// todo: currently this is done twice: Once here and once in ui_system_layout_element
+		// this could be avoided if we either pass in the ui elements with their projection idx here already, or maybe
+		// only calculate the projection idx here and attach it to the elements. 
+		// difficult because ui_system_layout_element also makes use of the projection to determine how to position the element.
+		// in general it sucks that we walk over the ui tree 3 times (!) every frame. 
+		//  - once in set_size
+		//  - once in set_position
+		//  - once in ui_system_build_batches
+		//
+		//  I bet we could combine the build batches and set position function.
+
+
 		elements_count := len(top_level_elements)
 		z_regions := make([dynamic]ZRegion, allocator = context.temp_allocator)
-		_clear_batches(out_batches)
 		for el, i in top_level_elements {
+			proj_idx := _get_or_register_projection_idx(el.proj) // should already be present by now
 			base := _element_base_ptr(el.ui)
 			z_layer: u16 = 0
 			if div, ok := el.ui.(^DivElement); ok {
 				z_layer = div.z_layer
 			}
-			_insert_z_region(&z_regions, ZRegion{el.ui, z_layer, el.transform})
+			_insert_z_region(&z_regions, ZRegion{el.ui, z_layer, proj_idx})
 		}
 		return Batcher{batches = out_batches, z_regions = z_regions}
 	}
-	// Note: currently no sorting by z here
-	b: Batcher = _batcher_create(top_level_elements, out_batches)
-	idx := 0
-	for ; idx < len(b.z_regions); idx += 1 {
-		reg: ZRegion = b.z_regions[idx]
-		b.current_z_layer = reg.z_layer
-		if !ui_transform_eq(reg.transform, b.current.transform) {
-			_flush_and_apply_new_clipping_rect(&b, reg.transform)
-		}
-		_add(&b, reg.ui)
-	}
-	_flush(&b)
-	return
 
 	// Idea: we should actually abuse the fact that most text is on the very top and it happens 
 	// super rarely that there are any rects over text
@@ -1500,36 +1544,41 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 		clear(&batches.primitives.glyphs_instances)
 		clear(&batches.batches)
 	}
-	// Note: currently no sorting or z-index, just add children recursively in order.
+	// z idx sorting needs rework!
 	_add :: proc(b: ^Batcher, ui: Ui) {
 		base := _element_base_ptr(ui)
 		if base.id != NO_ID {
 			// store z-info in the cache, to know which element is on top when hit-testing for hovering start of next frame:
 			cached, ok := &UI_CTX.new_cache[base.id]
 			assert(ok)
-			screen_or_world_z := SCREEN_UI_Z if b.current.transform.space == .Screen else WORLD_UI_Z
-			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer, screen_or_world_z}
-			cached.transform = b.current.transform
+			cached.z_info = ZInfo{b.traversal_idx, b.current_z_layer, b.current.proj_space}
+			cached.proj_idx = b.current.proj_idx
 		}
+		// todo: put traversal_idx somewhere else instead???
 		b.traversal_idx += 1
 		write := &b.batches.primitives
 		switch e in ui {
 		case ^DivElement:
+			_set_texture(b, e.texture.handle)
 			if e.color != 0 && e.size.x > 0 && e.size.y > 0 {
 				_flush_if_mismatch(b, .Rect, transmute(TextureOrFontHandle)(e.texture.handle))
 				_add_div_rect(e, &write.vertices, &write.triangles)
 			}
 
 			prev_clip: Maybe(Aabb) = --- // stored in stack frame only for clipping rects to restore this value after children are done
-			all_children_are_clipped := 0
 			clips_content: bool = .ClipContent in e.flags && len(e.children) != 0
-			if clips_content {
+			__clip: if clips_content {
+				// how to get a new ui projection into the batches???
+
+				screen := UI_CTX.new_projections
+
+
 				assert(b.current.transform.space == .Screen)
 				prev_clip = b.current.transform.data.clipped_to // save to restore later, when done with children
 				div_aabb := Aabb{base.pos, base.pos + base.size}
 				if current_clip, ok := prev_clip.(Aabb); !ok {
 					// no clipping currently applied, set the clipping to the area covered by this div
-					_flush_and_apply_new_clipping_rect(b, UiTransform{space = .Screen, data = {clipped_to = div_aabb}})
+					_flush_and_apply_new_projection(b, UiTransform{space = .Screen, data = {clipped_to = div_aabb}})
 				} else {
 					intersection_clip, has_overlap := aabb_intersection(div_aabb, current_clip)
 					if !has_overlap {
@@ -1541,7 +1590,7 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 						// so it is like the div would not clip anything at all.
 						clips_content = false
 					} else {
-						_flush_and_apply_new_clipping_rect(
+						_flush_and_apply_new_projection(
 							b,
 							UiTransform{space = .Screen, data = {clipped_to = intersection_clip}},
 						)
@@ -1563,10 +1612,10 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 
 			// restore the clipping rect that was present before:
 			if clips_content {
-				_flush_and_apply_new_clipping_rect(b, UiTransform{space = .Screen, data = {clipped_to = prev_clip}})
+				_flush_and_apply_new_projection(b, UiTransform{space = .Screen, data = {clipped_to = prev_clip}})
 			}
 		case ^TextElement:
-			_flush_if_mismatch(b, .Glyph, transmute(TextureOrFontHandle)e.font)
+			_set_font(b, e.font)
 			// todo: maybe copying them over is stupid, maybe we can create the computed glyphs
 			// directly in the primitives buffer from the get go
 			for g in UI_CTX.glyphs[e.glyphs_start_idx:e.glyphs_end_idx] {
@@ -1594,17 +1643,15 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 			for custom_primitives in custom_primitive_runs {
 				switch kind in custom_primitives {
 				case CustomUiMesh:
-					_flush_if_mismatch(b, .Rect, transmute(TextureOrFontHandle)kind.texture)
+					_set_texture(b, kind.texture)
 					start_idx := u32(len(write.vertices))
 					// todo: memcpy might be faster for vertices!
-					for v in kind.vertices {
-						append(&write.vertices, v)
-					}
+					append_elems(&write.vertices, ..kind.vertices)
 					for i in kind.triangles {
 						append(&write.triangles, i + start_idx)
 					}
 				case CustomGlyphs:
-					_flush_if_mismatch(b, .Glyph, transmute(TextureOrFontHandle)kind.font)
+					_set_font(b, kind.font)
 					// todo: memcpy might be faster for glyph instances!
 					for g in kind.instances {
 						append(&write.glyphs_instances, g)
@@ -1615,10 +1662,32 @@ ui_system_build_batches :: proc(top_level_elements: []TopLevelElement, out_batch
 		}
 	}
 
-	_flush_and_apply_new_clipping_rect :: proc(b: ^Batcher, new_transform: UiTransform) {
-		_flush(b)
+	_set_projection_idx :: proc(b: ^Batcher, proj_idx: UiProjectionIdx) {
+		if b.current.proj_idx != proj_idx {
+			_flush(b)
+		}
 		b.current.start_idx = _idx_for_batch_kind(&b.batches.primitives, b.current.kind)
-		b.current.transform = new_transform
+		b.current.proj_idx = proj_idx
+		b.current.proj_space = ui_projection_space(UI_CTX.new_projections[proj_idx])
+	}
+
+
+	_set_texture :: proc(b: ^Batcher, texture: TextureHandle) {
+		if b.current.kind != .Rect || u32(b.current.handle) != texture.idx {
+			_flush(b)
+			b.current.kind = .Rect
+			b.current.handle = TextureOrFontHandle(texture.idx)
+			b.current.start_idx = _idx_for_batch_kind(&b.batches.primitives, .Rect)
+		}
+	}
+
+	_set_font :: proc(b: ^Batcher, font: FontHandle) {
+		if b.current.kind != .Glyph || u32(b.current.handle) != font.idx {
+			_flush(b)
+			b.current.kind = .Glyph
+			b.current.handle = TextureOrFontHandle(font.idx)
+			b.current.start_idx = _idx_for_batch_kind(&b.batches.primitives, .Glyph)
+		}
 	}
 
 	_flush_if_mismatch :: proc(b: ^Batcher, kind: BatchKind, handle: TextureOrFontHandle) {
