@@ -88,16 +88,15 @@ UniformBuffer :: struct($T: typeid) {
 uniform_buffer_destroy :: proc(buffer: ^UniformBuffer($T)) {
 	dbgval(buffer.bind_group, "uniform_buffer_destroy")
 	wgpu.BindGroupRelease(buffer.bind_group)
-	wgpu.BindGroupLayoutRelease(buffer.bind_group_layout)
 	wgpu.BufferRelease(buffer.buffer) // TODO: What is the difference between BufferRelease and BufferRelease
 }
-uniform_buffer_create :: proc($T: typeid, bind_group_layout: wgpu.BindGroupLayout) -> (buffer: UniformBuffer(T)) {
+uniform_buffer_create :: proc($T: typeid) -> (buffer: UniformBuffer(T)) {
 	buffer.usage |= {.CopyDst, .Uniform}
 	buffer.buffer = wgpu.DeviceCreateBuffer(
 		PLATFORM.device,
 		&wgpu.BufferDescriptor{usage = buffer.usage, size = size_of(T), mappedAtCreation = false},
 	)
-	buffer.bind_group_layout = bind_group_layout
+	buffer.bind_group_layout = uniform_bind_group_layout_cached(T)
 	bind_group_entries := [?]wgpu.BindGroupEntry {
 		wgpu.BindGroupEntry{binding = 0, buffer = buffer.buffer, offset = 0, size = u64(size_of(T))},
 	}
@@ -112,27 +111,31 @@ uniform_buffer_create :: proc($T: typeid, bind_group_layout: wgpu.BindGroupLayou
 	dbgval(buffer.bind_group, "uniform_buffer_create")
 	return buffer
 }
-uniform_bind_group_layout :: proc(size_of_t: u64) -> wgpu.BindGroupLayout {
-	return wgpu.DeviceCreateBindGroupLayout(
-		PLATFORM.device,
-		&wgpu.BindGroupLayoutDescriptor {
-			entryCount = 1,
-			entries = &wgpu.BindGroupLayoutEntry {
-				binding = 0,
-				visibility = {.Vertex, .Fragment},
-				buffer = wgpu.BufferBindingLayout {
-					type = .Uniform,
-					hasDynamicOffset = false,
-					minBindingSize = size_of_t,
+
+// maps size to a bindgroup layout for uniforms
+CACHED_UNIFORM_BIND_GROUP_LAYOUTS: map[u64]wgpu.BindGroupLayout
+uniform_bind_group_layout_cached :: proc($T: typeid) -> wgpu.BindGroupLayout {
+	size := u64(size_of(T))
+	_, layout, just_inserted, _ := map_entry(&CACHED_UNIFORM_BIND_GROUP_LAYOUTS, size)
+	if just_inserted {
+		layout^ = wgpu.DeviceCreateBindGroupLayout(
+			PLATFORM.device,
+			&wgpu.BindGroupLayoutDescriptor {
+				entryCount = 1,
+				entries = &wgpu.BindGroupLayoutEntry {
+					binding = 0,
+					visibility = {.Vertex, .Fragment},
+					buffer = wgpu.BufferBindingLayout {
+						type = .Uniform,
+						hasDynamicOffset = false,
+						minBindingSize = size,
+					},
 				},
 			},
-		},
-	)
+		)
+	}
+	return layout^
 }
-// uniform_buffer_create :: proc(buffer: ^UniformBuffer($T)) {
-// 	layout := uniform_bind_group_layout(size_of(T))
-// 	uniform_buffer_create_from_bind_group_layout(buffer, layout)
-// }
 
 uniform_buffer_write :: proc(buffer: ^UniformBuffer($T), data: ^T) {
 	wgpu.QueueWriteBuffer(PLATFORM.queue, buffer.buffer, 0, data, size_of(T))
@@ -156,7 +159,7 @@ RenderPipelineConfig :: struct {
 	blend:                Maybe(wgpu.BlendState), // if nil, no blending.
 	format:               wgpu.TextureFormat,
 	depth:                Maybe(DepthConfig),
-	// // just a single string flag that can be set to conditionally include some lines of wgsl, only if this is set, 
+	// // just a single string flag that can be set to conditionally include some lines of wgsl, only if this is set,
 	// // e.g. say `flag = "WORLDSPACE"` and then in the wgsl: `#WORLDSPACE   out.pos = vec2f(1.0,2.0);`
 	// flag:                 string,
 }

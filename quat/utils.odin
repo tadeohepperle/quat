@@ -104,6 +104,12 @@ ivec2_to_vec2 :: proc "contextless" (i: IVec2) -> Vec2 {
 	return Vec2{f32(i.x), f32(i.y)}
 }
 
+rotate_2d :: proc "contextless" (v: Vec2, rotation: f32) -> Vec2 {
+	co := math.cos(rotation)
+	si := math.sin(rotation)
+	return Vec2{v.x * co - v.y * si, v.x * si + v.y * co}
+}
+
 rotation_mat_2d :: proc "contextless" (angle: f32) -> Mat2 {
 	co := math.cos(angle)
 	si := math.sin(angle)
@@ -234,6 +240,14 @@ bind_group_layouts :: proc(args: ..wgpu.BindGroupLayout) -> []wgpu.BindGroupLayo
 }
 push_const_ranges :: proc(args: ..wgpu.PushConstantRange) -> []wgpu.PushConstantRange {
 	return slice.clone(args, NEVER_FREE_ALLOCATOR)
+}
+
+
+push_const_range :: proc($T: typeid, stages: wgpu.ShaderStageFlags) -> []wgpu.PushConstantRange {
+	return slice.clone(
+		[]wgpu.PushConstantRange{wgpu.PushConstantRange{stages = stages, start = 0, end = size_of(T)}},
+		NEVER_FREE_ALLOCATOR,
+	)
 }
 
 

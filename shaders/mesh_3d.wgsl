@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 #import noise.wgsl
 #import hex.wgsl
 
@@ -25,7 +25,7 @@ struct VertexOutput{
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc_3d(vertex.pos);
+    out.clip_position = world_2d_pos_to_ndc_3d(vertex.pos);
     out.pos = vertex.pos;
     out.normal = vertex.normal;
     out.color = vertex.color;
@@ -60,7 +60,7 @@ fn vs_hex_mask(vertex: Vertex) -> VertexOutput {
 
   
     // let flat_pos = v3(vertex.pos.x, vertex.pos.y, 0.0);
-    out.clip_position = world_pos_to_ndc_3d(vertex.pos);
+    out.clip_position = world_2d_pos_to_ndc_3d(vertex.pos);
     out.pos = vertex.pos;
     out.normal = vertex.normal;
     out.color = vertex.color;

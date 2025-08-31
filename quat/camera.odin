@@ -14,9 +14,29 @@ DEFAULT_CAMERA :: Camera2D {
 	height    = 10.0,
 	rotation  = 0.0,
 }
-Camera2DRaw :: struct {
-	proj: Mat3,
-	pos:  Vec2,
+Camera2DUniformData :: struct {
+	proj_col_1: Vec3,
+	_pad_1:     f32,
+	proj_col_2: Vec3,
+	_pad_2:     f32,
+	proj_col_3: Vec3,
+	_pad_3:     f32,
+	pos:        Vec2,
+	height:     f32,
+	_pad_4:     f32,
+}
+
+#assert(size_of(Camera2DUniformData) == 64)
+
+camera_2d_uniform_data :: proc(camera: Camera2D, screen_size: Vec2) -> Camera2DUniformData {
+	proj_mat := camera_projection_matrix(camera, screen_size)
+	return Camera2DUniformData {
+		proj_col_1 = proj_mat[0],
+		proj_col_2 = proj_mat[1],
+		proj_col_3 = proj_mat[2],
+		pos = camera.focus_pos,
+		height = camera.height,
+	}
 }
 camera_lerp :: proc(a: Camera2D, b: Camera2D, s: f32) -> Camera2D {
 	res := b

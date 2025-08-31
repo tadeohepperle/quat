@@ -31,15 +31,15 @@ main :: proc() {
 	settings.bloom_enabled = false
 	settings.debug_ui_gizmos = true
 
-	q.platform_init(settings.platform)
-	q.platform_deinit()
-	// engine.init(settings)
-	// defer engine.deinit()
+	// q.platform_init(settings.platform)
+	// defer q.platform_deinit()
+	engine.init(settings)
+	defer engine.deinit()
 
-	// for engine.next_frame() {
-	// 	div := q.div(q.Div{padding = {20, 20, 20, 20}, color = {0, 0, 0.1, 1.0}})
-	// 	q.child(div, q.button("Hello").ui)
-	// 	engine.add_ui(div)
-	// 	engine.draw_gizmos_coords()
-	// }
+	for engine.next_frame() {
+		// div := q.div(q.Div{padding = {20, 20, 20, 20}, color = {0, 0, 0.1, 1.0}})
+		// q.child(div, q.button("Hello").ui)
+		// engine.add_ui(div)
+		// engine.draw_gizmos_coords()
+	}
 }

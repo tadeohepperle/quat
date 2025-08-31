@@ -41,10 +41,10 @@ bloom_renderer_destroy :: proc(rend: ^BloomRenderer) {
 bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 	assert(is_initialized())
 
-	_create_bloom_textures(rend, PLATFORM.screen_size)
+	_create_bloom_textures(rend, PLATFORM.screen_size_u)
 
 	bind_group_layouts := bind_group_layouts(
-		shader_globals_bind_group_layout_cached(),
+		uniform_bind_group_layout_cached(FrameUniformData),
 		rgba_bind_group_layout_cached(),
 	)
 	first_downsample_config := RenderPipelineConfig {
@@ -120,7 +120,7 @@ render_bloom :: proc(
 	command_encoder: wgpu.CommandEncoder,
 	rend: ^BloomRenderer,
 	hdr_texture: Texture,
-	globals_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
 	settings: BloomSettings,
 ) {
 	ladder := make([dynamic]Texture, allocator = context.temp_allocator)
@@ -156,7 +156,7 @@ render_bloom :: proc(
 		)
 		defer wgpu.RenderPassEncoderRelease(bloom_pass)
 		wgpu.RenderPassEncoderSetPipeline(bloom_pass, pipeline)
-		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 0, globals_bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 0, frame_uniform)
 		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 1, from_tex.bind_group)
 		wgpu.RenderPassEncoderDraw(bloom_pass, 3, 1, 0, 0)
 		wgpu.RenderPassEncoderEnd(bloom_pass)
@@ -189,7 +189,7 @@ render_bloom :: proc(
 			blend_color := wgpu.Color{b, b, b, b}
 			wgpu.RenderPassEncoderSetBlendConstant(bloom_pass, &blend_color)
 		}
-		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 0, globals_bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 0, frame_uniform)
 		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 1, from_tex.bind_group)
 		wgpu.RenderPassEncoderDraw(bloom_pass, 3, 1, 0, 0)
 		wgpu.RenderPassEncoderEnd(bloom_pass)

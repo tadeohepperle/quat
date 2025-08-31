@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 
 struct Vertex {
     @location(0) pos:   vec2<f32>,
@@ -13,7 +13,7 @@ struct VertexOutput{
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc(vertex.pos);
+    out.clip_position = world_2d_pos_to_ndc(vertex.pos);
     out.color = vertex.color;
     return out;
 }

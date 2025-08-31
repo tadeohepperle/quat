@@ -124,11 +124,12 @@ window_widget :: proc(title: string, content: []Ui, window_width: f32 = 0) -> Ui
 	}
 
 	cached, window_cache, ok := ui_get_cached(id, WindowCache)
-	cursor_pos := cached.cursor_pos
+	proj := ui_get_cached_projection(cached.proj_idx)
+	cursor_pos := proj.local_cursor_pos
 
 	res := ui_interaction(id)
 	if res.just_pressed {
-		window_cache.drag_start_cursor_pos = cached.cursor_pos
+		window_cache.drag_start_cursor_pos = cursor_pos
 		window_cache.drag_start_window_pos = cached.pos
 	}
 
@@ -144,12 +145,13 @@ window_widget :: proc(title: string, content: []Ui, window_width: f32 = 0) -> Ui
 		window_pos = Vec2{0, 0}
 	}
 
-	if cached.space == .Screen {
-		max_pos := ui_get_screen_layout_extent() - cached.size
+
+	if screen_proj, ok := proj.projection.(UiScreenProjection); ok {
+		layout_extent := ui_screen_projection_layout_extent(screen_proj, PLATFORM.screen_size)
+		max_pos := layout_extent - cached.size
 		window_pos.x = clamp(window_pos.x, 0, max_pos.x)
 		window_pos.y = clamp(window_pos.y, 0, max_pos.y)
 	}
-
 	window := div(
 		Div {
 			offset = window_pos,
@@ -415,7 +417,7 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 	}
 
 	cached, slider_cache, ok := ui_get_cached(id, SliderCache)
-	cursor_pos := cached.cursor_pos
+	cursor_pos := ui_get_cached_projection(cached.proj_idx).local_cursor_pos
 
 	f := (val - min) / (max - min)
 	res := ui_interaction(id)
@@ -569,7 +571,7 @@ dropdown :: proc(values: []string, current_idx: ^int, id: UiId = 0) -> Ui {
 		}
 		field := div(
 			Div {
-				z_layer = 3 if on_top else 0,
+				z_idx = 3 if on_top else 0,
 				width = UI_THEME.control_width_lg,
 				height = UI_THEME.control_height,
 				color = color,
@@ -742,7 +744,8 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 		}
 
 		cached_square, ok := ui_get_cached_no_user_data(square_id)
-		cursor_pos := cached_square.cursor_pos
+		cursor_pos := ui_get_cached_projection(cached_square.proj_idx).local_cursor_pos
+
 		if ok {
 			if res_square.pressed {
 				unit_pos_in_square: Vec2 = (cursor_pos - cached_square.pos) / cached_square.size
@@ -810,7 +813,7 @@ color_picker :: proc(value: ^Color, title: string = "", id: UiId = 0) -> Ui {
 				border_radius     = UI_THEME.border_radius,
 				border_color      = UI_THEME.surface_border,
 				absolute_unit_pos = Vec2{0, 0},
-				z_layer           = 1,
+				z_idx             = 1,
 				flags             = {.Absolute},
 				offset            = {54, -100}, // {54, 4}
 				gap               = 8,
@@ -1259,7 +1262,7 @@ text_edit :: proc(
 		text_cached_data, _ := ui_get_cached_no_user_data(data.text_id)
 
 		// get the glyph we are currently on:
-		cursor_pos := text_cached_data.cursor_pos
+		cursor_pos := ui_get_cached_projection(text_cached_data.proj_idx).local_cursor_pos
 		rel_cursor_pos := cursor_pos - pos
 		current_byte_idx := byte_count
 		byte_start_idx := 0
@@ -1418,7 +1421,8 @@ triangle_picker :: proc(weights: ^[3]f32, id: UiId = 0) -> Ui {
 
 	if res.pressed {
 		cached, _ := ui_get_cached_no_user_data(id)
-		rel := (cached.cursor_pos - cached.pos) / cached.size
+		cursor_pos := ui_get_cached_projection(cached.proj_idx).local_cursor_pos
+		rel := (cursor_pos - cached.pos) / cached.size
 		w := barycentric_coordinates_non_zero(A_REL_POS, B_REL_POS, C_REL_POS, rel)
 		weights^ = w
 		// text_to_show = fmt.tprintf("%f,%f", rel.x, rel.y)

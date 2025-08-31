@@ -193,7 +193,7 @@ main :: proc() {
 }
 
 Chunk :: struct {
-	data:    q.HexChunkData,
+	data:    q.HexChunkUniformData,
 	uniform: q.HexChunkUniform,
 }
 

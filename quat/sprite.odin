@@ -105,18 +105,20 @@ sprite_batches_render :: proc(
 	batches: []SpriteBatch,
 	instance_buffer: DynamicBuffer(SpriteInstance),
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 ) {
 	if len(batches) == 0 {
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
 	textures := assets_get_map(Texture)
 	for batch in batches {
 		texture_bind_group := slotmap_get(textures, batch.texture).bind_group
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_bind_group)
 		wgpu.RenderPassEncoderDraw(render_pass, 4, u32(batch.end_idx - batch.start_idx), 0, u32(batch.start_idx))
 	}
 
@@ -168,7 +170,8 @@ sprite_pipeline_config :: proc(kind: SpriteKind) -> RenderPipelineConfig {
 		vertex = {},
 		instance = {ty_id = SpriteInstance, attributes = SPRITE_VERTEX_ATTRIBUTES},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			rgba_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},

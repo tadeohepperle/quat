@@ -1,0 +1,323 @@
+valgrind --track-origins=yes  ./example2.bin &> out.txt
+
+0x1CCE8170, view = 0x1A58F0D0, sampler = 0x1A58F1E0, bind_group = 0x1A58F6D0}, next_free_idx = 4294967295}], next_free_idx = 4294967295, drop_fn = proc(^Texture) @ 0x48D560, ty = Texture, slot_size = 96, next_free_idx_field_offset = 88}
+dropped 4 elements of type Texture
+dropped 1 elements of type Font
+DESTROY Motion texture:
+dropped 1 elements of type MotionTexture
+dropped 0 elements of type SkinnedMesh
+dropped 0 elements of type SkinnedGeometry
+==815334== Invalid read of size 8
+==815334==    at 0x5320C2: wgpuBindGroupLayoutRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x472F4B: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DAC7: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==  Address 0x14cc8aa0 is 0 bytes inside a block of size 32 free'd
+==815334==    at 0x484C8EF: free (vg_replace_malloc.c:989)
+==815334==    by 0x5320D2: wgpuBindGroupLayoutRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x48E266: quat::uniform_buffer_destroy:proc(buffer:^quat::UniformBuffer(T:$quat::FrameUniformData)) (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DAB3: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==  Block was alloc'd at
+==815334==    at 0x48497A8: malloc (vg_replace_malloc.c:446)
+==815334==    by 0x53650D: wgpuDeviceCreateBindGroupLayout (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x47824B: quat::uniform_bind_group_layout_cached:proc(T:$quat::FrameUniformData)->(:wgpu::BindGroupLayout) (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x47710D: quat::bloom_renderer_create (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46D51F: engine::_engine_create (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DAF5: engine::init (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4EE1D3: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334== 
+==815334== Conditional jump or move depends on uninitialised value(s)
+==815334==    at 0x6473C5: wgpu_core::device::queue::Queue::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x5B624C: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x5A4820: wgpu_core::device::global::<impl wgpu_core::global::Global>::poll_single_device (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x5A4648: wgpu_core::device::global::<impl wgpu_core::global::Global>::device_poll (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x570977: alloc::sync::Arc<T,A>::drop_slow (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x53F852: wgpuDeviceRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x472FD0: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DAC7: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334== 
+==815334== Conditional jump or move depends on uninitialised value(s)
+==815334==    at 0x5B631F: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x5A4820: wgpu_core::device::global::<impl wgpu_core::global::Global>::poll_single_device (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x5A4648: wgpu_core::device::global::<impl wgpu_core::global::Global>::device_poll (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x570977: alloc::sync::Arc<T,A>::drop_slow (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x53F852: wgpuDeviceRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x472FD0: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DAC7: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815334== 
+==815334== 
+==815334== HEAP SUMMARY:
+==815334==     in use at exit: 179,075,992 bytes in 45,864 blocks
+==815334==   total heap usage: 1,251,923 allocs, 1,099,441 frees, 4,165,327,724 bytes allocated
+==815334== 
+==815334== LEAK SUMMARY:
+==815334==    definitely lost: 0 bytes in 0 blocks
+==815334==    indirectly lost: 0 bytes in 0 blocks
+==815334==      possibly lost: 153,598,880 bytes in 23,981 blocks
+==815334==    still reachable: 17,360,924 bytes in 22,025 blocks
+==815334==         suppressed: 32 bytes in 1 blocks
+==815334== Rerun with --leak-check=full to see details of leaked memory
+==815334== 
+==815334== Use --track-origins=yes to see where uninitialised values come from
+==815334== For lists of detected and suppressed errors, rerun with: -s
+==815334== ERROR SUMMARY: 10737 errors from 8 contexts (suppressed: 0 from 0)
+[tadeo@tadeo quat]$ 
+
+
+
+
+
+
+
+
+DESTROY Motion texture:
+dropped 1 elements of type MotionTexture
+==815904== Invalid read of size 8
+==815904==    at 0x5320C2: wgpuBindGroupLayoutRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x472F4B: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DAC7: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==  Address 0x14c2d040 is 0 bytes inside a block of size 32 free'd
+==815904==    at 0x484C8EF: free (vg_replace_malloc.c:989)
+==815904==    by 0x5320D2: wgpuBindGroupLayoutRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x48E266: quat::uniform_buffer_destroy:proc(buffer:^quat::UniformBuffer(T:$quat::FrameUniformData)) (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DAB3: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==  Block was alloc'd at
+==815904==    at 0x48497A8: malloc (vg_replace_malloc.c:446)
+==815904==    by 0x53650D: wgpuDeviceCreateBindGroupLayout (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x47824B: quat::uniform_bind_group_layout_cached:proc(T:$quat::FrameUniformData)->(:wgpu::BindGroupLayout) (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x47710D: quat::bloom_renderer_create (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46D51F: engine::_engine_create (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DAF5: engine::init (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4EE1D3: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904== 
+==815904== Conditional jump or move depends on uninitialised value(s)
+==815904==    at 0x6473C5: wgpu_core::device::queue::Queue::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x5B624C: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x5A4820: wgpu_core::device::global::<impl wgpu_core::global::Global>::poll_single_device (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x5A4648: wgpu_core::device::global::<impl wgpu_core::global::Global>::device_poll (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x570977: alloc::sync::Arc<T,A>::drop_slow (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x53F852: wgpuDeviceRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x472FD0: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DAC7: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904== 
+==815904== Conditional jump or move depends on uninitialised value(s)
+==815904==    at 0x5B631F: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x5A4820: wgpu_core::device::global::<impl wgpu_core::global::Global>::poll_single_device (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x5A4648: wgpu_core::device::global::<impl wgpu_core::global::Global>::device_poll (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x570977: alloc::sync::Arc<T,A>::drop_slow (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x53F852: wgpuDeviceRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x472FD0: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DAC7: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x46DB16: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4EF81C: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904==    by 0x4C7A6F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==815904== 
+==815904== 
+==815904== HEAP SUMMARY:
+==815904==     in use at exit: 169,076,784 bytes in 45,381 blocks
+==815904==   total heap usage: 693,411 allocs, 607,836 frees, 1,777,765,689 bytes allocated
+==815904== 
+==815904== LEAK SUMMARY:
+==815904==    definitely lost: 0 bytes in 0 blocks
+==815904==    indirectly lost: 0 bytes in 0 blocks
+==815904==      possibly lost: 149,891,128 bytes in 23,500 blocks
+==815904==    still reachable: 10,544,860 bytes in 21,959 blocks
+==815904==         suppressed: 32 bytes in 1 blocks
+==815904== Rerun with --leak-check=full to see details of leaked memory
+==815904== 
+==815904== Use --track-origins=yes to see where uninitialised values come from
+==815904== For lists of detected and suppressed errors, rerun with: -s
+==815904== ERROR SUMMARY: 6191 errors from 8 contexts (suppressed: 0 from 0)
+[tadeo@tadeo quat]$ 
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////
+
+
+
+==817532== Conditional jump or move depends on uninitialised value(s)
+==817532==    at 0x5B5F5F: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A3563: wgpu_core::device::global::<impl wgpu_core::global::Global>::surface_configure (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x542BFB: wgpuSurfaceConfigure (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4AC577: quat::[platform.odin]::_platform_resize_frame_buffer (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A54D6: quat::platform_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456DE9: engine::_engine_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456D5C: engine::_engine_end_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456400: engine::next_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4606C0: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+/home/tadeo/Odin/shared/quat/quat/platform.odin(404:32) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x1A594540
+/home/tadeo/Odin/shared/quat/quat/texture.odin(234:2) dbgval(texture.bind_group, "depth_texture_create") depth_texture_create 0x1A5953E0
+==817532== Invalid read of size 8
+==817532==    at 0x5447B2: wgpuTextureRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A9F57: quat::_acquire_surface_texture (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4AC6A3: quat::[platform.odin]::_platform_resize_frame_buffer (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A54D6: quat::platform_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456DE9: engine::_engine_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456D5C: engine::_engine_end_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456400: engine::next_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4606C0: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==  Address 0x1d6949a0 is 0 bytes inside a block of size 96 free'd
+==817532==    at 0x484C8EF: free (vg_replace_malloc.c:989)
+==817532==    by 0x5447C2: wgpuTextureRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4AC559: quat::[platform.odin]::_platform_resize_frame_buffer (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A54D6: quat::platform_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456DE9: engine::_engine_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456D5C: engine::_engine_end_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456400: engine::next_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4606C0: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==  Block was alloc'd at
+==817532==    at 0x48497A8: malloc (vg_replace_malloc.c:446)
+==817532==    by 0x5435F7: wgpuSurfaceGetCurrentTexture (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x45F926: wgpu::SurfaceGetCurrentTexture (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A9F96: quat::_acquire_surface_texture (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A6260: quat::platform_start_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x45643A: engine::_engine_start_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x45641A: engine::next_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4606C0: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+==817532== Conditional jump or move depends on uninitialised value(s)
+==817532==    at 0x647005: wgpu_core::device::queue::Queue::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5B5E8C: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x64E3D5: wgpu_core::device::queue::Queue::submit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A722E: wgpu_core::device::queue::<impl wgpu_core::global::Global>::queue_submit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x540451: wgpuQueueSubmit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x45F8A6: wgpu::QueueSubmit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A7CDA: quat::platform_end_render (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x457836: engine::_engine_render (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456D6B: engine::_engine_end_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456400: engine::next_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4606C0: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+/home/tadeo/Odin/shared/quat/quat/bloom.odin(230:20) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x1CCFE450
+/home/tadeo/Odin/shared/quat/quat/bloom.odin(230:20) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x1C569BE0
+/home/tadeo/Odin/shared/quat/quat/bloom.odin(230:20) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x17C0BFA0
+/home/tadeo/Odin/shared/quat/quat/bloom.odin(230:20) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x14D47CC0
+/home/tadeo/Odin/shared/quat/quat/bloom.odin(230:20) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x1D8045A0
+==817532== Conditional jump or move depends on uninitialised value(s)
+==817532==    at 0x647005: wgpu_core::device::queue::Queue::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5B5E8C: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A3563: wgpu_core::device::global::<impl wgpu_core::global::Global>::surface_configure (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x542BFB: wgpuSurfaceConfigure (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4AC577: quat::[platform.odin]::_platform_resize_frame_buffer (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A54D6: quat::platform_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456DE9: engine::_engine_prepare (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456D5C: engine::_engine_end_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456400: engine::next_frame (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4606C0: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+/home/tadeo/Odin/shared/quat/quat/platform.odin(404:32) dbgval(texture.bind_group, "texture_create", loc) texture_create 0x1C5479D0
+/home/tadeo/Odin/shared/quat/quat/texture.odin(234:2) dbgval(texture.bind_group, "depth_texture_create") depth_texture_create 0x1D52B4B0
+/home/tadeo/Odin/shared/quat/quat/utils_wgpu.odin(89:2) dbgval(buffer.bind_group, "uniform_buffer_destroy") uniform_buffer_destroy 0x1A59A800
+/home/tadeo/Odin/shared/quat/quat/utils_wgpu.odin(89:2) dbgval(buffer.bind_group, "uniform_buffer_destroy") uniform_buffer_destroy 0x1A59A210
+MotionTexture  map before drop Slotmap($T=MotionTexture){slots = [SlotmapElement($T=MotionTexture){element = MotionTexture{diffuse_size = [1, 1], diffuse_texture = 0x14D25F90, diffuse_view = 0x14D26510, motion_texture = 0x14D02F00, motion_size = [1, 1], motion_view = 0x14D1A3F0, sampler = 0x14D20B70, bind_group = 0x14D2E1B0}, next_free_idx = 4294967295}], next_free_idx = 4294967295, drop_fn = proc(^MotionTexture) @ 0x48E690, ty = MotionTexture, slot_size = 72, next_free_idx_field_offset = 64}
+THERE ARE {} textures Slotmap($T=Texture){slots = [SlotmapElement($T=Texture){element = Texture{info = TextureInfo{size = [1, 1], settings = TextureSettings{label = "", format = "RGBA8UnormSrgb", address_mode = "Repeat", mag_filter = "Linear", min_filter = "Nearest", usage = bit_set[TextureUsage; u64]{CopyDst, TextureBinding}}, layers = 1}, texture = 0x1D692A50, view = 0x1D693500, sampler = 0x1D693A80, bind_group = 0x1D69AD00}, next_free_idx = 4294967295}, SlotmapElement($T=Texture){element = Texture{info = TextureInfo{size = [1024, 1024], settings = TextureSettings{label = "sdf font", format = "R8Unorm", address_mode = "ClampToEdge", mag_filter = "Linear", min_filter = "Nearest", usage = bit_set[TextureUsage; u64]{CopyDst, TextureBinding}}, layers = 1}, texture = 0x14D26B90, view = 0x14C81850, sampler = 0x14C819F0, bind_group = 0x14D23960}, next_free_idx = 4294967295}, SlotmapElement($T=Texture){element = Texture{info = TextureInfo{size = [256, 256], settings = TextureSettings{label = "", format = "RGBA8UnormSrgb", address_mode = "Repeat", mag_filter = "Linear", min_filter = "Nearest", usage = bit_set[TextureUsage; u64]{CopyDst, TextureBinding}}, layers = 1}, texture = 0x1A510D80, view = 0x1A59ADE0, sampler = 0x1A59B1B0, bind_group = 0x1A59B6C0}, next_free_idx = 4294967295}, SlotmapElement($T=Texture){element = Texture{info = TextureInfo{size = [320, 768], settings = TextureSettings{label = "", format = "RGBA8UnormSrgb", address_mode = "Repeat", mag_filter = "Linear", min_filter = "Nearest", usage = bit_set[TextureUsage; u64]{CopyDst, TextureBinding}}, layers = 1}, texture = 0x1CCBFE90, view = 0x1A59BAC0, sampler = 0x1A59BFC0, bind_group = 0x1A59C750}, next_free_idx = 4294967295}], next_free_idx = 4294967295, drop_fn = proc(^Texture) @ 0x4A9100, ty = Texture, slot_size = 96, next_free_idx_field_offset = 88}
+dropped 4 elements of type Texture
+dropped 1 elements of type Font
+DESTROY Motion texture:
+dropped 1 elements of type MotionTexture
+dropped 0 elements of type SkinnedMesh
+dropped 0 elements of type SkinnedGeometry
+==817532== Invalid read of size 8
+==817532==    at 0x531D02: wgpuBindGroupLayoutRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x48F05B: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456387: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4563D6: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4617BC: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==  Address 0x14ce8d60 is 0 bytes inside a block of size 32 free'd
+==817532==    at 0x484C8EF: free (vg_replace_malloc.c:989)
+==817532==    by 0x531D12: wgpuBindGroupLayoutRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4A9E06: quat::uniform_buffer_destroy:proc(buffer:^quat::UniformBuffer(T:$quat::FrameUniformData)) (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456373: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4563D6: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4617BC: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==  Block was alloc'd at
+==817532==    at 0x48497A8: malloc (vg_replace_malloc.c:446)
+==817532==    by 0x53614D: wgpuDeviceCreateBindGroupLayout (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x49440B: quat::uniform_bind_group_layout_cached:proc(T:$quat::FrameUniformData)->(:wgpu::BindGroupLayout) (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4932ED: quat::bloom_renderer_create (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x455DDF: engine::_engine_create (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4563B5: engine::init (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x460173: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+==817532== Conditional jump or move depends on uninitialised value(s)
+==817532==    at 0x647005: wgpu_core::device::queue::Queue::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5B5E8C: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A4460: wgpu_core::device::global::<impl wgpu_core::global::Global>::poll_single_device (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A4288: wgpu_core::device::global::<impl wgpu_core::global::Global>::device_poll (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5705B7: alloc::sync::Arc<T,A>::drop_slow (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x53F492: wgpuDeviceRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x48F0E0: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456387: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4563D6: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4617BC: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+==817532== Conditional jump or move depends on uninitialised value(s)
+==817532==    at 0x5B5F5F: wgpu_core::device::resource::Device::maintain (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A4460: wgpu_core::device::global::<impl wgpu_core::global::Global>::poll_single_device (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5A4288: wgpu_core::device::global::<impl wgpu_core::global::Global>::device_poll (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x5705B7: alloc::sync::Arc<T,A>::drop_slow (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x53F492: wgpuDeviceRelease (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x48F0E0: quat::platform_deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x456387: engine::_engine_destroy (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4563D6: engine::deinit (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x4617BC: example::main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532==    by 0x46B72F: main (in /home/tadeo/Odin/shared/quat/example2.bin)
+==817532== 
+==817532== 
+==817532== HEAP SUMMARY:
+==817532==     in use at exit: 168,944,728 bytes in 45,373 blocks
+==817532==   total heap usage: 213,646 allocs, 163,383 frees, 401,704,817 bytes allocated
+==817532== 
+==817532== LEAK SUMMARY:
+==817532==    definitely lost: 0 bytes in 0 blocks
+==817532==    indirectly lost: 0 bytes in 0 blocks
+==817532==      possibly lost: 149,759,072 bytes in 23,492 blocks
+==817532==    still reachable: 10,544,860 bytes in 21,959 blocks
+==817532==         suppressed: 32 bytes in 1 blocks
+==817532== Rerun with --leak-check=full to see details of leaked memory
+==817532== 
+==817532== Use --track-origins=yes to see where uninitialised values come from
+==817532== For lists of detected and suppressed errors, rerun with: -s
+==817532== ERROR SUMMARY: 739 errors from 8 contexts (suppressed: 0 from 0)

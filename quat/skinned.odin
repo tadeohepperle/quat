@@ -184,14 +184,16 @@ skinned_mesh_render :: proc(
 	pipeline: wgpu.RenderPipeline,
 	commands: []SkinnedRenderCommand,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 ) {
 	if len(commands) == 0 {
 		return
 	}
 	// todo: maybe sort and batch the commands here by their z or whatever, like for sprites???
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 
 	textures := assets_get_map(Texture)
@@ -202,8 +204,8 @@ skinned_mesh_render :: proc(
 		mesh: SkinnedMesh = slotmap_get(skinned_meshes, command.mesh)
 		geom: SkinnedGeometry = slotmap_get(skinned_geometries, mesh.geometry)
 		texture_bind_group := slotmap_get(textures, geom.texture).bind_group
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, mesh.bones_bind_group)
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, mesh.bones_bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 3, texture_bind_group)
 		wgpu.RenderPassEncoderSetPushConstants(
 			render_pass,
 			{.Vertex, .Fragment},
@@ -255,17 +257,12 @@ skinned_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			bones_storage_buffer_bind_group_layout_cached(),
 			rgba_bind_group_layout_cached(),
 		),
-		push_constant_ranges = push_const_ranges(
-			wgpu.PushConstantRange {
-				stages = {.Vertex, .Fragment},
-				start = 0,
-				end = size_of(SkinnedRendererPushConstants),
-			},
-		),
+		push_constant_ranges = push_const_range(SkinnedRendererPushConstants, {.Vertex, .Fragment}),
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,

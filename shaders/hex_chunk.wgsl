@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 #import noise.wgsl
 #import hex.wgsl
 
@@ -144,7 +144,7 @@ d is the center of the hex at {x,y+1}
     //     out.clip_position = vec4<f32>(0.0);
     //     return out;
     // }
-    out.clip_position = world_pos_to_ndc(vec2(w_pos.x, w_pos.y));
+    out.clip_position = world_2d_pos_to_ndc(vec2(w_pos.x, w_pos.y));
     return out;
 }
 

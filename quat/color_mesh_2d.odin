@@ -37,14 +37,16 @@ color_mesh_renderer_prepare :: proc(rend: ^ColorMeshRenderer) {
 color_mesh_renderer_render :: proc(
 	rend: ^ColorMeshRenderer,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 ) {
 
 	if rend.index_buffer.length == 0 {
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, rend.vertex_buffer.buffer, 0, rend.vertex_buffer.size)
 	wgpu.RenderPassEncoderSetIndexBuffer(render_pass, rend.index_buffer.buffer, .Uint32, 0, rend.index_buffer.size)
@@ -67,7 +69,10 @@ color_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(shader_globals_bind_group_layout_cached()),
+		bind_group_layouts = bind_group_layouts(
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
+		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,

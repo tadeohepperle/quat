@@ -1,4 +1,6 @@
-#import globals.wgsl
+#import utils.wgsl
+
+// @group(0) @binding(0) var<uniform> frame: Frame;
 
 @group(1) @binding(0)
 var hdr_image: texture_2d<f32>;
@@ -31,7 +33,7 @@ fn upsample(vs: VertexOutput) -> @location(0) vec4<f32> {
 // // [COD] slide 162
 fn sample_input_3x3_tent(uv: vec2<f32>) -> vec3<f32> {
     // Radius. Empirically chosen by and tweaked from the LearnOpenGL article.
-    let aspect = globals.screen_size.x / globals.screen_size.y;
+    let aspect = frame.screen_size.x / frame.screen_size.y;
     let x = 0.004 / aspect;
     let y = 0.004;
 

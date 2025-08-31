@@ -60,7 +60,8 @@ mesh_2d_renderer_set_texture :: proc(rend: ^Mesh2dRenderer, texture: TextureHand
 mesh_2d_renderer_render :: proc(
 	rend: ^Mesh2dRenderer,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 ) {
 	tri_count := u32(rend.index_buffer.length)
 	reg_count := len(rend.texture_regions)
@@ -79,13 +80,16 @@ mesh_2d_renderer_render :: proc(
 
 	textures := assets_get_map(Texture)
 	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
+
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, rend.vertex_buffer.buffer, 0, rend.vertex_buffer.size)
 	wgpu.RenderPassEncoderSetIndexBuffer(render_pass, rend.index_buffer.buffer, .Uint32, 0, rend.index_buffer.size)
 	for reg in rend.texture_regions {
 		if reg.end_tri_idx <= reg.start_tri_idx do continue
 		bind_group := slotmap_get(textures, reg.texture).bind_group
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, bind_group)
 		index_count := (reg.end_tri_idx - reg.start_tri_idx) * 3
 		first_index := reg.start_tri_idx * 3
 		wgpu.RenderPassEncoderDrawIndexed(render_pass, index_count, 1, first_index, 0, 0)
@@ -111,7 +115,8 @@ mesh_2d_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			rgba_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},

@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 
 const GIZMOS_MODE_WORLD: u32 = 0u;
 const GIZMOS_MODE_UI : u32 = 1u;
@@ -19,10 +19,10 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
     switch gizmos_mode {
         case GIZMOS_MODE_WORLD: {
-            out.clip_position = world_pos_to_ndc(vertex.pos);
+            out.clip_position = world_2d_pos_to_ndc(vertex.pos);
         }
         case GIZMOS_MODE_UI, default: {
-            out.clip_position = ui_layout_pos_to_ndc(vertex.pos);
+            out.clip_position = screen_pos_to_ndc(vertex.pos);
         }
     }
     out.color = vertex.color;

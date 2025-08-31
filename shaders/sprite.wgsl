@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 
 @group(1) @binding(0)
 var t_diffuse: texture_2d<f32>;
@@ -24,7 +24,7 @@ struct VertexOutput {
 fn vs_depth(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
     let vertex = sprite_vertex(vertex_index, instance);
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc_with_z(vertex.pos, vertex.z); 
+    out.clip_position = world_2d_pos_to_ndc_with_z(vertex.pos, vertex.z); 
     out.color = instance.color;
     out.uv = vertex.uv;
     return out;
@@ -34,7 +34,7 @@ fn vs_depth(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) 
 fn vs_simple(@builtin(vertex_index) vertex_index: u32, instance: SpriteInstance) -> VertexOutput {
     let vertex = sprite_vertex(vertex_index, instance);
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc(vertex.pos);
+    out.clip_position = world_2d_pos_to_ndc(vertex.pos);
     out.color = instance.color; 
     out.uv = vertex.uv;
     return out;

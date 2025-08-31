@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 
 @group(1) @binding(0)
 var<storage, read> bones_buffer: array<Affine2>;
@@ -49,7 +49,7 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     let pos = apply(bone_0, vertex.pos) * vertex.weights[0] + apply(bone_1, vertex.pos) * vertex.weights[1];
     let z: f32 = 0.5; // placeholder, add depth logic later
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc_with_z(pos, z);
+    out.clip_position = world_2d_pos_to_ndc_with_z(pos, z);
     out.uv = vertex.uv;
     return out;
 }

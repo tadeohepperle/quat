@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 #import noise.wgsl
 
 @group(1) @binding(0)
@@ -25,7 +25,7 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     // let n = perlinNoise2(pos *23.7) -0.5 ;
     // pos += n * 0.1  ; 
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc(vec2(pos.x, pos.y /1.0));
+    out.clip_position = world_2d_pos_to_ndc(vec2(pos.x, pos.y /1.0));
     out.pos = pos;
     out.indices = vertex.indices;
     out.weights = vertex.weights;

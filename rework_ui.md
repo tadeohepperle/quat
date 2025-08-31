@@ -115,3 +115,5 @@ DivComputed :: struct {
 }
 
 ```
+
+valgrind --leak-check=yes example2

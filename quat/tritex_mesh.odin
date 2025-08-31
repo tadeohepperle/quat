@@ -30,7 +30,8 @@ tritex_mesh_drop :: proc(tritex_mesh: ^TritexMesh) {
 tritex_mesh_render :: proc(
 	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 	meshes: []TritexMesh,
 	textures: TextureArrayHandle,
 ) {
@@ -42,10 +43,11 @@ tritex_mesh_render :: proc(
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 	texture_array_bindgroup := assets_get(textures).bind_group
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_array_bindgroup)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_array_bindgroup)
 	for mesh in meshes {
 		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, mesh.vertex_buffer.buffer, 0, mesh.vertex_buffer.size)
 		wgpu.RenderPassEncoderDraw(render_pass, u32(mesh.vertex_buffer.length), 1, 0, 0)
@@ -70,7 +72,8 @@ tritex_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			tritex_textures_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},

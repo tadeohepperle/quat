@@ -1,8 +1,8 @@
-#import globals.wgsl
+#import utils.wgsl
 
-@group(1) @binding(0)
+@group(2) @binding(0)
 var t_diffuse: texture_2d<f32>;
-@group(1) @binding(1)
+@group(2) @binding(1)
 var s_diffuse: sampler;
 
 struct Vertex {
@@ -20,7 +20,7 @@ struct VertexOutput{
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = world_pos_to_ndc(vertex.pos);
+    out.clip_position = world_2d_pos_to_ndc(vertex.pos);
     out.uv = vertex.uv;
     out.color = vertex.color;
     return out;

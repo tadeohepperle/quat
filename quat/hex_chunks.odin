@@ -24,7 +24,7 @@ HexTileData :: struct {
 	new_factor:     f32,
 }
 
-HexChunkData :: struct {
+HexChunkUniformData :: struct {
 	chunk_pos: [2]i32,
 	_pad:      [2]u32, // such that the tiles are aligned to 16 bytes (wgpu wants it)
 	tiles:     [CHUNK_SIZE_PADDED * CHUNK_SIZE_PADDED]HexTileData,
@@ -40,9 +40,9 @@ hex_chunk_uniform_destroy :: proc(this: ^HexChunkUniform) {
 	wgpu.BufferRelease(this.data)
 }
 
-hex_chunk_uniform_write_data :: proc(this: ^HexChunkUniform, terrain_data: ^HexChunkData) {
+hex_chunk_uniform_write_data :: proc(this: ^HexChunkUniform, terrain_data: ^HexChunkUniformData) {
 	assert(PLATFORM.queue != nil)
-	wgpu.QueueWriteBuffer(PLATFORM.queue, this.data, 0, terrain_data, size_of(HexChunkData))
+	wgpu.QueueWriteBuffer(PLATFORM.queue, this.data, 0, terrain_data, size_of(HexChunkUniformData))
 }
 hex_chunk_uniform_create :: proc(
 	device: wgpu.Device,
@@ -55,52 +55,29 @@ hex_chunk_uniform_create :: proc(
 	buffer_usage := wgpu.BufferUsageFlags{.CopyDst, .Uniform}
 	uniform.data = wgpu.DeviceCreateBuffer(
 		PLATFORM.device,
-		&wgpu.BufferDescriptor{usage = buffer_usage, size = size_of(HexChunkData), mappedAtCreation = false},
+		&wgpu.BufferDescriptor{usage = buffer_usage, size = size_of(HexChunkUniformData), mappedAtCreation = false},
 	)
 	uniform.bind_group = wgpu.DeviceCreateBindGroup(
 		PLATFORM.device,
 		&wgpu.BindGroupDescriptor {
-			layout = hex_chunk_data_bind_group_layout_cached(),
+			layout = uniform_bind_group_layout_cached(HexChunkUniformData),
 			entryCount = 1,
 			entries = &wgpu.BindGroupEntry {
 				binding = 0,
 				buffer = uniform.data,
 				offset = 0,
-				size = u64(size_of(HexChunkData)),
+				size = u64(size_of(HexChunkUniformData)),
 			},
 		},
 	)
 	return uniform
 }
 
-
-HEX_CHUNK_DATA_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
-hex_chunk_data_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	if HEX_CHUNK_DATA_BIND_GROUP_LAYOUT == nil {
-		entries := []wgpu.BindGroupLayoutEntry {
-			wgpu.BindGroupLayoutEntry {
-				binding = 0,
-				visibility = {.Vertex, .Fragment},
-				buffer = wgpu.BufferBindingLayout {
-					type = .Uniform,
-					hasDynamicOffset = false,
-					minBindingSize = size_of(HexChunkData),
-				},
-			},
-		}
-		HEX_CHUNK_DATA_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
-			PLATFORM.device,
-			&wgpu.BindGroupLayoutDescriptor{entryCount = 1, entries = raw_data(entries)},
-		)
-	}
-	return HEX_CHUNK_DATA_BIND_GROUP_LAYOUT
-}
-
-
 hex_chunks_render :: proc(
 	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 	textures: TextureArrayHandle,
 	chunks: []HexChunkUniform,
 ) {
@@ -112,7 +89,8 @@ hex_chunks_render :: proc(
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 	texture_array, ok := assets_get(textures)
 	if !ok {
@@ -120,9 +98,9 @@ hex_chunks_render :: proc(
 	}
 
 	texture_array_bindgroup := texture_array.bind_group
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_array_bindgroup)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_array_bindgroup)
 	for chunk in chunks {
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, chunk.bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 3, chunk.bind_group)
 		push_const := HexChunkPushConstants{chunk.chunk_pos}
 		// wgpu.RenderPassEncoderSetPushConstants(
 		// 	render_pass,
@@ -152,9 +130,10 @@ hex_chunk_pipeline_config :: proc() -> RenderPipelineConfig {
 		vertex = {},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			tritex_textures_bind_group_layout_cached(),
-			hex_chunk_data_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(HexChunkUniformData),
 		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,

@@ -412,7 +412,6 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 			}
 
 			// swap out shader module:
-			delete(shader.composited_wgsl)
 			wgpu.ShaderModuleRelease(old_shader_module)
 
 			shader.shader_module = new_shader_module

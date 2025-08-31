@@ -1,4 +1,4 @@
-#import globals.wgsl
+#import utils.wgsl
 
 @group(1) @binding(0)
 var t_diffuse: texture_2d<f32>;
@@ -66,7 +66,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: MotionParticleIns
     out.uv_one = map_unit_uv(u_uv, vec4<f32>(uv_one_start, uv_one_start + flipbook.uv_tile_size));
     out.uv_two = map_unit_uv(u_uv, vec4<f32>(uv_two_start, uv_two_start + flipbook.uv_tile_size));
 
-    out.clip_position = world_pos_to_ndc_with_z(w_pos, w_z); 
+    out.clip_position = world_2d_pos_to_ndc_with_z(w_pos, w_z); 
     out.color = instance.color; 
     return out;
 }

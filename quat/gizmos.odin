@@ -15,8 +15,8 @@ GizmosRenderer :: struct {
 }
 
 GizmosMode :: enum u32 {
-	WORLD = 0, // 
-	UI    = 1, // x scaled, such that y is always 1080.
+	WORLD  = 0, // 
+	SCREEN = 1, // pixels on screen
 }
 GIZMOS_COLOR := Color{1, 0, 0, 1}
 
@@ -41,7 +41,8 @@ gizmos_renderer_prepare :: proc(rend: ^GizmosRenderer) {
 gizmos_renderer_render :: proc(
 	rend: ^GizmosRenderer,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 	mode: GizmosMode,
 ) {
 	vertex_buffer := &rend.vertex_buffers[mode]
@@ -49,7 +50,8 @@ gizmos_renderer_render :: proc(
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer.buffer, 0, vertex_buffer.size)
 	mode := mode
 	wgpu.RenderPassEncoderSetPushConstants(render_pass, {.Vertex}, 0, size_of(GizmosMode), &mode)
@@ -58,7 +60,8 @@ gizmos_renderer_render :: proc(
 gizmos_renderer_render_all_modes :: proc(
 	rend: ^GizmosRenderer,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 ) {
 	bound_pipeline_and_bind_group := false
 	for mode in GizmosMode {
@@ -70,7 +73,8 @@ gizmos_renderer_render_all_modes :: proc(
 		if !bound_pipeline_and_bind_group {
 			bound_pipeline_and_bind_group = true
 			wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 		}
 		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer.buffer, 0, vertex_buffer.size)
 		wgpu.RenderPassEncoderSetPushConstants(render_pass, {.Vertex}, 0, size_of(GizmosMode), &mode)
@@ -181,10 +185,11 @@ gizmos_pipeline_config :: proc() -> RenderPipelineConfig {
 			),
 		},
 		instance = {},
-		bind_group_layouts = bind_group_layouts(shader_globals_bind_group_layout_cached()),
-		push_constant_ranges = push_const_ranges(
-			wgpu.PushConstantRange{stages = {.Vertex}, start = 0, end = size_of(GizmosMode)},
+		bind_group_layouts = bind_group_layouts(
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 		),
+		push_constant_ranges = push_const_range(GizmosMode, {.Vertex}),
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,

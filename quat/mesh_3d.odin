@@ -105,21 +105,24 @@ mesh_3d_rotate_around_z_axis :: proc(this: ^Mesh3d, angle: f32, center: Vec2) {
 mesh_3d_renderer_render :: proc(
 	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 	meshes: []Mesh3d,
 ) {
 	if len(meshes) == 0 {
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
+
 	last_texture_handle := TextureHandle{max(u32)}
 
 	textures := assets_get_map(Texture)
 	for mesh in meshes {
 		if mesh.diffuse_texture != last_texture_handle {
 			diffuse_bind_group := slotmap_get(textures, mesh.diffuse_texture).bind_group
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, diffuse_bind_group)
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, diffuse_bind_group)
 			last_texture_handle = mesh.diffuse_texture
 		}
 		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, mesh.vertex_buffer.buffer, 0, mesh.vertex_buffer.size)
@@ -132,25 +135,28 @@ mesh_3d_renderer_render :: proc(
 mesh_3d_renderer_render_hex_chunk_masked :: proc(
 	pipeline: wgpu.RenderPipeline,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 	meshes: []Mesh3dHexChunkMasked,
 ) {
 	if len(meshes) == 0 {
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
+
 	last_texture_handle := TextureHandle{max(u32)}
 	last_hex_chunk_bind_group: wgpu.BindGroup = nil
 	textures := assets_get_map(Texture)
 	for mesh in meshes {
 		if mesh.diffuse_texture != last_texture_handle {
 			diffuse_bind_group := slotmap_get(textures, mesh.diffuse_texture).bind_group
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, diffuse_bind_group)
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, diffuse_bind_group)
 			last_texture_handle = mesh.diffuse_texture
 		}
 		if mesh.hex_chunk_bind_group != last_hex_chunk_bind_group {
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, mesh.hex_chunk_bind_group)
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 3, mesh.hex_chunk_bind_group)
 			last_hex_chunk_bind_group = mesh.hex_chunk_bind_group
 		}
 		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, mesh.vertex_buffer.buffer, 0, mesh.vertex_buffer.size)
@@ -179,7 +185,8 @@ mesh_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			rgba_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},
@@ -208,9 +215,10 @@ mesh_3d_hex_chunk_masked_pipeline_config :: proc() -> RenderPipelineConfig {
 		},
 		instance = {},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			rgba_bind_group_layout_cached(),
-			hex_chunk_data_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(HexChunkUniformData),
 		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,

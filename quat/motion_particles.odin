@@ -274,18 +274,20 @@ motion_particles_render :: proc(
 	instance_buffer: DynamicBuffer(MotionParticleInstance),
 	commands: []MotionParticlesRenderCommand,
 	render_pass: wgpu.RenderPassEncoder,
-	globals_uniform_bind_group: wgpu.BindGroup,
+	frame_uniform: wgpu.BindGroup,
+	camera_2d_uniform: wgpu.BindGroup,
 ) {
 	if len(commands) == 0 {
 		return
 	}
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, globals_uniform_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
+	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
 	motion_textures := assets_get_map(MotionTexture)
 	for &cmd in commands {
 		motion_texture := slotmap_get(motion_textures, cmd.texture)
-		wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, motion_texture.bind_group)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, motion_texture.bind_group)
 		wgpu.RenderPassEncoderSetPushConstants(
 			render_pass,
 			{.Vertex, .Fragment},
@@ -316,12 +318,11 @@ motion_particles_pipeline_config :: proc() -> RenderPipelineConfig {
 		vertex = {},
 		instance = {ty_id = MotionParticleInstance, attributes = MOTION_PARTICLE_ATTRIBUTES},
 		bind_group_layouts = bind_group_layouts(
-			shader_globals_bind_group_layout_cached(),
+			uniform_bind_group_layout_cached(FrameUniformData),
+			uniform_bind_group_layout_cached(Camera2DUniformData),
 			motion_texture_bind_group_layout_cached(),
 		),
-		push_constant_ranges = push_const_ranges(
-			wgpu.PushConstantRange{stages = {.Vertex, .Fragment}, start = 0, end = size_of(FlipbookData)},
-		),
+		push_constant_ranges = push_const_range(FlipbookData, {.Vertex, .Fragment}),
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
 		depth = DEPTH_IGNORE,
