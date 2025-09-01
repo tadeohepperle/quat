@@ -146,7 +146,7 @@ fn fs_rect_both(in: VsRectOut, softness: f32) -> vec4<f32>{
     solid_color.a = saturate(solid_color.a * not_ext_factor);
     let final_color = color_texture_mix(solid_color, texture_color);
 
-	return in.color;
+	return final_color;
 
     // return vec4f(ui_scaling_factor, ui_scaling_factor,ui_scaling_factor, 1.0);
 }

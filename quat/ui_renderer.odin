@@ -130,13 +130,8 @@ ui_screen_ui_render :: proc(
 			last_scissor = nil
 			wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size_u.x, screen_size_u.y)
 		}
-
-
-		print(batch.kind)
-
 		switch batch.kind {
 		case .Rect:
-			print("    draw Rect")
 			texture_bind_group := slotmap_get(textures, transmute(TextureHandle)batch.texture_or_font_idx).bind_group
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, texture_bind_group)
 			// important: take *3 here to get from triangle_idx to index_idx
@@ -144,8 +139,6 @@ ui_screen_ui_render :: proc(
 			index_count := u32(batch.end_idx - batch.start_idx) * 3
 			wgpu.RenderPassEncoderDrawIndexed(render_pass, index_count, 1, start_idx, 0, 0)
 		case .Glyph:
-			print("    draw Glyph")
-
 			texture_handle := slotmap_get(fonts, transmute(FontHandle)batch.texture_or_font_idx).texture_handle
 			font_texture_bind_group := slotmap_get(textures, texture_handle).bind_group
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, font_texture_bind_group)

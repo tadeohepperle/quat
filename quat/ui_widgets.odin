@@ -880,11 +880,12 @@ crosshair_at_unit_pos :: proc(unit_pos: Vec2) -> Ui {
 	child_div(
 		ui,
 		Div {
+			z_idx = 1,
 			width = 16,
 			height = 16,
-			color = {1.0, 1.0, 1.0, 0.0},
+			color = {1, 1, 1, 0},
 			border_radius = 8,
-			border_width = 2,
+			border_width = 3,
 			border_color = UI_THEME.text,
 			flags = {.WidthPx, .HeightPx, .Absolute},
 			absolute_unit_pos = Vec2{0.5, 0.5},
@@ -941,7 +942,7 @@ color_gradient_rect :: proc(rect: ColorGradientRect, id: UiId = 0) -> Ui {
 				)
 			}
 		}
-		// add indices: 
+		// add indices:
 		for y in 0 ..< n_y - 1 {
 			for x in 0 ..< n_x - 1 {
 				idx_0 := u32(y * n_x + x)
@@ -1231,7 +1232,7 @@ text_edit :: proc(
 	}
 	return TextEditUiWithInteraction{ui, res, just_edited}
 
-	// the job of this markers element is to read the TextEditCached from local 
+	// the job of this markers element is to read the TextEditCached from local
 	// markers = caret and selection rectangles
 	MarkersData :: struct {
 		text_id:         UiId,
@@ -1525,7 +1526,7 @@ equilateral_triangle :: proc(side_length: f32, color: Color) -> Ui {
 	}
 	add_primitives :: proc(data: ^RoundedEquilateralTriangle, pos: Vec2, size: Vec2) -> []CustomPrimitives {
 		// triangle:
-		//      
+		//
 		//      ^ c
 		//     / \
 		//    /   \
@@ -1593,7 +1594,7 @@ NineSliceMode :: enum {
 // 		size: Vec2,
 // 	) -> []CustomPrimitives {
 // 		// triangle:
-// 		//      
+// 		//
 // 		//      ^ c
 // 		//     / \
 // 		//    /   \

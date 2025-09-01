@@ -115,7 +115,7 @@ ui_projection_to_local_cursor_pos :: proc(proj: UiProjection, cursor_pos: Vec2, 
 	switch proj in proj {
 	case UiScreenProjection:
 		scaling_factor := ui_screen_projection_scaling_factor(proj, screen_size)
-		return cursor_pos * scaling_factor
+		return cursor_pos / scaling_factor
 	case UiWorld2DProjection:
 		unimplemented()
 	case UiWorld3DProjection:
@@ -335,7 +335,8 @@ UiTag :: u64
 // - layer of the UI, deliberately chosen, to render stuff earlier in the tree on top of stuff that comes later.
 // can be transmuted into a u64 to be compared with another ZInfo, layer in the high bits is most significant then
 ZInfo :: struct {
-	layer_depth: u32, // least significant
+	_unused:     u16, // todo! use in future for e.g. traversal idx if non-stable sort
+	layer_depth: u16, // least significant
 	z_idx:       u16, // more significant
 	space:       u16, // most significant, screen over world2d/3d
 }
@@ -1080,7 +1081,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, cur
 			pointer_pass_through = .PointerPassThrough in div.flags,
 			proj_idx = current_run.run_key.proj_idx,
 			tag = div.tag,
-			z_info = ZInfo{layer_depth = u32(layer_depth), z_idx = current_run.run_key.z_idx, space = 4},
+			z_info = ZInfo{layer_depth = layer_depth, z_idx = current_run.run_key.z_idx, space = 4},
 			// todo: include space here properly!
 		}
 
@@ -1117,7 +1118,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, cur
 	}
 
 	// insert the element into a run to be batched:
-	if div.color.a > math.F32_EPSILON && div.size.x > 0 && div.size.y > 0 {
+	if (div.color.a > math.F32_EPSILON || div.border_color.a > math.F32_EPSILON) && div.size.x > 0 && div.size.y > 0 {
 		append(current_run.run, RunEl{RunElKey{div.texture.handle.idx, .Div, layer_depth}, div})
 	}
 
@@ -1599,8 +1600,8 @@ RunEl :: struct {
 
 RunElKind :: enum u16 {
 	Div          = 0,
-	Text         = 1,
 	CustomMesh   = 2,
+	Text         = 1,
 	CustomGlyphs = 3,
 	// custom text run, custom div, ...
 }
