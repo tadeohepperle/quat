@@ -358,6 +358,7 @@ CachedElement :: struct {
 	proj_idx:             UiProjectionIdx, // points into old_projections
 	tag:                  UiTag, // some tag set by the user explicitly
 	clipped_to:           Maybe(Aabb),
+	parent_pos:           Vec2,
 }
 
 ComputedGlyph :: struct {
@@ -880,7 +881,8 @@ _layout_element :: proc(ui: Ui, projection: UiProjection, run_rec: ^RunRecorder)
 	run := run_recorder_get_run(run_rec, run_key)
 	current_run := CurrentRun{run_key, run, run_rec}
 	layer_depth: u16 = 0
-	_set_position(ui, initial_pos, layer_depth, current_run)
+	parent_pos := Vec2{0, 0}
+	_set_position(ui, initial_pos, layer_depth, current_run, parent_pos)
 }
 
 UiProjectionIdx :: distinct u16
@@ -1037,34 +1039,37 @@ _set_size_for_div :: proc(div: ^DivElement, max_size: Vec2) {
 }
 
 // writes to ui.base.pos
-_set_position :: proc(ui: Ui, pos: Vec2, layer_depth: u16, current_run: CurrentRun) {
+_set_position :: proc(ui: Ui, pos: Vec2, layer_depth: u16, current_run: CurrentRun, parent_pos: Vec2) {
 	switch el in ui {
 	case ^DivElement:
-		_set_position_for_div(el, pos, layer_depth, current_run)
+		_set_position_for_div(el, pos, layer_depth, current_run, parent_pos)
 	case ^TextElement:
 		_set_position_for_text(el, pos, layer_depth, current_run)
 	case ^CustomUiElement:
-		el.pos = pos
-		if el.id != NO_ID {
-			UI_CTX.new_cache[el.id] = CachedElement {
-				pos        = el.pos,
-				size       = el.size,
-				tag        = el.tag,
-				proj_idx   = current_run.run_key.proj_idx,
-				clipped_to = current_run.run_key.clipped_to,
-			}
+		_set_position_for_custom_element(el, pos, layer_depth, current_run)
+	}
+}
+_set_position_for_custom_element :: proc(el: ^CustomUiElement, pos: Vec2, layer_depth: u16, current_run: CurrentRun) {
+	el.pos = pos
+	if el.id != NO_ID {
+		UI_CTX.new_cache[el.id] = CachedElement {
+			pos        = el.pos,
+			size       = el.size,
+			tag        = el.tag,
+			proj_idx   = current_run.run_key.proj_idx,
+			clipped_to = current_run.run_key.clipped_to,
 		}
-		// get the primitives and add them all with increasing layer depth to make sure they are after one another
-		primitives := el.add_primitives(&el.data, el.pos, el.size)
+	}
+	// get the primitives and add them all with increasing layer depth to make sure they are after one another
+	primitives := el.add_primitives(&el.data, el.pos, el.size)
 
-		// todo: maybe add z-idx or layer_bias to each individual custom element???
-		for &prim in primitives {
-			switch &prim in &prim {
-			case CustomUiMesh:
-				current_run_add(current_run, prim.texture.idx, .CustomMesh, layer_depth, &prim)
-			case CustomGlyphs:
-				current_run_add(current_run, prim.font.idx, .CustomGlyphs, layer_depth, &prim)
-			}
+	// todo: maybe add z-idx or layer_bias to each individual custom element???
+	for &prim in primitives {
+		switch &prim in &prim {
+		case CustomUiMesh:
+			current_run_add(current_run, prim.texture.idx, .CustomMesh, layer_depth, &prim)
+		case CustomGlyphs:
+			current_run_add(current_run, prim.font.idx, .CustomGlyphs, layer_depth, &prim)
 		}
 	}
 }
@@ -1072,7 +1077,13 @@ _set_position :: proc(ui: Ui, pos: Vec2, layer_depth: u16, current_run: CurrentR
 
 DIV_DEFAULT_LERP_SPEED :: 5.0
 // writes to div.pos
-_set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, current_run: CurrentRun) {
+_set_position_for_div :: proc(
+	div: ^DivElement,
+	pos: Vec2,
+	layer_depth: u16,
+	current_run: CurrentRun,
+	parent_pos: Vec2,
+) {
 	current_run := current_run
 
 	// if this div wants to be on a different z idx than its parent, start a new run for it:
@@ -1099,6 +1110,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, cur
 			tag = div.tag,
 			z_info = ZInfo{layer_depth = layer_depth, z_idx = current_run.run_key.z_idx, space = 4},
 			// todo: include space here properly!
+			parent_pos = parent_pos,
 		}
 
 		// lerp and transfer user data if this div existed last frame already
@@ -1123,7 +1135,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, cur
 			}
 			// todo: should be in relation to parent
 			if lerp_transform {
-				new_cached.pos = lerp(old_cached.pos, div.pos, t)
+				new_cached.pos = lerp(old_cached.pos - old_cached.parent_pos + new_cached.parent_pos, div.pos, t)
 				div.pos = new_cached.pos
 				new_cached.size = lerp(old_cached.size, div.size, t)
 				div.size = new_cached.size
@@ -1180,7 +1192,7 @@ _set_child_positions_for_div_with_text_layout :: proc(div: ^DivElement, layer_de
 	for ch in div.children {
 		switch el in ch {
 		case ^DivElement:
-			_set_position_for_div(el, el.pos + div.pos, layer_depth + 1, current_run)
+			_set_position_for_div(el, el.pos + div.pos, layer_depth + 1, current_run, div.pos)
 		case ^TextElement:
 			_set_position_for_text(el, el.pos + div.pos, layer_depth + 1, current_run)
 		case ^CustomUiElement:
@@ -1265,7 +1277,7 @@ _set_child_positions_for_div :: proc(div: ^DivElement, layer_depth: u16, current
 			main_offset += ch_main_size + main_step
 		}
 		ch_pos := ch_rel_pos + inner_pos
-		_set_position(ch, ch_pos, layer_depth + 1, current_run)
+		_set_position(ch, ch_pos, layer_depth + 1, current_run, div.pos)
 	}
 }
 
@@ -1722,10 +1734,10 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 	if len(runs_list) == 0 {
 		return
 	}
-	print("RUNS")
-	for el in runs_list[0].elements {
-		print("   ", el)
-	}
+	// print("RUNS")
+	// for el in runs_list[0].elements {
+	// 	print("   ", el)
+	// }
 
 	// sort the runs by their z to respect ui_space (screen vs. world) and z-idx (and maybe clipping rect)
 	slice.sort_by_key(runs_list[:], proc(e: RunElements) -> u64 {return e.z})

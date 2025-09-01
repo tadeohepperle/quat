@@ -45,7 +45,7 @@ ui_screen_ui_render :: proc(
 	if len(batches.batches) == 0 {
 		return
 	}
-	ui_batches_debug_print(batches)
+	// ui_batches_debug_print(batches)
 
 	screen_size := batches.screen_size
 
