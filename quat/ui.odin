@@ -388,6 +388,21 @@ ui_batches_clear :: proc(batches: ^UiBatches) {
 	clear(&batches.projections)
 }
 
+ui_batches_debug_print :: proc(batches: UiBatches) {
+	fmt.printfln("UiBatches ({})", len(batches.batches))
+	for b in batches.batches {
+		range := b.end_idx - b.start_idx
+		switch b.kind {
+		case .Rect:
+			t1 := batches.primitives.triangles[b.start_idx]
+			v1_color := batches.primitives.vertices[t1[0]].color
+			fmt.printfln("    Rect ({}) first v color = {}", range, v1_color)
+		case .Glyph:
+			fmt.printfln("    Glyph ({})", range)
+		}
+	}
+}
+
 Primitives :: struct {
 	vertices:         [dynamic]UiVertex,
 	triangles:        [dynamic]Triangle,
@@ -398,7 +413,7 @@ UiBatch :: struct {
 	start_idx:           int, // either triangle idx (take *3 to get index-index for pipeline!) or glyph idx
 	end_idx:             int,
 	kind:                BatchKind,
-	texture_or_font_idx: u32, // jsut the transmuted TextureHandle or FontHandle depending on kind
+	texture_or_font_idx: u16, // just the transmuted u32 TextureHandle or FontHandle depending on kind
 	proj_idx:            UiProjectionIdx, // idx into UI_CTX.new_batches (at least at the end of a frame)
 	clipping_rect:       Maybe(Aabb),
 }
@@ -868,7 +883,7 @@ _layout_element :: proc(ui: Ui, projection: UiProjection, run_rec: ^RunRecorder)
 	_set_position(ui, initial_pos, layer_depth, current_run)
 }
 
-UiProjectionIdx :: distinct u32
+UiProjectionIdx :: distinct u16
 _get_or_register_projection_idx :: proc(proj: UiProjection) -> UiProjectionIdx {
 	for other, idx in UI_CTX.new_projections {
 		if other == proj {
@@ -1042,18 +1057,19 @@ _set_position :: proc(ui: Ui, pos: Vec2, layer_depth: u16, current_run: CurrentR
 		// get the primitives and add them all with increasing layer depth to make sure they are after one another
 		primitives := el.add_primitives(&el.data, el.pos, el.size)
 
-		layer_depth := layer_depth
+		// todo: maybe add z-idx or layer_bias to each individual custom element???
 		for &prim in primitives {
-			layer_depth += 1
 			switch &prim in &prim {
 			case CustomUiMesh:
-				append(current_run.run, RunEl{RunElKey{prim.texture.idx, .CustomMesh, layer_depth}, &prim})
+				current_run_add(current_run, prim.texture.idx, .CustomMesh, layer_depth, &prim)
 			case CustomGlyphs:
-				append(current_run.run, RunEl{RunElKey{prim.font.idx, .CustomGlyphs, layer_depth}, &prim})
+				current_run_add(current_run, prim.font.idx, .CustomGlyphs, layer_depth, &prim)
 			}
 		}
 	}
 }
+
+
 DIV_DEFAULT_LERP_SPEED :: 5.0
 // writes to div.pos
 _set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, current_run: CurrentRun) {
@@ -1119,7 +1135,7 @@ _set_position_for_div :: proc(div: ^DivElement, pos: Vec2, layer_depth: u16, cur
 
 	// insert the element into a run to be batched:
 	if (div.color.a > math.F32_EPSILON || div.border_color.a > math.F32_EPSILON) && div.size.x > 0 && div.size.y > 0 {
-		append(current_run.run, RunEl{RunElKey{div.texture.handle.idx, .Div, layer_depth}, div})
+		current_run_add(current_run, div.texture.handle.idx, .Div, layer_depth, div)
 	}
 
 	// set position of children (important to do this after lerping!):
@@ -1291,9 +1307,8 @@ _set_position_for_text :: proc(text: ^TextElement, pos: Vec2, layer_depth: u16, 
 	}
 
 	if text.glyphs_end_idx > text.glyphs_start_idx && text.color.a > math.F32_EPSILON {
-		append(current_run.run, RunEl{RunElKey{text.font.idx, .Text, layer_depth}, text})
+		current_run_add(current_run, text.font.idx, .Text, layer_depth, text)
 	}
-
 }
 
 
@@ -1575,7 +1590,8 @@ RunKey :: struct {
 
 /// Metadata for a ui element in a specific run for sorting/batching. Should be transmutable to u64 for sorting.
 RunElKey :: struct {
-	texture_or_font_idx: u32, // least significant
+	traversal_idx:       u16, // a bit more significant
+	texture_or_font_idx: u16, // least significant
 	run_el_kind:         RunElKind, // more significant
 	layer_depth:         u16, // most significant
 }
@@ -1600,8 +1616,8 @@ RunEl :: struct {
 
 RunElKind :: enum u16 {
 	Div          = 0,
-	CustomMesh   = 2,
-	Text         = 1,
+	CustomMesh   = 1,
+	Text         = 2,
 	CustomGlyphs = 3,
 	// custom text run, custom div, ...
 }
@@ -1614,6 +1630,19 @@ CurrentRun :: struct {
 	run:     ^[dynamic]RunEl,
 	run_rec: ^RunRecorder,
 }
+
+current_run_add :: #force_inline proc(
+	current_run: CurrentRun,
+	texture_or_font_idx: u32,
+	kind: RunElKind,
+	layer_depth: u16,
+	ptr: rawptr,
+) {
+	traversal_idx := u16(len(current_run.run))
+	assert_contextless(texture_or_font_idx < u32(max(u16)))
+	append(current_run.run, RunEl{RunElKey{traversal_idx, u16(texture_or_font_idx), kind, layer_depth}, ptr})
+}
+
 RunRecorder :: struct {
 	// all allocated in tmp storage!
 	// double indirection to maintain stable pointers, in case e.g. new runs are added while other elements are still in use
@@ -1693,6 +1722,10 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 	if len(runs_list) == 0 {
 		return
 	}
+	print("RUNS")
+	for el in runs_list[0].elements {
+		print("   ", el)
+	}
 
 	// sort the runs by their z to respect ui_space (screen vs. world) and z-idx (and maybe clipping rect)
 	slice.sort_by_key(runs_list[:], proc(e: RunElements) -> u64 {return e.z})
@@ -1707,7 +1740,7 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 		last_flush_glyph_idx:    int,
 		last_flush_triangle_idx: int,
 		kind:                    BatchKind,
-		texture_or_font_idx:     u32,
+		texture_or_font_idx:     u16, // works as long as there are less than 65k fonts/textures 👍
 		proj_idx:                UiProjectionIdx,
 		clipping_rect:           Maybe(Aabb),
 	}
