@@ -127,9 +127,9 @@ transform_test :: proc(t: ^testing.T) {
 }
 AFFINE2_UNIT :: Affine2{{1, 0, 0, 1}, {0, 0}}
 // Sadly, in Odin the Mat2 has align=16, but in wgsl mat2x2<f32> only has align=8, see https://www.w3.org/TR/WGSL/#alignment-and-size
-// But if we apply align(8) in Odin, we get segmentation faults when multiplying unaligned matrices. 
-// 
-// so we have 8 useless bytes of padding at the end, meh. 
+// But if we apply align(8) in Odin, we get segmentation faults when multiplying unaligned matrices.
+//
+// so we have 8 useless bytes of padding at the end, meh.
 // In the future we might optimize this using not the builtin Mat2, wgpu will be happy too.
 Affine2 :: struct {
 	m:      Mat2,

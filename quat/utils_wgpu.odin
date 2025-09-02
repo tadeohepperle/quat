@@ -86,7 +86,6 @@ UniformBuffer :: struct($T: typeid) {
 	usage:             wgpu.BufferUsageFlags,
 }
 uniform_buffer_destroy :: proc(buffer: ^UniformBuffer($T)) {
-	dbgval(buffer.bind_group, "uniform_buffer_destroy")
 	wgpu.BindGroupRelease(buffer.bind_group)
 	wgpu.BufferRelease(buffer.buffer) // TODO: What is the difference between BufferRelease and BufferRelease
 }
@@ -108,7 +107,6 @@ uniform_buffer_create :: proc($T: typeid) -> (buffer: UniformBuffer(T)) {
 			entries = raw_data(bind_group_entries[:]),
 		},
 	)
-	dbgval(buffer.bind_group, "uniform_buffer_create")
 	return buffer
 }
 

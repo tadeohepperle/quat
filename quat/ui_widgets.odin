@@ -145,10 +145,11 @@ window_widget :: proc(title: string, content: []Ui, window_width: f32 = 0) -> Ui
 		window_pos = Vec2{0, 0}
 	}
 
-
 	if screen_proj, ok := proj.projection.(UiScreenProjection); ok {
 		layout_extent := ui_screen_projection_layout_extent(screen_proj, PLATFORM.screen_size)
 		max_pos := layout_extent - cached.size
+		max_pos.x = max(max_pos.x, 0)
+		max_pos.y = max(max_pos.y, 0)
 		window_pos.x = clamp(window_pos.x, 0, max_pos.x)
 		window_pos.y = clamp(window_pos.y, 0, max_pos.y)
 	}

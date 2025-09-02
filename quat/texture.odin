@@ -231,7 +231,6 @@ depth_texture_create :: proc(size: UVec2) -> DepthTexture {
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	texture.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
-	dbgval(texture.bind_group, "depth_texture_create")
 	return DepthTexture{texture}
 }
 
@@ -314,7 +313,6 @@ texture_create :: proc(
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	texture.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
-	dbgval(texture.bind_group, "texture_create", loc)
 	return
 }
 
@@ -431,7 +429,6 @@ texture_array_create :: proc(
 		entries    = &bind_group_descriptor_entries[0],
 	}
 	array.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
-	dbgval(array.bind_group, "texture_array_create")
 
 	return array
 }

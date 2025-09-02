@@ -85,7 +85,7 @@ ui_screen_projection_scaling_factor :: proc "contextless" (proj: UiScreenProject
 }
 
 ui_screen_projection_layout_extent :: proc "contextless" (proj: UiScreenProjection, screen_size: Vec2) -> Vec2 {
-	return screen_size * ui_screen_projection_scaling_factor(proj, screen_size)
+	return screen_size / ui_screen_projection_scaling_factor(proj, screen_size)
 }
 
 UiWorld2DProjection :: struct {

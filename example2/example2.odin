@@ -33,7 +33,7 @@ main :: proc() {
 
 
 	settings := engine.DEFAULT_ENGINE_SETTINGS
-	settings.debug_ui_gizmos = false
+	settings.debug_ui_gizmos = true
 	engine.init(settings)
 	defer {engine.deinit()}
 

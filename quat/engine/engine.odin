@@ -19,25 +19,27 @@ GIZMOS_COLOR := q.Color{1, 0, 0, 1}
 
 PLATFORM := &q.PLATFORM
 EngineSettings :: struct {
-	using platform:           q.PlatformSettings,
-	bloom_enabled:            bool,
-	bloom_settings:           q.BloomSettings,
-	debug_ui_gizmos:          bool,
-	debug_collider_gizmos:    bool,
-	use_simple_sprite_shader: bool, // does not use the depth calculations
-	screen_ui_reference_size: Vec2, // should be e.g. 1920x1080
-	world_2d_ui_px_per_unit:  f32,
-	tonemapping:              q.TonemappingMode,
+	using platform:             q.PlatformSettings,
+	bloom_enabled:              bool,
+	bloom_settings:             q.BloomSettings,
+	debug_ui_gizmos:            bool,
+	debug_collider_gizmos:      bool,
+	use_simple_sprite_shader:   bool, // does not use the depth calculations
+	screen_ui_reference_size:   Vec2, // should be e.g. 1920x1080
+	screen_ui_x_scaling_factor: f32, // between 0 (fully scaled by y-axis) and 1 (fully scaled by x axis)
+	world_2d_ui_px_per_unit:    f32,
+	tonemapping:                q.TonemappingMode,
 }
 DEFAULT_ENGINE_SETTINGS := EngineSettings {
-	platform                 = q.PLATFORM_SETTINGS_DEFAULT,
-	bloom_enabled            = true,
-	bloom_settings           = q.BLOOM_SETTINGS_DEFAULT,
-	debug_ui_gizmos          = false,
-	debug_collider_gizmos    = true,
-	screen_ui_reference_size = {1920, 1080},
-	world_2d_ui_px_per_unit  = 100,
-	tonemapping              = q.TonemappingMode.Disabled,
+	platform                   = q.PLATFORM_SETTINGS_DEFAULT,
+	bloom_enabled              = true,
+	bloom_settings             = q.BLOOM_SETTINGS_DEFAULT,
+	debug_ui_gizmos            = false,
+	debug_collider_gizmos      = true,
+	screen_ui_reference_size   = {1920, 1080},
+	screen_ui_x_scaling_factor = 0.5,
+	world_2d_ui_px_per_unit    = 100,
+	tonemapping                = q.TonemappingMode.Disabled,
 }
 
 Pipeline :: ^q.RenderPipeline
@@ -441,7 +443,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 	clear(&engine.top_level_elements_scratch)
 	screen_projection := q.UiScreenProjection {
 		reference_screen_size = engine.settings.screen_ui_reference_size,
-		x_scaling_factor      = 0.0,
+		x_scaling_factor      = engine.settings.screen_ui_x_scaling_factor,
 		clipped_to            = nil,
 	}
 	for ui in scene.screen_ui {
