@@ -10,7 +10,7 @@ const ARRAY_LEN : u32 = (CHUNK_SIZE_PADDED*CHUNK_SIZE_PADDED)/2;
 //     new_fact_and_vis: u32, // 2xf16
 // }
 struct HexChunkData {
-    chunk_pos: i2,
+    chunk_pos: IVec2,
     // we should have some padding here, such that the tiles start at align 16
     // is actually array<vec2<PackedTile>> representing array<PackedTile> for 16 alignment
     tiles: array<vec4<u32>, ARRAY_LEN>, 
@@ -59,9 +59,9 @@ fn get_visibility(idx_in_chunk: u32) -> f32 {
 
 const HEX_TO_WORLD_POS_MAT : mat2x2f = mat2x2f(1.5,  -0.75, 0, 1.5);
 const WORLD_TO_HEX_POS_MAT : mat2x2f = mat2x2f(2.0 / 3.0, 1.0 / 3.0, 0.0, 2.0 / 3.0);
-fn hex_to_world_pos(hex_pos: vec2<i32>) -> v2 {
-    return HEX_TO_WORLD_POS_MAT * v2(f32(hex_pos.x), f32(hex_pos.y));
+fn hex_to_world_pos(hex_pos: IVec2) -> Vec2 {
+    return HEX_TO_WORLD_POS_MAT * Vec2(f32(hex_pos.x), f32(hex_pos.y));
 }
-fn world_to_hex_pos(world_pos: v2) -> v2 {
+fn world_to_hex_pos(world_pos: Vec2) -> Vec2 {
     return WORLD_TO_HEX_POS_MAT * world_pos;
 }

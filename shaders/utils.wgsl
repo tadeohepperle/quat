@@ -14,10 +14,11 @@ struct Camera2D {
     height:           f32, 
 }
 
-alias v4 = vec4<f32>;
-alias v3 = vec3<f32>;
-alias v2 = vec2<f32>;
-alias i2 = vec2<i32>;
+alias Vec2  = vec2<f32>;
+alias Vec3  = vec3<f32>;
+alias Vec4  = vec4<f32>;
+alias IVec2 = vec2<i32>;
+alias Mat4  = mat4x4<f32>;
 
 fn world_2d_pos_to_ndc(world_pos: vec2<f32>) -> vec4<f32> {
     let world_pos_3 = vec3<f32>(world_pos, 1.0);

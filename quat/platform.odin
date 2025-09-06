@@ -658,7 +658,7 @@ uncaptured_error_callback :: proc "c" (
 	userdata2: rawptr,
 ) {
 	context = runtime.default_context()
-	fmt.panicf("uncaptured Error: {}", type)
+	fmt.panicf("uncaptured Error: {}, {}", type, message)
 }
 
 

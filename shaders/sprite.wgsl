@@ -48,7 +48,7 @@ fn fs_cutout(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     return color;
-    // return v4(in.color.rgb, 1.0);
+    // return Vec4(in.color.rgb, 1.0);
 }
 
 @fragment

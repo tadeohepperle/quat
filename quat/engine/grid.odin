@@ -41,10 +41,10 @@ draw_line :: proc(from: Vec2, to: Vec2, color: Color = q.ColorRed, thickness: f3
 	d := to + perp
 	append(
 		verts,
-		q.ColorMeshVertex{a, color},
-		q.ColorMeshVertex{b, color},
-		q.ColorMeshVertex{c, color},
-		q.ColorMeshVertex{d, color},
+		q.ColorMesh2DVertex{a, color},
+		q.ColorMesh2DVertex{b, color},
+		q.ColorMesh2DVertex{c, color},
+		q.ColorMesh2DVertex{d, color},
 	)
 	append(tris, q.Triangle{start, start + 1, start + 2})
 	append(tris, q.Triangle{start, start + 2, start + 3})
@@ -64,9 +64,9 @@ CIRCLE_PTS := unit_circle_points(20)
 
 draw_circle :: proc(pos: Vec2, radius: f32, color: Color = q.ColorRed) {
 	verts, tris, start := access_color_mesh_write_buffers()
-	append(verts, q.ColorMeshVertex{pos = pos, color = color})
+	append(verts, q.ColorMesh2DVertex{pos = pos, color = color})
 	for c, i in CIRCLE_PTS {
-		append(verts, q.ColorMeshVertex{pos = pos + c * radius, color = color})
+		append(verts, q.ColorMesh2DVertex{pos = pos + c * radius, color = color})
 		j := 0 if i == len(CIRCLE_PTS) - 1 else i + 1
 		append(tris, q.Triangle{start, u32(j + 1) + start, u32(i + 1) + start})
 	}
@@ -77,10 +77,10 @@ draw_rect :: proc(pos: Vec2, size: Vec2, rotation: f32 = 0.0, color: Color = q.C
 	verts, tris, s := access_color_mesh_write_buffers()
 	append_elems(
 		verts,
-		q.ColorMeshVertex{pos = rect.a, color = color},
-		q.ColorMeshVertex{pos = rect.b, color = color},
-		q.ColorMeshVertex{pos = rect.c, color = color},
-		q.ColorMeshVertex{pos = rect.d, color = color},
+		q.ColorMesh2DVertex{pos = rect.a, color = color},
+		q.ColorMesh2DVertex{pos = rect.b, color = color},
+		q.ColorMesh2DVertex{pos = rect.c, color = color},
+		q.ColorMesh2DVertex{pos = rect.d, color = color},
 	)
 	append_elems(tris, q.Triangle{s, s + 1, s + 2}, q.Triangle{s, s + 2, s + 3})
 }
@@ -91,14 +91,14 @@ draw_rect_border :: proc(pos: Vec2, size: Vec2, border_width: f32, rotation: f32
 	verts, tris, s := access_color_mesh_write_buffers()
 	append_elems(
 		verts,
-		q.ColorMeshVertex{pos = outer.a, color = color},
-		q.ColorMeshVertex{pos = outer.b, color = color},
-		q.ColorMeshVertex{pos = outer.c, color = color},
-		q.ColorMeshVertex{pos = outer.d, color = color},
-		q.ColorMeshVertex{pos = inner.a, color = color},
-		q.ColorMeshVertex{pos = inner.b, color = color},
-		q.ColorMeshVertex{pos = inner.c, color = color},
-		q.ColorMeshVertex{pos = inner.d, color = color},
+		q.ColorMesh2DVertex{pos = outer.a, color = color},
+		q.ColorMesh2DVertex{pos = outer.b, color = color},
+		q.ColorMesh2DVertex{pos = outer.c, color = color},
+		q.ColorMesh2DVertex{pos = outer.d, color = color},
+		q.ColorMesh2DVertex{pos = inner.a, color = color},
+		q.ColorMesh2DVertex{pos = inner.b, color = color},
+		q.ColorMesh2DVertex{pos = inner.c, color = color},
+		q.ColorMesh2DVertex{pos = inner.d, color = color},
 	)
 	append_elems(
 		tris,

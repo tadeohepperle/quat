@@ -66,8 +66,8 @@ camera_controller_update :: proc(cam: ^Camera2DController) {
 			cursor_pos_before := cursor_pos - cursor_delta
 
 
-			point_before := q.screen_to_world_pos(cam.current, cursor_pos_before, screen_size)
-			point_after := q.screen_to_world_pos(cam.current, cursor_pos, screen_size)
+			point_before := q.camera_2d_screen_to_world_pos(cam.current, cursor_pos_before, screen_size)
+			point_after := q.camera_2d_screen_to_world_pos(cam.current, cursor_pos, screen_size)
 			diff := point_before - point_after
 			cam.target.focus_pos += diff
 		}
@@ -85,8 +85,8 @@ camera_controller_update :: proc(cam: ^Camera2DController) {
 		cam.target.height = size_after
 
 		// calculate plane point shift
-		point_before := q.screen_to_world_pos(cam.current, cursor_pos, screen_size)
-		point_after := q.screen_to_world_pos(cam.target, cursor_pos, screen_size)
+		point_before := q.camera_2d_screen_to_world_pos(cam.current, cursor_pos, screen_size)
+		point_after := q.camera_2d_screen_to_world_pos(cam.target, cursor_pos, screen_size)
 		diff := point_before - point_after
 		cam.target.focus_pos += diff
 	}

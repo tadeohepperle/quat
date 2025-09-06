@@ -83,7 +83,7 @@ shader_registry_get_or_load_shader_module :: proc(
 	} else {
 		module, err := create_shader_module(shader_name, shader.composited_wgsl)
 		if err, has_err := err.(WgpuError); has_err {
-			return {}, tprint(err)
+			return {}, tprint(err.message)
 		} else {
 			shader.shader_module = module
 			return module, nil
@@ -96,7 +96,8 @@ make_render_pipeline :: proc(config: RenderPipelineConfig) -> ^RenderPipeline {
 	pipeline.config = config
 	err := _create_or_reload_render_pipeline(&PLATFORM.shader_registry, pipeline)
 	if err, has_err := err.(string); has_err {
-		fmt.panicf("Failed to create Render Pipeline \"{}\": {}", pipeline.config.debug_name, err)
+		fmt.println(err)
+		fmt.panicf("Failed to create Render Pipeline \"{}\"", pipeline.config.debug_name)
 	}
 	assert(pipeline.layout != nil)
 	assert(pipeline.pipeline != nil)
@@ -441,7 +442,7 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 			if err, has_err := err.(string); has_err {
 				fmt.eprintfln("Error creating pipeline %s: %s", pipeline.config.debug_name, err)
 			} else {
-				fmt.printfln("Hot reloaded pipeline:", pipeline.config.debug_name)
+				fmt.printfln("Hot reloaded pipeline: {}", pipeline.config.debug_name)
 			}
 		}
 	}

@@ -64,7 +64,7 @@ d is the center of the hex at {x,y+1}
 
 
     var out: VertexOutput;
-    var hex_pos: i2;
+    var hex_pos: IVec2;
     let a: Tile = get_data(a_idx_in_chunk);
     let c: Tile = get_data(a_idx_in_chunk + 1 + CHUNK_SIZE_PADDED);
 
@@ -72,10 +72,10 @@ d is the center of the hex at {x,y+1}
         // first triangle:
         case 0u, default: {
             // a
-            hex_pos = i2(i32(x), i32(y));
+            hex_pos = IVec2(i32(x), i32(y));
             let b: Tile = get_data(a_idx_in_chunk + 1);
 
-            out.weights = v3(1.0, 0.0, 0.0);
+            out.weights = Vec3(1.0, 0.0, 0.0);
             out.new_fact_and_vis = a.new_fact_and_vis;
 
             out.old_indices = vec3<u32>(a.old_ter, b.old_ter, c.old_ter);
@@ -83,9 +83,9 @@ d is the center of the hex at {x,y+1}
         }
         case 1u: {
             // b
-            hex_pos = i2(i32(x+1), i32(y));
+            hex_pos = IVec2(i32(x+1), i32(y));
             let b: Tile = get_data(a_idx_in_chunk + 1);
-            out.weights = v3(0.0, 1.0, 0.0);
+            out.weights = Vec3(0.0, 1.0, 0.0);
             out.new_fact_and_vis = b.new_fact_and_vis;
 
             out.old_indices = vec3<u32>(a.old_ter, b.old_ter, c.old_ter);
@@ -93,10 +93,10 @@ d is the center of the hex at {x,y+1}
         }
         case 2u: {
             // c
-            hex_pos = i2(i32(x+1), i32(y+1));
+            hex_pos = IVec2(i32(x+1), i32(y+1));
             let b: Tile = get_data(a_idx_in_chunk + 1);
             
-            out.weights = v3(0.0, 0.0, 1.0);
+            out.weights = Vec3(0.0, 0.0, 1.0);
             out.new_fact_and_vis = c.new_fact_and_vis;
             out.old_indices = vec3<u32>(a.old_ter, b.old_ter, c.old_ter);
             out.new_indices = vec3<u32>(a.new_ter, b.new_ter, c.new_ter);
@@ -104,10 +104,10 @@ d is the center of the hex at {x,y+1}
         // second triangle:
         case 3u: {
             // a
-            hex_pos = i2(i32(x), i32(y));
+            hex_pos = IVec2(i32(x), i32(y));
             let d: Tile = get_data(a_idx_in_chunk + CHUNK_SIZE_PADDED);
 
-            out.weights = v3(1.0, 0.0, 0.0);
+            out.weights = Vec3(1.0, 0.0, 0.0);
             out.new_fact_and_vis = a.new_fact_and_vis;
 
             out.old_indices = vec3<u32>(a.old_ter, c.old_ter, d.old_ter);
@@ -115,10 +115,10 @@ d is the center of the hex at {x,y+1}
         }
         case 4u: {
             // c
-            hex_pos = i2(i32(x+1), i32(y+1));
+            hex_pos = IVec2(i32(x+1), i32(y+1));
             let d: Tile = get_data(a_idx_in_chunk + CHUNK_SIZE_PADDED);
 
-            out.weights = v3(0.0, 1.0, 0.0);
+            out.weights = Vec3(0.0, 1.0, 0.0);
             out.new_fact_and_vis = c.new_fact_and_vis;
 
             out.old_indices = vec3<u32>(a.old_ter, c.old_ter, d.old_ter);
@@ -126,10 +126,10 @@ d is the center of the hex at {x,y+1}
         }  
         case 5u: {
             // d
-            hex_pos = i2(i32(x), i32(y+1));
+            hex_pos = IVec2(i32(x), i32(y+1));
             let d: Tile = get_data(a_idx_in_chunk + CHUNK_SIZE_PADDED);
 
-            out.weights = v3(0.0, 0.0, 1.0);
+            out.weights = Vec3(0.0, 0.0, 1.0);
             out.new_fact_and_vis = d.new_fact_and_vis;
 
             out.old_indices = vec3<u32>(a.old_ter, c.old_ter, d.old_ter);
@@ -171,7 +171,7 @@ const GRID_WIDTH: f32 = 0.03;
 const GRID_STREGTH: f32 = 2.0;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample_uv = v2(in.pos.x, -in.pos.y) * 0.4; 
+    let sample_uv = Vec2(in.pos.x, -in.pos.y) * 0.4; 
 
     let new_fact = in.new_fact_and_vis.x;
     let vis = in.new_fact_and_vis.y;
@@ -185,7 +185,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let bary_noise = noise_based_on_indices(in.pos, in.new_indices, WAVELENGTH, AMPLITUDE, SEED);
     // var noisy_weights = weights + bary_noise;
     // noisy_weights /= noisy_weights.x + noisy_weights.y + noisy_weights.z;
-    // let weighted_vis : v3 = in.visibility * noisy_weights;
+    // let weighted_vis : Vec3 = in.visibility * noisy_weights;
     // let vis : f32 = weighted_vis.x + weighted_vis.y + weighted_vis.z;
 
     let old_color = terrain_color(in.old_indices, weights, sample_uv);
@@ -195,7 +195,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let vis_n =  vis_noised(vis, in.pos);
     let vis_final = mix(vis, vis_n, globals.xxx.y);
 
-    // let dotted = v4(step(0.95, max(max(weights.x, weights.y), weights.z))) * RED;
+    // let dotted = Vec4(step(0.95, max(max(weights.x, weights.y), weights.z))) * RED;
     let a = weights.x;
     let b = weights.y;
     let c = weights.z;
@@ -210,12 +210,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // } else {
     //     grid_f = 0.0;
     // }
-    // let dotted = v4(1.0 -step(0.01, min(min(a, b), c))) * RED;
+    // let dotted = Vec4(1.0 -step(0.01, min(min(a, b), c))) * RED;
     let color_width_grid = mix(color,mix(color, BLACK, 0.7), grid_f);
     return mix(BLACK, color_width_grid, clamp(vis_final + 0.3, 0.0,1.0)) ;
 
 
-    // return v4(v3(vis), 1.0);
+    // return Vec4(Vec3(vis), 1.0);
     // return color;
 }
 
@@ -225,11 +225,11 @@ fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {
     return clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
 }
 
-fn sum(v: v3) -> f32{
+fn sum(v: Vec3) -> f32{
     return v.x + v.y + v.z;
 }
 
-const VOID_COLOR: vec4<f32> = RED; // v4(0.0)
+const VOID_COLOR: vec4<f32> = RED; // Vec4(0.0)
 fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
     let uv = select(sample_uv, sample_uv * 0.5, idx == 1);
     return select(textureSample(t_diffuse, s_diffuse, uv, idx-1).rgba, VOID_COLOR, idx == 0);

@@ -110,6 +110,38 @@ UiWorld3DTransform :: struct {
 	basis_y: Vec3,
 }
 
+ui_world_2d_projection_matrix :: proc(proj: UiWorld2DProjection, screen_size: Vec2) -> Mat4 {
+	model := ui_world_2d_transform_px_pos_to_2d_pos_matrix(proj.transform)
+	cam := camera_2d_projection_matrix(proj.camera, screen_size)
+	mat4: Mat4 = cast(Mat4)(cam * model)
+	mat4[3, 3] = 1
+	return mat4
+}
+
+// odinfmt: disable
+ui_world_2d_transform_px_pos_to_2d_pos_matrix :: proc(t: UiWorld2DTransform) -> Mat3 {
+	// todo: z is missing
+	b := t.basis_x
+	return Mat3{
+		b .x, b.y, t.pos.x, 
+		b .y, -b.x,  t.pos.y,
+		0,0,1
+	}
+}
+// odinfmt: enable
+// odinfmt: disable
+ui_world_2d_transform_2d_pos_to_px_pos_matrix :: proc(t: UiWorld2DTransform) -> Mat3{
+	b := t.basis_x
+	det := b.x*b.x + b.y*b.y
+	w_to_px := Mat3{
+		b.x/det,  b.y/det,  -(b.x * t.pos.x + b.y * t.pos.y)/det,
+	   -b.y/det,  b.x/det,   (b.y * t.pos.x - b.x * t.pos.y)/det,
+		0, 0, 1,
+	}
+	return w_to_px
+}
+// odinfmt: enable
+
 // converts a ui_transform and a
 ui_projection_to_local_cursor_pos :: proc(proj: UiProjection, cursor_pos: Vec2, screen_size: Vec2) -> Vec2 {
 	switch proj in proj {
@@ -117,13 +149,18 @@ ui_projection_to_local_cursor_pos :: proc(proj: UiProjection, cursor_pos: Vec2, 
 		scaling_factor := ui_screen_projection_scaling_factor(proj, screen_size)
 		return cursor_pos / scaling_factor
 	case UiWorld2DProjection:
-		unimplemented()
+		world_pos := camera_2d_screen_to_world_pos(proj.camera, cursor_pos, screen_size)
+		world_pos_to_px_pos := ui_world_2d_transform_2d_pos_to_px_pos_matrix(proj.transform)
+		return mat3_apply(world_pos_to_px_pos, world_pos)
 	case UiWorld3DProjection:
 		unimplemented()
 	}
 	panic("invalid UiProjection variant")
 }
 
+mat3_apply :: #force_inline proc "contextless" (m: Mat3, v: Vec2) -> Vec2 {
+	return (m * Vec3{v.x, v.y, 1.0}).xy
+}
 
 // the returned Mat4 should transform a point vec4(x,y,0,0) in ui layout px space to ndc (normalized device coordinates)
 ui_projection_to_projection_matrix :: proc(proj: UiProjection) -> (m: Mat4) {

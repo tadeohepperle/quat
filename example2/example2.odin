@@ -95,8 +95,8 @@ main :: proc() {
 				allocated_str_edit.ui,
 			},
 		)
-		engine.draw_annotation({2, -1}, "Hello from the engine!")
-		engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
+		// engine.draw_annotation({2, -1}, "Hello from the engine!")
+		// engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
 		engine.add_world_ui(
 			Vec2{0, 2},
 			q.button("Click me!", "btn2").ui,
@@ -143,7 +143,7 @@ main :: proc() {
 
 Snake :: struct {
 	triangles: [dynamic]q.Triangle,
-	vertices:  [dynamic]q.ColorMeshVertex,
+	vertices:  [dynamic]q.ColorMesh2DVertex,
 	points:    [dynamic]Vec2,
 }
 SNAKE_PTS :: 50
@@ -198,8 +198,8 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 
 		f := f32(i) / f32(SNAKE_PTS)
 		body_width: f32 = 0.4 * (1.0 - f)
-		append(&snake.vertices, q.ColorMeshVertex{pos = pt + dir_t * body_width, color = color})
-		append(&snake.vertices, q.ColorMeshVertex{pos = pt - dir_t * body_width, color = color})
+		append(&snake.vertices, q.ColorMesh2DVertex{pos = pt + dir_t * body_width, color = color})
+		append(&snake.vertices, q.ColorMesh2DVertex{pos = pt - dir_t * body_width, color = color})
 		base_idx := u32(i * 2)
 		if i != SNAKE_PTS - 1 {
 			append(&snake.triangles, [3]u32{base_idx, base_idx + 1, base_idx + 2})
@@ -217,7 +217,7 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 		angle := math.PI * f32(i) / f32(CIRCLE_N)
 		unit_circle_pt := Vec2{math.cos(angle), math.sin(angle)}
 		pos := head_pt + mapping_matrix * unit_circle_pt
-		append(&snake.vertices, q.ColorMeshVertex{pos = pos, color = color})
+		append(&snake.vertices, q.ColorMesh2DVertex{pos = pos, color = color})
 
 		v_idx_next := u32(len(snake.vertices))
 		v_idx := v_idx_next - 1

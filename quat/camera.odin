@@ -29,7 +29,7 @@ Camera2DUniformData :: struct {
 #assert(size_of(Camera2DUniformData) == 64)
 
 camera_2d_uniform_data :: proc(camera: Camera2D, screen_size: Vec2) -> Camera2DUniformData {
-	proj_mat := camera_projection_matrix(camera, screen_size)
+	proj_mat := camera_2d_projection_matrix(camera, screen_size)
 	return Camera2DUniformData {
 		proj_col_1 = proj_mat[0],
 		proj_col_2 = proj_mat[1],
@@ -45,7 +45,7 @@ camera_lerp :: proc(a: Camera2D, b: Camera2D, s: f32) -> Camera2D {
 	res.height = lerp(a.height, b.height, s)
 	return res
 }
-camera_projection_matrix :: proc "contextless" (self: Camera2D, screen_size: Vec2) -> Mat3 {
+camera_2d_projection_matrix :: proc "contextless" (self: Camera2D, screen_size: Vec2) -> Mat3 {
 	aspect_ratio := screen_size.x / screen_size.y
 	scale_x := 2.0 / (self.height * aspect_ratio)
 	scale_y := 2.0 / self.height
@@ -66,10 +66,9 @@ camera_projection_matrix :: proc "contextless" (self: Camera2D, screen_size: Vec
 	// odinfmt: enable
 
 	return rotation_scale * translation
-
 }
 
-screen_to_world_pos :: proc(camera: Camera2D, screen_pos: Vec2, screen_size: Vec2) -> Vec2 {
+camera_2d_screen_to_world_pos :: proc(camera: Camera2D, screen_pos: Vec2, screen_size: Vec2) -> Vec2 {
 	// relative pos to camera in world:
 	rel_pos := (screen_pos - (screen_size / 2)) * camera.height / screen_size.y
 	rel_pos.y = -rel_pos.y

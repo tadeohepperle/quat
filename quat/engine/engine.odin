@@ -49,7 +49,7 @@ Engine :: struct {
 	scene:                            Scene,
 	bloom_renderer:                   q.BloomRenderer,
 	gizmos_renderer:                  q.GizmosRenderer,
-	color_mesh_renderer:              q.ColorMeshRenderer,
+	color_mesh_2d_renderer:           q.ColorMesh2DRenderer,
 	mesh_2d_renderer:                 q.Mesh2dRenderer,
 	pipelines:                        [PipelineType]^q.RenderPipeline,
 	cutout_sprites:                   SpriteBuffers,
@@ -218,7 +218,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 
 	q.bloom_renderer_create(&engine.bloom_renderer)
 	q.gizmos_renderer_create(&engine.gizmos_renderer)
-	q.color_mesh_renderer_create(&engine.color_mesh_renderer)
+	q.color_mesh_2d_renderer_create(&engine.color_mesh_2d_renderer)
 	q.mesh_2d_renderer_create(&engine.mesh_2d_renderer)
 
 	p := &engine.pipelines
@@ -231,10 +231,10 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	// p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
 	// p[.SkinnedCutout] = q.make_render_pipeline(q.skinned_pipeline_config())
 	// p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
-	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.Screen))
-	p[.ScreenUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.Screen))
-	// p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(.World2D))
-	// p[.WorldUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(.World2D))
+	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(true))
+	p[.ScreenUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(true))
+	p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(false))
+	p[.WorldUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(false))
 	// p[.MotionParticles] = q.make_render_pipeline(q.motion_particles_pipeline_config())
 	p[.Tonemapping] = q.make_render_pipeline(q.tonemapping_pipeline_config())
 
@@ -258,7 +258,7 @@ _engine_destroy :: proc(engine: ^Engine) {
 
 	q.bloom_renderer_destroy(&engine.bloom_renderer)
 	q.gizmos_renderer_destroy(&engine.gizmos_renderer)
-	q.color_mesh_renderer_destroy(&engine.color_mesh_renderer)
+	q.color_mesh_2d_renderer_destroy(&engine.color_mesh_2d_renderer)
 	q.mesh_2d_renderer_destroy(&engine.mesh_2d_renderer)
 	_scene_destroy(&engine.scene)
 
@@ -325,7 +325,7 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 		engine.settings.screen_ui_reference_size,
 		screen_size,
 	)
-	world_2d_cursor_pos := q.screen_to_world_pos(engine.scene.camera, cursor_pos, screen_size)
+	world_2d_cursor_pos := q.camera_2d_screen_to_world_pos(engine.scene.camera, cursor_pos, screen_size)
 
 
 	hovered_id, hovered_tag := q.ui_system_get_hovered_id_and_tag()
@@ -364,7 +364,7 @@ add_window :: proc(title: string, content: []q.Ui, window_width: f32 = 0) {
 }
 
 _engine_recalculate_hit_info :: proc(engine: ^Engine) {
-	hit_pos := q.screen_to_world_pos(engine.scene.camera, PLATFORM.cursor_pos, PLATFORM.screen_size)
+	hit_pos := q.camera_2d_screen_to_world_pos(engine.scene.camera, PLATFORM.cursor_pos, PLATFORM.screen_size)
 
 	highest_z_collider_hit: int = min(int)
 	hit_collider_idx := -1
@@ -449,9 +449,12 @@ _engine_prepare :: proc(engine: ^Engine) {
 	for ui in scene.screen_ui {
 		append(&engine.top_level_elements_scratch, q.TopLevelElement{ui, screen_projection})
 	}
+	for ui in scene.uis_in_world_2d {
+		projection_2d := q.UiWorld2DProjection{ui.transform, engine.scene.camera}
+		append(&engine.top_level_elements_scratch, q.TopLevelElement{ui.ui, projection_2d})
+	}
 	q.ui_system_layout_elements_and_build_batches(engine.top_level_elements_scratch[:], &engine.screen_ui_batches)
 	q.ui_render_buffers_prepare(&engine.screen_ui_buffers, engine.screen_ui_batches)
-
 
 	// todo! put world ui back in!
 	// for e in scene.world_ui {
@@ -478,7 +481,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 	// )
 
 
-	q.color_mesh_renderer_prepare(&engine.color_mesh_renderer)
+	q.color_mesh_2d_renderer_prepare(&engine.color_mesh_2d_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
 	q.gizmos_renderer_prepare(&engine.gizmos_renderer)
 
@@ -591,7 +594,7 @@ _engine_render :: proc(engine: ^Engine) {
 	// 	camera_2d_uniform,
 	// )
 	// q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
-	// q.color_mesh_renderer_render(&engine.color_mesh_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
+	q.color_mesh_2d_renderer_render(&engine.color_mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
 
 	// // sandwich the world ui, e.g. health bars in two layers of transparent sprites + cutout sprites on top:
 	// q.sprite_batches_render(
@@ -634,15 +637,27 @@ _engine_render :: proc(engine: ^Engine) {
 	// also consider, that we might need a second "shine through" skinned shader for stuff behind geometry.
 
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, frame_uniform, camera_2d_uniform, .WORLD)
-	q.ui_screen_ui_render(
+
+	q.ui_render(
 		engine.screen_ui_batches,
 		engine.screen_ui_buffers,
-		engine.pipelines[.ScreenUiRect].pipeline,
-		engine.pipelines[.ScreenUiGlyph].pipeline,
+		engine.pipelines[.WorldUiRect].pipeline,
+		engine.pipelines[.WorldUiGlyph].pipeline,
 		hdr_pass,
 		frame_uniform,
 		PLATFORM.screen_size_u,
 	)
+	// if q.is_shift_pressed() {
+	// 	q.legacy_ui_screen_ui_render(
+	// 		engine.screen_ui_batches,
+	// 		engine.screen_ui_buffers,
+	// 		engine.pipelines[.ScreenUiRect].pipeline,
+	// 		engine.pipelines[.ScreenUiGlyph].pipeline,
+	// 		hdr_pass,
+	// 		frame_uniform,
+	// 		PLATFORM.screen_size_u,
+	// 	)
+	// }
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, frame_uniform, camera_2d_uniform, .SCREEN)
 	wgpu.RenderPassEncoderEnd(hdr_pass)
 	wgpu.RenderPassEncoderRelease(hdr_pass)
@@ -686,7 +701,7 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 	}
 	last_state = state
 
-
+	screen_size := PLATFORM.screen_size
 	for k, v in cache {
 		color := q.ColorSoftSkyBlue
 		if state.hovered == k {
@@ -701,28 +716,30 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 		proj := projections[v.proj_idx]
 		switch proj in proj.projection {
 		case q.UiScreenProjection:
-			scaling := q.ui_screen_projection_scaling_factor(proj, PLATFORM.screen_size)
+			scaling := q.ui_screen_projection_scaling_factor(proj, screen_size)
 			rect := q.Aabb{v.pos * scaling, (v.pos + v.size) * scaling}
 			q.gizmos_renderer_add_aabb(&engine.gizmos_renderer, rect, color, .SCREEN)
 		case q.UiWorld2DProjection:
-		// todo!
-		// pos := Vec2{v.pos.x, -v.pos.y} / engine.settings.world_2d_ui_px_per_unit
-		// size := Vec2{v.size.x, -v.size.y} / engine.settings.world_2d_ui_px_per_unit
-		// a := pos
-		// b := pos + Vec2{0, size.y}
-		// c := pos + size
-		// d := pos + Vec2{size.x, 0}
-		// trans := v.transform.data.transform2d
-		// if trans != q.UI_UNIT_TRANSFORM_2D {
-		// 	a = q.ui_transform_2d_apply(trans, a)
-		// 	b = q.ui_transform_2d_apply(trans, b)
-		// 	c = q.ui_transform_2d_apply(trans, c)
-		// 	d = q.ui_transform_2d_apply(trans, d)
-		// }
-		// q.gizmos_renderer_add_line(&engine.gizmos_renderer, a, b, color, .WORLD)
-		// q.gizmos_renderer_add_line(&engine.gizmos_renderer, b, c, color, .WORLD)
-		// q.gizmos_renderer_add_line(&engine.gizmos_renderer, c, d, color, .WORLD)
-		// q.gizmos_renderer_add_line(&engine.gizmos_renderer, d, a, color, .WORLD)
+			pos := Vec2{v.pos.x, -v.pos.y}
+			size := Vec2{v.size.x, -v.size.y}
+
+			abcd := [4]Vec2{pos, pos + Vec2{0, size.y}, pos + size, pos + Vec2{size.x, 0}}
+
+			mat := q.ui_world_2d_projection_matrix(proj, screen_size)
+			print("------------------")
+			for &el in abcd {
+				el_ext := Vec4{el.x, el.y, 1, 1}
+				clip_space_pos := mat * el_ext
+				clip_space_pos.y = -clip_space_pos.y
+				print(el, clip_space_pos)
+				screen_pos := ((clip_space_pos.xy + Vec2(1.0)) / 2.0) * screen_size
+				el = screen_pos
+			}
+			print(abcd)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[0], abcd[1], color, .SCREEN)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[1], abcd[2], color, .SCREEN)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[2], abcd[3], color, .SCREEN)
+			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[3], abcd[0], color, .SCREEN)
 		case q.UiWorld3DProjection:
 			unimplemented()
 		}
@@ -915,12 +932,12 @@ draw_gizmos_circle :: proc(
 // Can write directly into these, instead of using one of the `draw_color_mesh` procs.
 access_color_mesh_write_buffers :: #force_inline proc(
 ) -> (
-	vertices: ^[dynamic]q.ColorMeshVertex,
+	vertices: ^[dynamic]q.ColorMesh2DVertex,
 	triangles: ^[dynamic]q.Triangle,
 	start: u32,
 ) {
-	vertices = &ENGINE.color_mesh_renderer.vertices
-	triangles = &ENGINE.color_mesh_renderer.triangles
+	vertices = &ENGINE.color_mesh_2d_renderer.vertices
+	triangles = &ENGINE.color_mesh_2d_renderer.triangles
 	start = u32(len(vertices))
 	return
 }
@@ -945,14 +962,14 @@ draw_color_mesh :: proc {
 	draw_color_mesh_indexed_single_color,
 	draw_color_mesh_indexed,
 }
-draw_color_mesh_vertices :: proc(vertices: []q.ColorMeshVertex) {
-	q.color_mesh_add_vertices(&ENGINE.color_mesh_renderer, vertices)
+draw_color_mesh_vertices :: proc(vertices: []q.ColorMesh2DVertex) {
+	q.color_mesh_2d_add_vertices(&ENGINE.color_mesh_2d_renderer, vertices)
 }
-draw_color_mesh_indexed :: proc(vertices: []q.ColorMeshVertex, triangles: []q.Triangle) {
-	q.color_mesh_add_indexed(&ENGINE.color_mesh_renderer, vertices, triangles)
+draw_color_mesh_indexed :: proc(vertices: []q.ColorMesh2DVertex, triangles: []q.Triangle) {
+	q.color_mesh_2d_add_indexed(&ENGINE.color_mesh_2d_renderer, vertices, triangles)
 }
 draw_color_mesh_indexed_single_color :: proc(positions: []Vec2, triangles: []q.Triangle, color := Color{1, 0, 0, 1}) {
-	q.color_mesh_add_indexed_single_color(&ENGINE.color_mesh_renderer, positions, triangles, color)
+	q.color_mesh_2d_add_indexed_single_color(&ENGINE.color_mesh_2d_renderer, positions, triangles, color)
 }
 add_ui :: proc(ui: q.Ui) {
 	append(&ENGINE.scene.screen_ui, ui)
