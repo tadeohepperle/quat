@@ -17,7 +17,7 @@ main :: proc() {
 	camera := q.Camera2D {
 		focus_pos = {0, 0},
 		rotation  = 0,
-		height    = 10,
+		height    = 20,
 	}
 	sprite := q.Sprite {
 		texture = can_texture,

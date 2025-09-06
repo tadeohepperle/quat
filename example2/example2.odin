@@ -45,11 +45,11 @@ main :: proc() {
 	player_pos := Vec2{0, 0}
 	forest := [?]Vec2{{0, 0}, {2, 0}, {3, 0}, {5, 2}, {6, 3}}
 
-	snake := snake_create({3, 3})
+
+	n_snake_pts := 20
+	snake := snake_create({3, 3}, n_snake_pts)
 	defer {
-		delete(snake.points)
-		delete(snake.triangles)
-		delete(snake.vertices)
+		snake_drop(snake)
 	}
 
 	text_to_edit: strings.Builder
@@ -77,6 +77,8 @@ main :: proc() {
 		if allocated_str_edit.just_edited {
 			fmt.println("Edited allocated string:", allocated_str)
 		}
+
+		n_snake_pts_before := n_snake_pts
 		engine.add_window(
 			"Example window",
 			{
@@ -90,11 +92,18 @@ main :: proc() {
 				q.toggle(&snake_enabled, "Render Snake"),
 				q.text_from_string("Bloom blend factor:"),
 				q.slider(&bloom_blend_factor),
+				q.slider_int(&n_snake_pts, 10, 30),
 				q.text_edit(&text_to_edit, align = .Center, font_size = q.UI_THEME.font_size).ui,
 				q.dropdown(drop_down_values, &drop_down_idx),
 				allocated_str_edit.ui,
 			},
 		)
+
+		if n_snake_pts_before != n_snake_pts {
+			snake_drop(snake)
+			snake = snake_create({5, 5}, n_snake_pts)
+		}
+
 		// engine.draw_annotation({2, -1}, "Hello from the engine!")
 		// engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
 		engine.add_world_ui(
@@ -146,14 +155,13 @@ Snake :: struct {
 	vertices:  [dynamic]q.ColorMesh2DVertex,
 	points:    [dynamic]Vec2,
 }
-SNAKE_PTS :: 50
 SNAKE_PT_DIST :: 0.16
 SNAKE_LERP_SPEED :: 40
-snake_create :: proc(head_pos: Vec2) -> Snake {
+snake_create :: proc(head_pos: Vec2, n_pts: int = 50) -> Snake {
 	snake: Snake
 	next_pt := head_pos
 	dir := Vec2{1, 0}
-	for i in 0 ..< SNAKE_PTS {
+	for i in 0 ..< n_pts {
 		append(&snake.points, next_pt)
 		next_pt += dir * SNAKE_PT_DIST
 	}
@@ -162,12 +170,20 @@ snake_create :: proc(head_pos: Vec2) -> Snake {
 	return snake
 }
 
+snake_drop :: proc(snake: Snake) {
+	delete(snake.points)
+	delete(snake.triangles)
+	delete(snake.vertices)
+}
+
 snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 	prev_pos: Vec2
 	snake.points[0] = head_pos
 	s := q.get_delta_secs() * SNAKE_LERP_SPEED
 	s = clamp(s, 0, 1)
-	for i in 1 ..< SNAKE_PTS {
+
+	n_pts := len(snake.points)
+	for i in 1 ..< n_pts {
 		follow_pos := snake.points[i - 1]
 		current_pos := snake.points[i]
 		desired_pos := follow_pos + linalg.normalize(current_pos - follow_pos) * SNAKE_PT_DIST
@@ -180,10 +196,10 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 	}
 	clear(&snake.vertices)
 	clear(&snake.triangles)
-	for i in 0 ..< SNAKE_PTS {
+	for i in 0 ..< n_pts {
 		pt := snake.points[i]
 		is_first := i == 0
-		is_last := i == SNAKE_PTS - 1
+		is_last := i == n_pts - 1
 		dir: Vec2
 		if is_first {
 			dir = snake.points[1] - pt
@@ -196,12 +212,12 @@ snake_update_body :: proc(snake: ^Snake, head_pos: Vec2) {
 		dir = linalg.normalize(dir)
 		dir_t := Vec2{-dir.y, dir.x}
 
-		f := f32(i) / f32(SNAKE_PTS)
+		f := f32(i) / f32(n_pts)
 		body_width: f32 = 0.4 * (1.0 - f)
 		append(&snake.vertices, q.ColorMesh2DVertex{pos = pt + dir_t * body_width, color = color})
 		append(&snake.vertices, q.ColorMesh2DVertex{pos = pt - dir_t * body_width, color = color})
 		base_idx := u32(i * 2)
-		if i != SNAKE_PTS - 1 {
+		if i != n_pts - 1 {
 			append(&snake.triangles, [3]u32{base_idx, base_idx + 1, base_idx + 2})
 			append(&snake.triangles, [3]u32{base_idx + 2, base_idx + 3, base_idx + 1})
 		}

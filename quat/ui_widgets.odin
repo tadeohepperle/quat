@@ -161,6 +161,7 @@ window_widget :: proc(title: string, content: []Ui, window_width: f32 = 0) -> Ui
 			flags = {.Absolute},
 			padding = {16, 16, 8, 16},
 			gap = 12,
+			z_idx = 3,
 		},
 		id,
 	)
@@ -291,7 +292,7 @@ toggle :: proc(value: ^bool, title: string) -> Ui {
 slider :: proc {
 	slider_f32,
 	slider_f64,
-// slider_int,
+	slider_int,
 }
 
 
@@ -402,15 +403,68 @@ slider_f64 :: proc(value: ^f64, min: f64 = 0, max: f64 = 1, id: UiId = 0) -> Ui 
 	return ui
 }
 
+// display :: proc(t: T) -> string
+// to_f: proc(f)
+// from_f: proc()
+
+
+SliderValTrait :: struct($T: typeid) {
+	display:  proc(val: T) -> string,
+	to_f32:   proc(val: T) -> f32,
+	from_f32: proc(f: f32) -> T,
+}
+SLIDER_VAL_TRAIT_F32 := SliderValTrait(f32) {
+	display = proc(val: f32) -> string {
+		return fmt.aprintf("%f", val, allocator = context.temp_allocator)
+	},
+	to_f32 = proc(val: f32) -> f32 {
+		return val
+	},
+	from_f32 = proc(f: f32) -> f32 {
+		return f
+	},
+}
+SLIDER_VAL_TRAIT_F64 := SliderValTrait(f64) {
+	display = proc(val: f64) -> string {
+		return fmt.aprintf("%f", val, allocator = context.temp_allocator)
+	},
+	to_f32 = proc(val: f64) -> f32 {
+		return f32(val)
+	},
+	from_f32 = proc(f: f32) -> f64 {
+		return f64(f)
+	},
+}
+SLIDER_VAL_TRAIT_INT := SliderValTrait(int) {
+	display = proc(val: int) -> string {
+		return tprint(val)
+	},
+	to_f32 = proc(val: int) -> f32 {
+		return f32(val)
+	},
+	from_f32 = proc(f: f32) -> int {
+		return int(math.round(f))
+	},
+}
+slider_int :: proc(value: ^int, min: int, max: int, id: UiId = 0, slider_width: f32 = 0) -> Ui {
+	return _slider(value, min, max, SLIDER_VAL_TRAIT_INT, id, slider_width)
+}
 
 slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider_width: f32 = 0) -> Ui {
+	return _slider(value, min, max, SLIDER_VAL_TRAIT_F32, id, slider_width)
+}
+
+@(private)
+_slider :: proc(value: ^$T, min: T, max: T, trait: SliderValTrait(T), id: UiId = 0, slider_width: f32 = 0) -> Ui {
 	slider_width := slider_width
 	if slider_width == 0 {
 		slider_width = UI_THEME.control_width_lg
 	}
 	knob_width: f32 = UI_THEME.font_size
 	id := id if id != 0 else u64(uintptr(value))
-	val: f32 = value^
+	val: f32 = trait.to_f32(value^)
+	min: f32 = trait.to_f32(min)
+	max: f32 = trait.to_f32(max)
 
 	SliderCache :: struct {
 		start_drag_value:      f32,
@@ -448,8 +502,9 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 			f = 1
 		}
 		val = min + f * (max - min)
-		value^ = val
 	}
+	// write back into value:
+	value^ = trait.from_f32(val)
 
 
 	container := div(
@@ -487,7 +542,7 @@ slider_f32 :: proc(value: ^f32, min: f32 = 0, max: f32 = 1, id: UiId = 0, slider
 		},
 		id = ui_id_next(id),
 	)
-	text_str := fmt.aprintf("%f", val, allocator = context.temp_allocator)
+	text_str := trait.display(value^)
 	child_text(
 		container,
 		Text{str = text_str, color = UI_THEME.text, font_size = UI_THEME.font_size, shadow = UI_THEME.text_shadow},

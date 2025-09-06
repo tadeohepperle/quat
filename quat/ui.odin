@@ -1697,6 +1697,7 @@ RunRecorder :: struct {
 	// double indirection to maintain stable pointers, in case e.g. new runs are added while other elements are still in use
 	runs: map[RunKey]^[dynamic]RunEl,
 }
+
 run_recorder_get_run :: proc(rec: ^RunRecorder, key: RunKey) -> ^[dynamic]RunEl {
 	if run_ptr, ok := rec.runs[key]; ok {
 		return run_ptr
@@ -1734,9 +1735,9 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 	// all of them have the same texture handle, we can make a single batch across runs
 
 	RunElements :: struct {
-		key:      RunKey,
-		z:        u64,
-		elements: []RunEl,
+		key:         RunKey,
+		run_order_z: u64,
+		elements:    []RunEl,
 	}
 
 	// create a list of runs to iterate to create batches
@@ -1748,7 +1749,7 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 		}
 		// determine a `z` value as a sort key to sort all the runs
 		proj := UI_CTX.new_projections[key.proj_idx]
-		proj_z: u32
+		proj_z: u16
 		switch proj in proj {
 		case UiScreenProjection:
 			proj_z = 1000
@@ -1757,7 +1758,8 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 		case UiWorld3DProjection:
 			proj_z = 0
 		}
-		z := u64(proj_z) | u64(key.z_idx) << 32
+		clip_z: u16 = 1 if key.clipped_to != nil else 0
+		run_order_z := (u64(proj_z) << 48) | (u64(key.z_idx) << 16) | u64(clip_z)
 
 		// sort all elements within each run:
 		elements := elements[:]
@@ -1766,18 +1768,27 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 			return transmute(u64)el.el_key
 		})
 
-		append(&runs_list, RunElements{key, z, elements[:]})
+		append(&runs_list, RunElements{key, run_order_z, elements[:]})
 	}
 	if len(runs_list) == 0 {
 		return
 	}
-	// print("RUNS")
-	// for el in runs_list[0].elements {
-	// 	print("   ", el)
-	// }
+
 
 	// sort the runs by their z to respect ui_space (screen vs. world) and z-idx (and maybe clipping rect)
-	slice.sort_by_key(runs_list[:], proc(e: RunElements) -> u64 {return e.z})
+	slice.sort_by_key(runs_list[:], proc(e: RunElements) -> u64 {return e.run_order_z})
+
+
+	print("RUNS: ", len(runs_list))
+	for run, i in runs_list {
+		print("  run", i, ": ", run.key)
+		for el, j in run.elements {
+			if el.el_key.run_el_kind == .Div {
+				div := cast(^DivElement)el.el_ptr
+				print("    ", j, ": ", el.el_key, div.size, div.color)
+			}
+		}
+	}
 
 	// then go over all runs and try to add batches:
 	ui_batches_clear(out_batches)

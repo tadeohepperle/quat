@@ -25,7 +25,7 @@ struct VertexOutput{
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = world_2d_pos_to_ndc_3d(vertex.pos);
+    out.clip_position = world_2d_pos_to_clip_pos_3d(vertex.pos);
     out.pos = vertex.pos;
     out.normal = vertex.normal;
     out.color = vertex.color;
@@ -60,7 +60,7 @@ fn vs_hex_mask(vertex: Vertex) -> VertexOutput {
 
   
     // let flat_pos = Vec3(vertex.pos.x, vertex.pos.y, 0.0);
-    out.clip_position = world_2d_pos_to_ndc_3d(vertex.pos);
+    out.clip_position = world_2d_pos_to_clip_pos_3d(vertex.pos);
     out.pos = vertex.pos;
     out.normal = vertex.normal;
     out.color = vertex.color;
@@ -150,7 +150,7 @@ fn fs_hex_mask(in: VertexOutput) -> @location(0) vec4<f32>  {
     // let vis = world_pos_to_hex_visibility(in.pos.xy);
     let vis = 1.0;
 
-    var center = globals.xxx.zw;
+    var center = frame.xxx.zw;
     center = world_to_hex_pos(center);
     center = hex_to_world_pos(IVec2(i32(center.x), i32(center.y)));
 
@@ -168,6 +168,6 @@ fn fs_hex_mask(in: VertexOutput) -> @location(0) vec4<f32>  {
 
 fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {
     let vis_noise_stregth = 1.0 - vis;
-    let noise = noise2(w_pos * 1.3  + globals.time_secs *0.3) + noise2((w_pos + globals.time_secs*0.5) * 3.127) - 2.0;
+    let noise = noise2(w_pos * 1.3  + frame.total_time *0.3) + noise2((w_pos + frame.total_time*0.5) * 3.127) - 2.0;
     return clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
 }

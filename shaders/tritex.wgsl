@@ -1,9 +1,9 @@
 #import utils.wgsl
 #import noise.wgsl
 
-@group(1) @binding(0)
+@group(2) @binding(0)
 var t_diffuse: texture_2d_array<f32>;
-@group(1) @binding(1)
+@group(2) @binding(1)
 var s_diffuse: sampler;
 
 struct Vertex {
@@ -25,7 +25,7 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
     // let n = perlinNoise2(pos *23.7) -0.5 ;
     // pos += n * 0.1  ; 
     var out: VertexOutput;
-    out.clip_position = world_2d_pos_to_ndc(vec2(pos.x, pos.y /1.0));
+    out.clip_position = world_2d_pos_to_clip_pos(vec2(pos.x, pos.y /1.0));
     out.pos = pos;
     out.indices = vertex.indices;
     out.weights = vertex.weights;
@@ -37,7 +37,7 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> vec3f {
     let offset = pos / wavelength ;
-    // let offset = (pos + globals.time_secs * 0.05)/ wavelength ;
+    // let offset = (pos + frame.total_time * 0.05)/ wavelength ;
     let off_a = offset + (f32(indices[0]) + seed);
     let off_b = offset + (f32(indices[1]) + seed);
     let off_c = offset + (f32(indices[2]) + seed);

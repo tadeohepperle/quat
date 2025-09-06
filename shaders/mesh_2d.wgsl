@@ -20,7 +20,7 @@ struct VertexOutput{
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = world_2d_pos_to_ndc(vertex.pos);
+    out.clip_position = world_2d_pos_to_clip_pos(vertex.pos);
     out.uv = vertex.uv;
     out.color = vertex.color;
     return out;

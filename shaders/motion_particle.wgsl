@@ -55,7 +55,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: MotionParticleIns
     let w_z = pos_rotated.y + instance.z_and_rotation.x + size_half.y;
     let w_pos = pos_rotated + instance.pos;
 
-    let time = flipbook.time*f32(flipbook.n_tiles) + instance.lifetime_and_t_offset.y; // globals.time_secs * 40.0  
+    let time = flipbook.time*f32(flipbook.n_tiles) + instance.lifetime_and_t_offset.y; // frame.total_time * 40.0  
     let tile_idx_one = u32(time);
     let tile_idx_two = u32(time) + 1;
     let uv_one_start = tile_idx_to_start_uv(tile_idx_one);
@@ -66,7 +66,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: MotionParticleIns
     out.uv_one = map_unit_uv(u_uv, vec4<f32>(uv_one_start, uv_one_start + flipbook.uv_tile_size));
     out.uv_two = map_unit_uv(u_uv, vec4<f32>(uv_two_start, uv_two_start + flipbook.uv_tile_size));
 
-    out.clip_position = world_2d_pos_to_ndc_with_z(w_pos, w_z); 
+    out.clip_position = world_2d_pos_to_clip_pos_with_z(w_pos, w_z); 
     out.color = instance.color; 
     return out;
 }
@@ -79,19 +79,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     motion *= flipbook.uv_tile_size * 0.25 ; // the 0.05 here is kinda dubious but seems to work. 0.5 comes from normalizing the 2.0 above?? and then maybe texture has made to have a a shift of 1/10 of image uv to be full 0 or 255 already?? or 1/20th?
 
 
-    let f = in.uv_two_factor; // globals.xxx.x; // 
+    let f = in.uv_two_factor; // frame.xxx.x; // 
     
     // let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one + f * -motion);
     // let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two + (1.0 -f) * motion);
     // let tex_color = mix(tex_color_one, tex_color_two, f);
     // return tex_color * in.color;
 
-    if globals.xxx.x < 0.33 {
+    if frame.xxx.x < 0.33 {
         let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one + f * -motion);
         let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two + (1.0 -f) * motion);
         let tex_color = mix(tex_color_one, tex_color_two, f);
         return tex_color;
-    } else if globals.xxx.x < 0.9 {
+    } else if frame.xxx.x < 0.9 {
         let tex_color_one = textureSample(t_diffuse, s_sampler, in.uv_one);
         let tex_color_two = textureSample(t_diffuse, s_sampler, in.uv_two);
         let tex_color = mix(tex_color_one, tex_color_two, f);

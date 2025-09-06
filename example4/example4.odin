@@ -12,15 +12,15 @@ import "core:time"
 
 print :: fmt.println
 
-div :: engine.div
+div :: q.div
 Ui :: q.Ui
-UiText :: engine.UiText
-UiDiv :: engine.UiDiv
+UiText :: q.UiText
+UiDiv :: q.UiDiv
 Div :: q.Div
-child :: engine.child
-child_div :: engine.child_div
-child_text :: engine.child_text
-text :: engine.text
+child :: q.child
+child_div :: q.child_div
+child_text :: q.child_text
+text :: q.text
 Text :: q.Text
 add_ui :: engine.add_ui
 
@@ -74,7 +74,7 @@ main :: proc() {
 			),
 		)
 
-		// we have limited support for div rotations by setting a RotateByGap flag and 
+		// we have limited support for div rotations by setting a RotateByGap flag and
 		// using the gap value for rotation.
 		// children are not rotated! Only good for wiggly icons or something...
 
@@ -178,11 +178,11 @@ scroll_table :: proc(
 	left_slider_interaction := q.ui_interaction(left_slider_id)
 	top_slider_c, _ := q.ui_get_cached_no_user_data(top_slider_id)
 	left_slider_c, _ := q.ui_get_cached_no_user_data(left_slider_id)
-	cursor_pos := top_slider_c.cursor_pos
+	cursor_pos := q.ui_get_cached_projection(top_slider_c.proj_idx).local_cursor_pos
 
 	if top_slider_interaction.pressed {
 		state.top_slider_f = math.remap_clamped(
-			top_slider_c.cursor_pos.x,
+			cursor_pos.x,
 			top_slider_c.pos.x + top_slider_knob_w / 2,
 			top_slider_c.pos.x + top_slider_c.size.x - top_slider_knob_w / 2,
 			0,
@@ -204,7 +204,7 @@ scroll_table :: proc(
 	x_offset: f32 = state.top_slider_f * (field_size.x - visible_field_size.x)
 
 	container := div(
-		Div{width = total_size.x, height = total_size.y, flags = {.WidthPx, .HeightPx}, color = q.ColorDarkGrey},
+		Div{width = total_size.x, height = total_size.y, flags = {.WidthPx, .HeightPx}, color = q.ColorDarkGrey * 0.9},
 	)
 	top_slider := child_div(
 		container,
@@ -213,7 +213,7 @@ scroll_table :: proc(
 			width = visible_field_size.x,
 			height = SCROLL_BAR_WIDTH,
 			flags = {.WidthPx, .HeightPx, .Absolute},
-			color = q.ColorBlack,
+			color = q.ColorBlack * 0.9,
 		},
 		top_slider_id,
 	)
@@ -236,7 +236,7 @@ scroll_table :: proc(
 			width = SCROLL_BAR_WIDTH,
 			height = visible_field_size.y,
 			flags = {.WidthPx, .HeightPx, .Absolute},
-			color = q.ColorBlack,
+			color = q.ColorBlack * 0.9,
 		},
 		left_slider_id,
 	)
@@ -274,13 +274,13 @@ scroll_table :: proc(
 	)
 	_add_offsetted_child({-x_offset, 0}, top_header_container, top_header_ui)
 	side_header_container := child_div(
-		container,
-		q.Div {
-			width = corner_size.x,
-			height = visible_field_size.y,
-			offset = Vec2{SCROLL_BAR_WIDTH, SCROLL_BAR_WIDTH + corner_size.y},
-			flags = {.Absolute, .WidthPx, .HeightPx, .ClipContent},
-		},
+	container,
+	q.Div {
+		width  = corner_size.x,
+		height = visible_field_size.y,
+		offset = Vec2{SCROLL_BAR_WIDTH, SCROLL_BAR_WIDTH + corner_size.y},
+		flags  = {.Absolute, .WidthPx, .HeightPx, .ClipContent}, // },
+	},
 	)
 	_add_offsetted_child({0, -y_offset}, side_header_container, side_header_ui)
 	field_container := child_div(

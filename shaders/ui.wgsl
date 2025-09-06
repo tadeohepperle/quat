@@ -247,7 +247,7 @@ fn vs_glyph(@builtin(vertex_index) vertex_index: u32, instance: GlyphInstance) -
 // 	let uv = ((1.0 - u_uv) * instance.uv.xy + u_uv * instance.uv.zw);
 // 	let v_pos: Vec2 = instance.pos + u_uv * instance.size;
 // 	var out: VsGlyphOut;
-//     out.clip_position = ui_world_2d_pos_to_ndc(v_pos); // ONLY DIFFERENCE!!
+//     out.clip_position = ui_world_2d_pos_to_clip_pos(v_pos); // ONLY DIFFERENCE!!
 // 	out.color = instance.color;
 // 	out.uv = uv;
 // 	out.shadow_and_bias = instance.shadow_and_bias; 
@@ -279,7 +279,7 @@ fn fs_glyph(in: VsGlyphOut) -> @location(0) Vec4 {
     return color; // + Vec4(1,0,0,0.3); // * vec4(1.0,1.0,1.0,5.0);
 }
 
-// fn ui_world_2d_pos_to_ndc(ui_world_pos: Vec2) -> Vec4 {
+// fn ui_world_2d_pos_to_clip_pos(ui_world_pos: Vec2) -> Vec4 {
 //     let w_pos = ui_world_pos / globals.world_ui_px_per_unit;
 //     let w_pos2 =  world_transform.rot_scale * vec2f(w_pos.x, -w_pos.y) + world_transform.offset;
 //     let extended_w_pos = vec3<f32>(w_pos2.x, w_pos2.y, 1.0);

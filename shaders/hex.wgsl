@@ -15,7 +15,7 @@ struct HexChunkData {
     // is actually array<vec2<PackedTile>> representing array<PackedTile> for 16 alignment
     tiles: array<vec4<u32>, ARRAY_LEN>, 
 }
-@group(2) @binding(0) var<uniform> hex_chunk_terrain : HexChunkData;
+@group(3) @binding(0) var<uniform> hex_chunk_terrain : HexChunkData;
 
 struct Tile {
     old_ter:  u32,
@@ -35,7 +35,7 @@ fn get_data(idx_in_chunk: u32) -> Tile {
     let new_vis_255 = f32(u8_values[3]);
     
     let new_fact = bitcast<f32>(two_tiles[comp_idx + 1]);
-    // let new_fact = globals.xxx.x;
+    // let new_fact = frame.xxx.x;
     let vis = (old_vis_255 + ((new_vis_255 - old_vis_255) * new_fact)) * (1.0 / 255.0);
     res.new_fact_and_vis = vec2<f32>(new_fact, vis);
     return res;
@@ -52,7 +52,7 @@ fn get_visibility(idx_in_chunk: u32) -> f32 {
     let new_vis_255 = f32(u8_values[3]);
 
     let new_fact = bitcast<f32>(two_tiles[comp_idx + 1]);
-    // let new_fact = globals.xxx.x;
+    // let new_fact = frame.xxx.x;
     let vis = (old_vis_255 + ((new_vis_255 - old_vis_255) * new_fact)) * (1.0 / 255.0);
     return vis;
 }

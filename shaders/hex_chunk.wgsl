@@ -2,9 +2,9 @@
 #import noise.wgsl
 #import hex.wgsl
 
-@group(1) @binding(0)
+@group(2) @binding(0)
 var t_diffuse: texture_2d_array<f32>;
-@group(1) @binding(1)
+@group(2) @binding(1)
 var s_diffuse: sampler;
 
 struct VertexOutput{
@@ -144,7 +144,7 @@ d is the center of the hex at {x,y+1}
     //     out.clip_position = vec4<f32>(0.0);
     //     return out;
     // }
-    out.clip_position = world_2d_pos_to_ndc(vec2(w_pos.x, w_pos.y));
+    out.clip_position = world_2d_pos_to_clip_pos(vec2(w_pos.x, w_pos.y));
     return out;
 }
 
@@ -175,8 +175,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let new_fact = in.new_fact_and_vis.x;
     let vis = in.new_fact_and_vis.y;
-    // let new_fact = globals.xxx.y;
-    // let new_fact = globals.xxx.x;
+    // let new_fact = frame.xxx.y;
+    // let new_fact = frame.xxx.x;
     // let vis = mix(0.0, 1.0, new_fact);
 
     var weights = in.weights;
@@ -193,7 +193,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let color = mix(old_color, new_color, new_fact);
 
     let vis_n =  vis_noised(vis, in.pos);
-    let vis_final = mix(vis, vis_n, globals.xxx.y);
+    let vis_final = mix(vis, vis_n, frame.xxx.y);
 
     // let dotted = Vec4(step(0.95, max(max(weights.x, weights.y), weights.z))) * RED;
     let a = weights.x;
@@ -221,7 +221,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {
     let vis_noise_stregth = 1.0 - vis;
-    let noise = noise2(w_pos * 1.3  + globals.time_secs *0.3) + noise2((w_pos + globals.time_secs*0.5) * 3.127) - 2.0;
+    let noise = noise2(w_pos * 1.3  + frame.total_time *0.3) + noise2((w_pos + frame.total_time*0.5) * 3.127) - 2.0;
     return clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
 }
 
@@ -240,7 +240,7 @@ const AMPLITUDE: f32 = 0.15;
 const SEED: f32 = 234.2;
 fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> vec3f {
     let offset = pos / wavelength ;
-    // let offset = (pos + globals.time_secs * 0.05)/ wavelength ;
+    // let offset = (pos + frame.total_time * 0.05)/ wavelength ;
     let off_a = offset + (f32(indices[0]) + seed);
     let off_b = offset + (f32(indices[1]) + seed);
     let off_c = offset + (f32(indices[2]) + seed);

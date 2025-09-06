@@ -57,8 +57,8 @@ Engine :: struct {
 	transparent_sprites_low:          SpriteBuffers,
 	transparent_sprites_high:         SpriteBuffers,
 	world_ui_buffers:                 q.UiRenderBuffers,
-	screen_ui_batches:                q.UiBatches,
-	screen_ui_buffers:                q.UiRenderBuffers,
+	ui_batches:                       q.UiBatches,
+	ui_buffers:                       q.UiRenderBuffers,
 	motion_particles_render_commands: [dynamic]q.MotionParticlesRenderCommand,
 	motion_particles_buffer:          q.DynamicBuffer(q.MotionParticleInstance),
 	top_level_elements_scratch:       [dynamic]q.TopLevelElement,
@@ -222,15 +222,15 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	q.mesh_2d_renderer_create(&engine.mesh_2d_renderer)
 
 	p := &engine.pipelines
-	// p[.HexChunk] = q.make_render_pipeline(q.hex_chunk_pipeline_config())
-	// p[.SpriteSimple] = q.make_render_pipeline(q.sprite_pipeline_config(.Simple))
-	// p[.SpriteCutout] = q.make_render_pipeline(q.sprite_pipeline_config(.Cutout))
-	// p[.SpriteShine] = q.make_render_pipeline(q.sprite_pipeline_config(.Shine))
-	// p[.SpriteTransparent] = q.make_render_pipeline(q.sprite_pipeline_config(.Transparent))
-	// p[.Mesh3d] = q.make_render_pipeline(q.mesh_3d_pipeline_config())
-	// p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
-	// p[.SkinnedCutout] = q.make_render_pipeline(q.skinned_pipeline_config())
-	// p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
+	p[.HexChunk] = q.make_render_pipeline(q.hex_chunk_pipeline_config())
+	p[.SpriteSimple] = q.make_render_pipeline(q.sprite_pipeline_config(.Simple))
+	p[.SpriteCutout] = q.make_render_pipeline(q.sprite_pipeline_config(.Cutout))
+	p[.SpriteShine] = q.make_render_pipeline(q.sprite_pipeline_config(.Shine))
+	p[.SpriteTransparent] = q.make_render_pipeline(q.sprite_pipeline_config(.Transparent))
+	p[.Mesh3d] = q.make_render_pipeline(q.mesh_3d_pipeline_config())
+	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
+	p[.SkinnedCutout] = q.make_render_pipeline(q.skinned_pipeline_config())
+	p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
 	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(true))
 	p[.ScreenUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(true))
 	p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(false))
@@ -245,7 +245,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	engine.transparent_sprites_high = sprite_buffers_create()
 
 	engine.world_ui_buffers = q.ui_render_buffers_create()
-	engine.screen_ui_buffers = q.ui_render_buffers_create()
+	engine.ui_buffers = q.ui_render_buffers_create()
 
 	engine.frame_uniform_data = q.FrameUniformData{}
 	engine.frame_uniform = q.uniform_buffer_create(q.FrameUniformData)
@@ -268,13 +268,13 @@ _engine_destroy :: proc(engine: ^Engine) {
 	sprite_buffers_destroy(&engine.transparent_sprites_high)
 
 	q.ui_render_buffers_destroy(&engine.world_ui_buffers)
-	q.ui_render_buffers_destroy(&engine.screen_ui_buffers)
+	q.ui_render_buffers_destroy(&engine.ui_buffers)
 
 	q.dynamic_buffer_destroy(&engine.motion_particles_buffer)
 	delete(engine.motion_particles_render_commands)
 	delete(engine.top_level_elements_scratch)
 
-	q.ui_batches_drop(&engine.screen_ui_batches)
+	q.ui_batches_drop(&engine.ui_batches)
 
 	q.uniform_buffer_destroy(&engine.camera_2d_uniform)
 	q.uniform_buffer_destroy(&engine.frame_uniform)
@@ -409,10 +409,10 @@ _engine_end_frame :: proc(engine: ^Engine) {
 	_engine_prepare(engine)
 
 
-	// print("batches: ")
-	// for b, i in engine.screen_ui_batches.batches {
-	// 	print(i, ":", b.kind, b.end_idx - b.start_idx)
-	// }
+	print("batches: ", len(engine.ui_batches.batches))
+	for b in engine.ui_batches.batches {
+		print("    ", b.end_idx - b.start_idx, b.kind, b.clipping_rect)
+	}
 
 	// RENDER
 	_engine_render(engine)
@@ -453,8 +453,8 @@ _engine_prepare :: proc(engine: ^Engine) {
 		projection_2d := q.UiWorld2DProjection{ui.transform, engine.scene.camera}
 		append(&engine.top_level_elements_scratch, q.TopLevelElement{ui.ui, projection_2d})
 	}
-	q.ui_system_layout_elements_and_build_batches(engine.top_level_elements_scratch[:], &engine.screen_ui_batches)
-	q.ui_render_buffers_prepare(&engine.screen_ui_buffers, engine.screen_ui_batches)
+	q.ui_system_layout_elements_and_build_batches(engine.top_level_elements_scratch[:], &engine.ui_batches)
+	q.ui_render_buffers_prepare(&engine.ui_buffers, engine.ui_batches)
 
 	// todo! put world ui back in!
 	// for e in scene.world_ui {
@@ -537,54 +537,54 @@ _engine_render :: proc(engine: ^Engine) {
 	frame_uniform := engine.frame_uniform.bind_group
 	camera_2d_uniform := engine.camera_2d_uniform.bind_group
 
-	// q.hex_chunks_render(
-	// 	engine.pipelines[.HexChunk].pipeline,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// 	engine.scene.tritex_textures,
-	// 	engine.scene.hex_chunks[:],
-	// )
-	// q.tritex_mesh_render(
-	// 	engine.pipelines[.Tritex].pipeline,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// 	engine.scene.tritex_meshes[:],
-	// 	engine.scene.tritex_textures,
-	// )
-	// q.mesh_3d_renderer_render(
-	// 	engine.pipelines[.Mesh3d].pipeline,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// 	engine.scene.meshes_3d[:],
-	// )
-	// q.mesh_3d_renderer_render_hex_chunk_masked(
-	// 	engine.pipelines[.Mesh3dHexChunkMasked].pipeline,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// 	engine.scene.meshes_3d_hex_chunk_masked[:],
-	// )
+	q.hex_chunks_render(
+		engine.pipelines[.HexChunk].pipeline,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+		engine.scene.tritex_textures,
+		engine.scene.hex_chunks[:],
+	)
+	q.tritex_mesh_render(
+		engine.pipelines[.Tritex].pipeline,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+		engine.scene.tritex_meshes[:],
+		engine.scene.tritex_textures,
+	)
+	q.mesh_3d_renderer_render(
+		engine.pipelines[.Mesh3d].pipeline,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+		engine.scene.meshes_3d[:],
+	)
+	q.mesh_3d_renderer_render_hex_chunk_masked(
+		engine.pipelines[.Mesh3dHexChunkMasked].pipeline,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+		engine.scene.meshes_3d_hex_chunk_masked[:],
+	)
 
 	simple_sprite_shader := engine.settings.use_simple_sprite_shader
-	// q.sprite_batches_render(
-	// 	engine.pipelines[.SpriteSimple if simple_sprite_shader else .SpriteCutout].pipeline,
-	// 	engine.cutout_sprites.batches[:],
-	// 	engine.cutout_sprites.instance_buffer,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// )
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteSimple if simple_sprite_shader else .SpriteCutout].pipeline,
+		engine.cutout_sprites.batches[:],
+		engine.cutout_sprites.instance_buffer,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+	)
 	// // todo: this is certainly stupid, because then we render all skinned meshes on top of sprites:
-	// q.skinned_mesh_render(
-	// 	engine.pipelines[.SkinnedCutout].pipeline,
-	// 	engine.scene.skinned_render_commands[:],
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// )
+	q.skinned_mesh_render(
+		engine.pipelines[.SkinnedCutout].pipeline,
+		engine.scene.skinned_render_commands[:],
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+	)
 	// q.motion_particles_render(
 	// 	engine.pipelines[.MotionParticles].pipeline,
 	// 	engine.motion_particles_buffer,
@@ -593,44 +593,34 @@ _engine_render :: proc(engine: ^Engine) {
 	// 	frame_uniform,
 	// 	camera_2d_uniform,
 	// )
-	// q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
+	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
 	q.color_mesh_2d_renderer_render(&engine.color_mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
 
 	// // sandwich the world ui, e.g. health bars in two layers of transparent sprites + cutout sprites on top:
-	// q.sprite_batches_render(
-	// 	engine.pipelines[.SpriteTransparent].pipeline,
-	// 	engine.transparent_sprites_low.batches[:],
-	// 	engine.transparent_sprites_low.instance_buffer,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// )
-	// q.ui_render(
-	// 	engine.world_ui_buffers,
-	// 	engine.pipelines[.WorldUiRect].pipeline,
-	// 	engine.pipelines[.WorldUiGlyph].pipeline,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// 	engine.settings.screen_ui_reference_size,
-	// 	PLATFORM.screen_size,
-	// )
-	// q.sprite_batches_render(
-	// 	engine.pipelines[.SpriteTransparent].pipeline,
-	// 	engine.transparent_sprites_high.batches[:],
-	// 	engine.transparent_sprites_high.instance_buffer,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// )
-	// q.sprite_batches_render(
-	// 	engine.pipelines[.SpriteShine].pipeline,
-	// 	engine.shine_sprites.batches[:],
-	// 	engine.shine_sprites.instance_buffer,
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// )
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteTransparent].pipeline,
+		engine.transparent_sprites_low.batches[:],
+		engine.transparent_sprites_low.instance_buffer,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+	)
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteTransparent].pipeline,
+		engine.transparent_sprites_high.batches[:],
+		engine.transparent_sprites_high.instance_buffer,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+	)
+	q.sprite_batches_render(
+		engine.pipelines[.SpriteShine].pipeline,
+		engine.shine_sprites.batches[:],
+		engine.shine_sprites.instance_buffer,
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+	)
 	// Solution 1: batch sprites and skinned meshes together, and then switching pipelines based on the current batch
 	// Solution 2: use depth writes for at least one of the two and render that first.
 	//
@@ -639,8 +629,8 @@ _engine_render :: proc(engine: ^Engine) {
 	q.gizmos_renderer_render(&engine.gizmos_renderer, hdr_pass, frame_uniform, camera_2d_uniform, .WORLD)
 
 	q.ui_render(
-		engine.screen_ui_batches,
-		engine.screen_ui_buffers,
+		engine.ui_batches,
+		engine.ui_buffers,
 		engine.pipelines[.WorldUiRect].pipeline,
 		engine.pipelines[.WorldUiGlyph].pipeline,
 		hdr_pass,
