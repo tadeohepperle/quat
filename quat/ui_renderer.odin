@@ -367,6 +367,16 @@ ui_glyph_pipeline_config :: proc(legacy_screen_render: bool) -> RenderPipelineCo
 	}
 }
 
+
+WorldUiPushConst :: struct {
+	ui_px_pos_to_clip_pos:             Mat4,
+	// at z = 0
+	ui_px_per_screen_px_at_near_plane: f32,
+	// at z = 1
+	ui_px_per_screen_px_at_far_plane:  f32,
+	_pad:                              Vec2,
+}
+
 ui_projection_to_world_ui_push_const :: proc(proj: UiProjection, screen_size: Vec2) -> WorldUiPushConst {
 	// the mvp matrix we are looking for here is:
 	// proj * view * model and is transforming every point (in 3d space) into clip coordinates
@@ -384,30 +394,23 @@ ui_projection_to_world_ui_push_const :: proc(proj: UiProjection, screen_size: Ve
 				0, 0, 1, 0,
 				0, 0, 0, 1,
 			},
-			ui_px_per_screen_height_near_plane = 1080,
-			ui_px_per_screen_height_far_plane = 1080,
+			ui_px_per_screen_px_at_near_plane = scaling_factor,
+			ui_px_per_screen_px_at_far_plane = scaling_factor,
 		}
 		// odinfmt: enable
 
 
 	case UiWorld2DProjection:
 		ui_px_pos_to_clip_pos := ui_world_2d_projection_matrix(proj, screen_size)
+		ui_px_per_screen_height := proj.camera.height * 1.0 / linalg.length(proj.transform.basis_x)
+		ui_px_per_screen_px := ui_px_per_screen_height / screen_size.y
 		return WorldUiPushConst {
 			ui_px_pos_to_clip_pos = ui_px_pos_to_clip_pos,
-			ui_px_per_screen_height_near_plane = 1080,
-			ui_px_per_screen_height_far_plane = 1080,
+			ui_px_per_screen_px_at_near_plane = ui_px_per_screen_px,
+			ui_px_per_screen_px_at_far_plane = ui_px_per_screen_px,
 		}
 	case UiWorld3DProjection:
 		panic("UiWorld3DProjection not implemented yet")
 	}
 	panic("invalid UiProjection variant")
-}
-
-WorldUiPushConst :: struct {
-	ui_px_pos_to_clip_pos:              Mat4,
-	// at z = 0
-	ui_px_per_screen_height_near_plane: f32,
-	// at z = 1
-	ui_px_per_screen_height_far_plane:  f32,
-	_pad:                               Vec2,
 }

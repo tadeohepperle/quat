@@ -4,15 +4,15 @@ var t_diffuse: texture_2d<f32>;
 var s_diffuse: sampler;
 
 // var<push_constant> world_transform: UiWorldTransform;
-var<push_constant> ui_scaling_factor: f32;
+var<push_constant> legacy_ui_scaling_factor: f32;
 
-var<push_constant> world_ui_push_const: WorldUiPushConst;
+var<push_constant> push_const: WorldUiPushConst;
 struct WorldUiPushConst {
     ui_px_pos_to_clip_pos : Mat4,
 	// at z = 0
-	ui_px_per_screen_height_near_plane: f32,
+	ui_px_per_screen_px_at_near_plane: f32,
 	// at z = 1
-	ui_px_per_screen_height_far_plane:  f32,
+	ui_px_per_screen_px_at_far_plane:  f32,
 	_pad:                               Vec2,
 }
 
@@ -48,10 +48,10 @@ const BOTTOM_VERTEX: u32 = 4u;
 const BORDER: u32 = 8u;
 
 
-// uses the ui_scaling_factor push const
+// uses the legacy_ui_scaling_factor push const
 fn px_pos_to_screen_layout_clip_pos(layout_pos: Vec2) -> Vec4 {
-    let ui_scaling_factor : f32= ui_scaling_factor;
-    let ndc = (layout_pos * ui_scaling_factor) / frame.screen_size * 2.0  -1.0;
+    let legacy_ui_scaling_factor : f32= legacy_ui_scaling_factor;
+    let ndc = (layout_pos * legacy_ui_scaling_factor) / frame.screen_size * 2.0  -1.0;
     return vec4(ndc.x, -ndc.y, 0.0, 1.0);
 }
 
@@ -68,7 +68,7 @@ fn px_pos_to_clip_pos(layout_pos: Vec2) -> Vec4{
     //     -1    ,1    ,0   ,1      ,
     // );
     // return mvp * ext;
-    return world_ui_push_const.ui_px_pos_to_clip_pos * ext;
+    return push_const.ui_px_pos_to_clip_pos * ext;
 }
 
 @vertex
@@ -115,22 +115,19 @@ struct VsRectOut {
 	@location(7) flags:         u32,
 }
 
-// @interpolate(flat) 
-// @interpolate(flat) 
-// @interpolate(flat) 
-
 @fragment
 fn fs_rect_legacy_screen_render(in: VsRectOut) -> @location(0) Vec4 {
     // todo!
     // let screen_ui_pixels_on_screen = globals.screen_ui_layout_extent.y;
     // let softness = screen_ui_pixels_on_screen / globals.screen_size.y;
-    let softness : f32 = 1.0;
+    let softness : f32 = legacy_ui_scaling_factor;
     return _fs_rect(in, softness);
 }
 
 @fragment
 fn fs_rect(in: VsRectOut) -> @location(0) Vec4 {
-    let softness : f32 = 1.0;
+    // todo: when adding 3d interpolate softness in fragment shader between near and far plane
+    let softness : f32 = push_const.ui_px_per_screen_px_at_near_plane;
     return _fs_rect(in, softness);
 }
 
@@ -164,7 +161,7 @@ fn _fs_rect(in: VsRectOut, softness: f32) -> Vec4{
 
 	return final_color;
 
-    // return vec4f(ui_scaling_factor, ui_scaling_factor,ui_scaling_factor, 1.0);
+    // return vec4f(legacy_ui_scaling_factor, legacy_ui_scaling_factor,legacy_ui_scaling_factor, 1.0);
 }
 
 

@@ -201,7 +201,6 @@ slotmap_drop_any :: proc(slotmap: ^AnySlotMap) -> (n_dropped: int) {
 
 @(private)
 assets_drop :: proc(assets: ^Assets) {
-	print("THERE ARE {} textures", assets.textures)
 	fmt.printfln("dropped {} elements of type Texture", slotmap_drop_any(cast(^AnySlotMap)&assets.textures))
 	fmt.printfln("dropped {} elements of type Font", slotmap_drop_any(cast(^AnySlotMap)&assets.fonts))
 	for _, &slotmap in assets.slotmaps {

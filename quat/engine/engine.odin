@@ -726,16 +726,13 @@ _engine_debug_ui_gizmos :: proc(engine: ^Engine) {
 			abcd := [4]Vec2{pos, pos + Vec2{0, size.y}, pos + size, pos + Vec2{size.x, 0}}
 
 			mat := q.ui_world_2d_projection_matrix(proj, screen_size)
-			print("------------------")
 			for &el in abcd {
 				el_ext := Vec4{el.x, el.y, 1, 1}
 				clip_space_pos := mat * el_ext
 				clip_space_pos.y = -clip_space_pos.y
-				print(el, clip_space_pos)
 				screen_pos := ((clip_space_pos.xy + Vec2(1.0)) / 2.0) * screen_size
 				el = screen_pos
 			}
-			print(abcd)
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[0], abcd[1], color, .SCREEN)
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[1], abcd[2], color, .SCREEN)
 			q.gizmos_renderer_add_line(&engine.gizmos_renderer, abcd[2], abcd[3], color, .SCREEN)
