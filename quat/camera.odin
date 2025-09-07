@@ -164,7 +164,7 @@ camera_3d_uniform_data :: proc(camera: Camera3D, screen_size: Vec2) -> Camera3DU
 }
 
 camera_3d_view_matrix :: proc(transform: Camera3DTransform) -> Mat4 {
-	return linalg.matrix4_look_at_f32(transform.eye_pos, transform.focus_pos, transform.up, true)
+	return matrix4_look_at_f32(transform.eye_pos, transform.focus_pos, transform.up)
 }
 
 camera_3d_projection_matrix :: proc(proj: Camera3DProjection, screen_size: Vec2) -> Mat4 {
@@ -179,10 +179,11 @@ camera_3d_projection_matrix :: proc(proj: Camera3DProjection, screen_size: Vec2)
 	panic("invalid Camera3DProjectionKind")
 }
 
-matrix4_look_at_f32 :: proc "contextless" (eye: Vec3, centre: Vec3, up: Vec3, flip_z_axis := false) -> (m: Mat4) {
+matrix4_look_at_f32 :: proc "contextless" (eye: Vec3, centre: Vec3, up: Vec3) -> (m: Mat4) {
+	flip_z_axis := true
 	f := linalg.normalize(centre - eye)
-	s := linalg.normalize(linalg.cross(f, up))
-	u := linalg.cross(s, f)
+	s := -linalg.normalize(linalg.cross(f, up))
+	u := -linalg.cross(s, f)
 	fe := linalg.dot(f, eye)
 
 	return matrix[4, 4]f32{
