@@ -100,13 +100,56 @@ dot :: linalg.dot
 sqrt :: math.sqrt
 
 DEFAULT_CAMERA_3D :: Camera3D {
-	transform = Camera3DTransform{eye_pos = Vec3{0, 5, 10}, focus_pos = Vec3{0, 0, 0}, up = Vec3{0, 1, 0}},
+	transform = Camera3DTransform{eye_pos = Vec3{2, 5, 10}, focus_pos = Vec3{0, 0, 0}, up = Vec3{0, 1, 0}},
 	projection = Camera3DProjection{kind = .Perspective, z_near = 0.1, z_far = 100.0, fov_y = 0.7, height_y = 10.0},
 }
 
 Camera3D :: struct {
 	using transform:  Camera3DTransform,
 	using projection: Camera3DProjection,
+}
+
+camera_3d_ray_from_screen_pos :: proc(camera: Camera3D, screen_pos: Vec2, screen_size: Vec2) -> Ray {
+	// there is probably a better way to do all this
+	ndc: Vec2 = (Vec2{screen_pos.x, screen_size.y - screen_pos.y} * 2.0 / screen_size) - Vec2(1.0)
+	view := camera_3d_view_matrix(camera.transform)
+	view_inv := linalg.matrix4x4_inverse(view)
+	proj := camera_3d_projection_matrix(camera.projection, screen_size)
+	proj_inv := linalg.matrix4x4_inverse(proj)
+	ndc_to_world := view_inv * proj_inv
+	far_plane_pt := mat4_project(ndc_to_world, Vec3{ndc.x, ndc.y, 1.0})
+	near_plane_pt := mat4_project(ndc_to_world, Vec3{ndc.x, ndc.y, math.F32_EPSILON})
+	direction := linalg.normalize(far_plane_pt - near_plane_pt)
+	return Ray{origin = near_plane_pt, direction = direction}
+}
+
+mat4_project :: proc(m: Mat4, pt: Vec3) -> Vec3 {
+	r := m * Vec4{pt.x, pt.y, pt.z, 1.0}
+	return r.xyz / r.w
+}
+
+Ray :: struct {
+	origin:    Vec3,
+	direction: Vec3, // normalized
+}
+
+ray_intersects_xz_plane :: proc(ray: Ray, height: f32 = 0) -> Maybe(f32) {
+	return ray_intersects_plane(ray, Vec3{0, height, 0}, Vec3{0, 1, 0})
+}
+
+ray_intersects_plane :: proc(ray: Ray, plane_origin: Vec3, plane_normal: Vec3) -> Maybe(f32) {
+	denom := linalg.dot(plane_normal, ray.direction)
+	if abs(denom) > math.F32_EPSILON {
+		distance := linalg.dot(plane_origin - ray.origin, plane_normal) / denom
+		if distance > math.F32_EPSILON {
+			return distance
+		}
+	}
+	return nil
+}
+
+ray_get_point :: proc(ray: Ray, distance: f32) -> Vec3 {
+	return ray.origin + ray.direction * distance
 }
 
 Camera3DTransform :: struct {
@@ -125,11 +168,15 @@ Camera3DProjection :: struct {
 
 
 camera_3d_transform_lerp :: proc(a: Camera3DTransform, b: Camera3DTransform, s: f32) -> Camera3DTransform {
-	return Camera3DTransform {
-		eye_pos = lerp(a.eye_pos, b.eye_pos, s),
-		focus_pos = lerp(a.focus_pos, b.focus_pos, s),
-		up = lerp(a.up, b.up, s),
-	}
+	new_focus_pos := lerp(a.focus_pos, b.focus_pos, s)
+	new_eye_pos := lerp(a.eye_pos, b.eye_pos, s)
+
+
+	// offset_a := a.eye_pos - a.focus_pos
+	// offset_b := b.eye_pos - b.focus_pos
+	// new_offset := linalg.vector_slerp(offset_a, offset_b, clamp(s, 0, 1))
+	// new_eye_pos := new_focus_pos + linalg.vector_slerp(offset_a, offset_b, clamp(s, 0, 1))
+	return Camera3DTransform{focus_pos = new_focus_pos, eye_pos = new_eye_pos, up = lerp(a.up, b.up, s)}
 }
 
 camera_3d_projection_lerp :: proc(a: Camera3DProjection, b: Camera3DProjection, s: f32) -> Camera3DProjection {
@@ -192,4 +239,34 @@ matrix4_look_at_f32 :: proc "contextless" (eye: Vec3, centre: Vec3, up: Vec3) ->
 		-f.x, -f.y, -f.z, +fe if flip_z_axis else -fe,
 		0, 0, 0, 1,
 	}
+}
+
+Camera3DTransformOrbital :: struct {
+	focus_pos: Vec3,
+	distance:  f32,
+	pitch:     f32,
+	yaw:       f32,
+}
+
+// camera_3d_transform_orbital_lerp :: proc()
+
+
+// lerp_circlur :: proc "contextless" (a: f32, b: f32, s: f32) -> f32 {
+
+
+// }
+
+camera_3d_transform_orbital :: proc(t: Camera3DTransform) -> Camera3DTransformOrbital {
+	offset := t.focus_pos - t.eye_pos
+	distance := linalg.length(offset)
+	yaw := math.atan2(offset.z, offset.x)
+	pitch := math.asin(offset.y / distance)
+	return Camera3DTransformOrbital{focus_pos = t.focus_pos, distance = distance, yaw = yaw, pitch = pitch}
+}
+
+camera_3d_transform_from_orbital :: proc(t: Camera3DTransformOrbital) -> Camera3DTransform {
+	offset :=
+		Vec3{math.cos(t.pitch) * math.cos(t.yaw), math.sin(t.pitch), math.cos(t.pitch) * math.sin(t.yaw)} * t.distance
+	eye_pos := t.focus_pos - offset
+	return Camera3DTransform{focus_pos = t.focus_pos, eye_pos = eye_pos, up = {0, 1, 0}}
 }

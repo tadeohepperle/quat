@@ -816,3 +816,6 @@ is_key_just_pressed_or_repeated :: #force_inline proc(key: Key) -> bool {
 get_key :: proc(key: Key) -> PressFlags {
 	return PLATFORM.keys[key]
 }
+get_scroll :: proc() -> f32 {
+	return PLATFORM.scroll
+}

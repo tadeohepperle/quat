@@ -326,3 +326,11 @@ vec2_map :: proc(v: Vec2, new_basis: Vec2) -> Vec2 {
 	}
 	return m * v
 }
+
+
+vec2_basis_mat :: proc(b: Vec2) -> Mat2 {
+	return matrix[2, 2]f32{
+		b.x, -b.y,
+		b.y, b.x,
+	}
+}

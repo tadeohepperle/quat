@@ -87,13 +87,42 @@ gizmos_3d_renderer_add_coordinates :: proc(rend: ^Gizmos3DRenderer) {
 
 
 gizmos_3d_renderer_add_aabb :: proc(rend: ^Gizmos3DRenderer, using aabb: Aabb3D, color := GIZMOS_COLOR) {
-	unimplemented()
+	start := u32(len(rend.vertices))
+	append_elems(
+		&rend.vertices,
+		Gizmos3DVertex{Vec3{min.x, min.y, min.z}, color},
+		Gizmos3DVertex{Vec3{max.x, min.y, min.z}, color},
+		Gizmos3DVertex{Vec3{max.x, min.y, max.z}, color},
+		Gizmos3DVertex{Vec3{min.x, min.y, max.z}, color},
+		Gizmos3DVertex{Vec3{min.x, max.y, min.z}, color},
+		Gizmos3DVertex{Vec3{max.x, max.y, min.z}, color},
+		Gizmos3DVertex{Vec3{max.x, max.y, max.z}, color},
+		Gizmos3DVertex{Vec3{min.x, max.y, max.z}, color},
+	)
+	append_elems(
+		&rend.lines,
+		// bottom lines:
+		IndexLine{0, 1} + start,
+		IndexLine{1, 2} + start,
+		IndexLine{2, 3} + start,
+		IndexLine{3, 0} + start,
+		// top lines:
+		IndexLine{4, 5} + start,
+		IndexLine{5, 6} + start,
+		IndexLine{6, 7} + start,
+		IndexLine{7, 4} + start,
+		// side lines:
+		IndexLine{0, 4} + start,
+		IndexLine{1, 5} + start,
+		IndexLine{2, 6} + start,
+		IndexLine{3, 7} + start,
+	)
 }
 gizmos_3d_renderer_add_sphere :: proc(rend: ^Gizmos3DRenderer, center: Vec3, radius: f32, color := GIZMOS_COLOR) {
 	unimplemented()
 }
 gizmos_3d_renderer_add_box :: proc(rend: ^Gizmos3DRenderer, center: Vec3, size: Vec3, color := GIZMOS_COLOR) {
-	unimplemented()
+	gizmos_3d_renderer_add_aabb(rend, Aabb3D{center - size / 2, center + size / 2}, color)
 }
 
 gizmos_3d_pipeline_config :: proc() -> RenderPipelineConfig {
