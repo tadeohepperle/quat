@@ -38,7 +38,7 @@ Camera2DController :: struct {
 }
 
 camera_controller_create :: proc(
-	camera: q.Camera2D = q.DEFAULT_CAMERA,
+	camera: q.Camera2D = q.DEFAULT_CAMERA_2D,
 	settings: Camera2DSettings = DEFAULT_CAMERA_CONTROLLER_SETTINGS,
 ) -> Camera2DController {
 	return Camera2DController{settings = settings, target = camera, current = camera}

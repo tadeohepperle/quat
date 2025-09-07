@@ -121,7 +121,7 @@ main :: proc() {
 				texture = {TESTING_TEXTURE, {{0, 0}, {1, 0.8}}},
 				color = q.ColorSoftOrange,
 				absolute_unit_pos = {0.5, 0.5},
-				gap = engine.get_osc(),
+				gap = q.get_osc(),
 				flags = {.WidthPx, .HeightPx, .Absolute, .MainAlignCenter, .CrossAlignCenter},
 			},
 		)

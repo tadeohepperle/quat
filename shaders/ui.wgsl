@@ -161,18 +161,18 @@ fn _fs_rect(in: VsRectOut, softness: f32) -> Vec4{
 
 	return final_color;
 
-    // return vec4f(legacy_ui_scaling_factor, legacy_ui_scaling_factor,legacy_ui_scaling_factor, 1.0);
+    // return Vec4(legacy_ui_scaling_factor, legacy_ui_scaling_factor,legacy_ui_scaling_factor, 1.0);
 }
 
 
-fn color_texture_mix(color: vec4f, texture: vec4f) -> vec4f {
+fn color_texture_mix(color: Vec4, texture: Vec4) -> Vec4 {
 
     return color * texture;
 
     // if texture.a is 1  -> color * texture
     // if texture.a is 0  -> color
-    // let rbg : vec3f = mix(color.rgb, color.rgb * texture.rgb, texture.a);
-    // return vec4f(rbg, color.a);
+    // let rbg : Vec3 = mix(color.rgb, color.rgb * texture.rgb, texture.a);
+    // return Vec4(rbg, color.a);
 }
 
 fn enabled(flags: u32, mask: u32) -> bool {
@@ -281,9 +281,9 @@ fn fs_glyph(in: VsGlyphOut) -> @location(0) Vec4 {
 
 // fn ui_world_2d_pos_to_clip_pos(ui_world_pos: Vec2) -> Vec4 {
 //     let w_pos = ui_world_pos / globals.world_ui_px_per_unit;
-//     let w_pos2 =  world_transform.rot_scale * vec2f(w_pos.x, -w_pos.y) + world_transform.offset;
-//     let extended_w_pos = vec3<f32>(w_pos2.x, w_pos2.y, 1.0);
-// 	let ndc = globals.camera_proj * vec3<f32>(w_pos2.x, w_pos2.y, 1.0);
+//     let w_pos2 =  world_transform.rot_scale * Vec2(w_pos.x, -w_pos.y) + world_transform.offset;
+//     let extended_w_pos = Vec3(w_pos2.x, w_pos2.y, 1.0);
+// 	let ndc = globals.camera_proj * Vec3(w_pos2.x, w_pos2.y, 1.0);
 //     return  vec4(ndc.x, ndc.y, 0.0, 1.0);
 // }
 

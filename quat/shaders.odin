@@ -96,8 +96,7 @@ make_render_pipeline :: proc(config: RenderPipelineConfig) -> ^RenderPipeline {
 	pipeline.config = config
 	err := _create_or_reload_render_pipeline(&PLATFORM.shader_registry, pipeline)
 	if err, has_err := err.(string); has_err {
-		fmt.println(err)
-		fmt.panicf("Failed to create Render Pipeline \"{}\"", pipeline.config.debug_name)
+		fmt.panicf("Failed to create Render Pipeline \"{}\": {}", pipeline.config.debug_name, err)
 	}
 	assert(pipeline.layout != nil)
 	assert(pipeline.pipeline != nil)
@@ -327,12 +326,9 @@ load_shader_wgsl :: proc(
 	src_file_mod_time: os.File_Time,
 	err: Error,
 ) {
-	defer if err != nil {
-		delete(src_path)
-	}
 	src_file_modification_time, src_err := os.last_write_time_by_name(src_path)
 	if src_err != nil {
-		return {}, {}, tprint(src_err)
+		return {}, {}, fmt.tprintf("Error loading file {}: {}", src_path, src_err)
 	}
 	content, success := os.read_entire_file_from_filename(src_path, NEVER_FREE_ALLOCATOR)
 	if len(content) == 0 || !success {

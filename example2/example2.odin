@@ -98,19 +98,20 @@ main :: proc() {
 				allocated_str_edit.ui,
 			},
 		)
+		engine.display_value(size_of(q.Mat4))
 
 		if n_snake_pts_before != n_snake_pts {
 			snake_drop(snake)
 			snake = snake_create({5, 5}, n_snake_pts)
 		}
 
-		// engine.draw_annotation({2, -1}, "Hello from the engine!")
-		// engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
+		engine.draw_annotation({2, -1}, "Hello from the engine!")
+		engine.add_world_ui({2, 1}, q.button("Hey", "btn1").ui)
 		engine.add_world_ui(
-			Vec2{0, 2},
+			Vec2{-1, 2},
 			q.button("Click me!", "btn2").ui,
-			scale = engine.get_osc(0.4, 0.4, 1.0),
-			rotation = engine.get_osc(1.3),
+			scale = q.get_osc(0.4, 0.4, 1.0),
+			rotation = q.get_osc(1.3),
 		)
 
 		engine.set_tonemapping_mode(tonemapping)
@@ -131,7 +132,7 @@ main :: proc() {
 
 		for pos, i in forest {
 			engine.draw_sprite(
-				q.Sprite{texture = corn, pos = pos, size = {1, 2}, rotation = engine.get_osc(2), color = {1, 1, 1, 1}},
+				q.Sprite{texture = corn, pos = pos, size = {1, 2}, rotation = q.get_osc(2), color = {1, 1, 1, 1}},
 			)
 		}
 

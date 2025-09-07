@@ -20,7 +20,7 @@ struct HexChunkData {
 struct Tile {
     old_ter:  u32,
     new_ter:  u32,
-    new_fact_and_vis: vec2<f32>, 
+    new_fact_and_vis: Vec2, 
 }
 fn get_data(idx_in_chunk: u32) -> Tile {
     let buf_idx = idx_in_chunk / 2;
@@ -37,7 +37,7 @@ fn get_data(idx_in_chunk: u32) -> Tile {
     let new_fact = bitcast<f32>(two_tiles[comp_idx + 1]);
     // let new_fact = frame.xxx.x;
     let vis = (old_vis_255 + ((new_vis_255 - old_vis_255) * new_fact)) * (1.0 / 255.0);
-    res.new_fact_and_vis = vec2<f32>(new_fact, vis);
+    res.new_fact_and_vis = Vec2(new_fact, vis);
     return res;
 }
 

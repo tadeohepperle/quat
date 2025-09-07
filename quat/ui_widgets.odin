@@ -714,30 +714,7 @@ enum_radio :: proc(value: ^$T, title: string = "", horizontal := false) -> Ui wh
 	return ui
 }
 
-// DisplayValuePos :: enum {
-// 	TopLeft,
-// 	BottomLeft,
-// 	TopRight,
-// 	BottomRight,
-// 	Top,
-// 	Left,
-// 	Bottom,
-// 	Right,
-// 	Center,
-// }
-// UNIT_POS_TABLE: [DisplayValuePos]Vec2 = {
-// 	.TopLeft     = Vec2{0, 0},
-// 	.BottomLeft  = Vec2{0, 1},
-// 	.TopRight    = Vec2{1, 0},
-// 	.BottomRight = Vec2{1, 1},
-// 	.Top         = Vec2{0.5, 0},
-// 	.Left        = Vec2{0, 0.5},
-// 	.Bottom      = Vec2{0.5, 1},
-// 	.Right       = Vec2{1, 0.5},
-// 	.Center      = Vec2{0.5, 0.5},
-// }
-
-
+// both allocated in tmp memory
 DisplayValue :: struct {
 	label: string,
 	value: string,

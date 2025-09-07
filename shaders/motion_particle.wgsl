@@ -8,11 +8,11 @@ var t_motion: texture_2d<f32>;
 var s_sampler: sampler;
 
 struct MotionParticleInstance {
-    @location(0) pos: vec2<f32>,
-    @location(1) size: vec2<f32>,
-    @location(2) color: vec4<f32>,
-    @location(3) z_and_rotation: vec2<f32>, 
-    @location(4) lifetime_and_t_offset: vec2<f32>, 
+    @location(0) pos: Vec2,
+    @location(1) size: Vec2,
+    @location(2) color: Vec4,
+    @location(3) z_and_rotation: Vec2, 
+    @location(4) lifetime_and_t_offset: Vec2, 
 }
 
 struct FlipbookData {
@@ -20,26 +20,26 @@ struct FlipbookData {
 	_unused:      f32,
 	n_tiles:      u32,       // how many tiles there are in total
 	n_x_tiles:    u32,       // how many tiles there are in x direction
-	start_uv:     vec2<f32>, // diffuse and motion image start uv pos of first flipbook tile in atlas
-	uv_tile_size: vec2<f32>, // size per tile!
+	start_uv:     Vec2, // diffuse and motion image start uv pos of first flipbook tile in atlas
+	uv_tile_size: Vec2, // size per tile!
 }
 
 var<push_constant> flipbook: FlipbookData;
 
 struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) color:         vec4<f32>,
-    @location(1) uv_one:        vec2<f32>,
-    @location(2) uv_two:        vec2<f32>,
+    @builtin(position) clip_position: Vec4,
+    @location(0) color:         Vec4,
+    @location(1) uv_one:        Vec2,
+    @location(2) uv_two:        Vec2,
     @location(3) uv_two_factor: f32,
 }
 
 // tile idx can be out of range, will loop around
-fn tile_idx_to_start_uv(tile_idx: u32) -> vec2<f32> {
+fn tile_idx_to_start_uv(tile_idx: u32) -> Vec2 {
     let idx: u32  = tile_idx % flipbook.n_tiles;
     let y_idx: u32 = idx / flipbook.n_x_tiles;
     let x_idx: u32 = idx % flipbook.n_x_tiles;
-    return flipbook.start_uv + flipbook.uv_tile_size * vec2<f32>(f32(x_idx), f32(y_idx));
+    return flipbook.start_uv + flipbook.uv_tile_size * Vec2(f32(x_idx), f32(y_idx));
 }
 
 
@@ -63,8 +63,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: MotionParticleIns
 
     var out: VertexOutput;
     out.uv_two_factor = fract(time);
-    out.uv_one = map_unit_uv(u_uv, vec4<f32>(uv_one_start, uv_one_start + flipbook.uv_tile_size));
-    out.uv_two = map_unit_uv(u_uv, vec4<f32>(uv_two_start, uv_two_start + flipbook.uv_tile_size));
+    out.uv_one = map_unit_uv(u_uv, Vec4(uv_one_start, uv_one_start + flipbook.uv_tile_size));
+    out.uv_two = map_unit_uv(u_uv, Vec4(uv_two_start, uv_two_start + flipbook.uv_tile_size));
 
     out.clip_position = world_2d_pos_to_clip_pos_with_z(w_pos, w_z); 
     out.color = instance.color; 
@@ -72,10 +72,10 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: MotionParticleIns
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput) -> @location(0) Vec4 {
     // inspired by: https://www.klemenlozar.com/frame-blending-with-motion-vectors/
     let motion_rg = textureSample(t_motion, s_sampler, in.uv_two).rg;
-    var motion: vec2<f32> = (motion_rg - 0.5) * 2.0;
+    var motion: Vec2 = (motion_rg - 0.5) * 2.0;
     motion *= flipbook.uv_tile_size * 0.25 ; // the 0.05 here is kinda dubious but seems to work. 0.5 comes from normalizing the 2.0 above?? and then maybe texture has made to have a a shift of 1/10 of image uv to be full 0 or 255 already?? or 1/20th?
 
 

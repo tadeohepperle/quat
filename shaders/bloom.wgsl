@@ -8,46 +8,46 @@ var hdr_image: texture_2d<f32>;
 var hdr_sampler: sampler;
 
 struct VertexOutput {
-    @location(0) uv: vec2<f32>,
-    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: Vec2,
+    @builtin(position) clip_position: Vec4,
 };
 
 @fragment
-fn first_downsample(vs: VertexOutput) -> @location(0) vec4<f32> {
+fn first_downsample(vs: VertexOutput) -> @location(0) Vec4 {
     let sample = sample_input_13_tap(vs.uv);
     return vec4(soft_threshold(sample.xyz), 1.0);
 }
 
 @fragment
-fn downsample(vs: VertexOutput) -> @location(0) vec4<f32> {
+fn downsample(vs: VertexOutput) -> @location(0) Vec4 {
     let sample = sample_input_13_tap(vs.uv);
     return vec4(sample, 1.0);
 }
 
 @fragment
-fn upsample(vs: VertexOutput) -> @location(0) vec4<f32> {
+fn upsample(vs: VertexOutput) -> @location(0) Vec4 {
     let sample = sample_input_3x3_tent(vs.uv);
     return vec4(sample,1.0);
 }
 
 // // [COD] slide 162
-fn sample_input_3x3_tent(uv: vec2<f32>) -> vec3<f32> {
+fn sample_input_3x3_tent(uv: Vec2) -> Vec3 {
     // Radius. Empirically chosen by and tweaked from the LearnOpenGL article.
     let aspect = frame.screen_size.x / frame.screen_size.y;
     let x = 0.004 / aspect;
     let y = 0.004;
 
-    let a = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x - x, uv.y + y)).rgb;
-    let b = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x, uv.y + y)).rgb;
-    let c = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x + x, uv.y + y)).rgb;
+    let a = textureSample(hdr_image, hdr_sampler, Vec2(uv.x - x, uv.y + y)).rgb;
+    let b = textureSample(hdr_image, hdr_sampler, Vec2(uv.x, uv.y + y)).rgb;
+    let c = textureSample(hdr_image, hdr_sampler, Vec2(uv.x + x, uv.y + y)).rgb;
 
-    let d = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x - x, uv.y)).rgb;
-    let e = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x, uv.y)).rgb;
-    let f = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x + x, uv.y)).rgb;
+    let d = textureSample(hdr_image, hdr_sampler, Vec2(uv.x - x, uv.y)).rgb;
+    let e = textureSample(hdr_image, hdr_sampler, Vec2(uv.x, uv.y)).rgb;
+    let f = textureSample(hdr_image, hdr_sampler, Vec2(uv.x + x, uv.y)).rgb;
 
-    let g = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x - x, uv.y - y)).rgb;
-    let h = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x, uv.y - y)).rgb;
-    let i = textureSample(hdr_image, hdr_sampler, vec2<f32>(uv.x + x, uv.y - y)).rgb;
+    let g = textureSample(hdr_image, hdr_sampler, Vec2(uv.x - x, uv.y - y)).rgb;
+    let h = textureSample(hdr_image, hdr_sampler, Vec2(uv.x, uv.y - y)).rgb;
+    let i = textureSample(hdr_image, hdr_sampler, Vec2(uv.x + x, uv.y - y)).rgb;
 
     var sample = e * 0.25;
     sample += (b + d + f + h) * 0.125;
@@ -62,7 +62,7 @@ const y: f32 = 1.0;
 const z: f32 = 1.0;
 const w: f32 = 1.0;
 
-fn soft_threshold(color: vec3<f32>) -> vec3<f32> {
+fn soft_threshold(color: Vec3) -> Vec3 {
     let brightness = max(color.r, max(color.g, color.b));
     var softness = brightness - y;
     softness = clamp(softness, 0.0, z);
@@ -73,7 +73,7 @@ fn soft_threshold(color: vec3<f32>) -> vec3<f32> {
 }
 
 // [COD] slide 153
-fn sample_input_13_tap(uv: vec2<f32>) -> vec3<f32> {
+fn sample_input_13_tap(uv: Vec2) -> Vec3 {
     let a = textureSample(hdr_image, hdr_sampler, uv, vec2<i32>(-2, 2)).rgb;
     let b = textureSample(hdr_image, hdr_sampler, uv, vec2<i32>(0, 2)).rgb;
     let c = textureSample(hdr_image, hdr_sampler, uv, vec2<i32>(2, 2)).rgb;
@@ -96,7 +96,7 @@ fn sample_input_13_tap(uv: vec2<f32>) -> vec3<f32> {
 
 
 
-// fn sample_input_13_tap_initial(uv: vec2<f32>) -> vec3<f32> {
+// fn sample_input_13_tap_initial(uv: Vec2) -> Vec3 {
 //     let a = textureSample(hdr_image, hdr_sampler, uv, vec2<i32>(-2, 2)).rgb;
 //     let b = textureSample(hdr_image, hdr_sampler, uv, vec2<i32>(0, 2)).rgb;
 //     let c = textureSample(hdr_image, hdr_sampler, uv, vec2<i32>(2, 2)).rgb;
@@ -133,7 +133,7 @@ fn sample_input_13_tap(uv: vec2<f32>) -> vec3<f32> {
 // }
 
 
-// fn karis_average(color: vec3<f32>) -> f32 {
+// fn karis_average(color: Vec3) -> f32 {
 //     // Luminance calculated by gamma-correcting linear RGB to non-linear sRGB using pow(color, 1.0 / 2.2)
 //     // and then calculating luminance based on Rec. 709 color primaries.
 //     let luma = tonemapping_luminance(rgb_to_srgb_simple(color)) / 4.0;

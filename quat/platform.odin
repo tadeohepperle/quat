@@ -774,6 +774,9 @@ get_cursor_pos :: proc() -> Vec2 {
 get_cursor_delta :: proc() -> Vec2 {
 	return PLATFORM.cursor_delta
 }
+get_mouse_btn :: proc(btn: MouseButton) -> PressFlags {
+	return PLATFORM.mouse_buttons[btn]
+}
 is_double_clicked :: proc() -> bool {
 	return PLATFORM.double_clicked
 }

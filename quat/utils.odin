@@ -317,3 +317,12 @@ NEVER_FREE_ARENA: virtual.Arena
 // 		pool.data = new_data
 // 	}
 // }
+
+
+vec2_map :: proc(v: Vec2, new_basis: Vec2) -> Vec2 {
+	m := matrix[2, 2]f32{
+		new_basis.x, -new_basis.y,
+		new_basis.y, new_basis.x,
+	}
+	return m * v
+}

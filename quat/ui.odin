@@ -196,7 +196,7 @@ ui_system_view_cache_and_projections :: proc(
 
 NO_ID: UiId = 0
 UiId :: u64
-ui_id :: proc(str: string) -> UiId {
+ui_id :: proc "contextless" (str: string) -> UiId {
 	return hash.crc64_xz(transmute([]byte)str)
 }
 ui_id_from_ptr :: proc(ptr: rawptr) -> UiId {
@@ -574,7 +574,7 @@ padding :: proc(left: f32 = 0, right: f32 = 0, top: f32 = 0, bottom: f32 = 0) ->
 padding_symmetric :: proc(horizontal: f32 = 0, vertical: f32 = 0) -> Vec4 {
 	return Vec4{horizontal, horizontal, vertical, vertical}
 }
-border_radius :: proc(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Vec4 {
+border_radius :: proc(top_left: f32 = 0, top_right: f32 = 0, bottom_right: f32 = 0, bottom_left: f32 = 0) -> Vec4 {
 	return {top_left, top_right, bottom_right, bottom_left}
 }
 border_width :: proc(left: f32 = 0, top: f32 = 0, right: f32 = 0, bottom: f32 = 0) -> Vec4 {
@@ -1789,7 +1789,7 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 	runs_list := make([dynamic]RunElements, 0, len(run_rec.runs), context.temp_allocator)
 	for key, elements in run_rec.runs {
 		if len(elements) == 0 {
-			fmt.eprintln("Warning! run with no elements found, key = ", key)
+			// fmt.eprintln("Warning! run with no elements found, key = ", key)
 			continue
 		}
 		// determine a `z` value as a sort key to sort all the runs
@@ -1824,16 +1824,16 @@ ui_system_layout_elements_and_build_batches :: proc(top_level_elements: []TopLev
 	slice.sort_by_key(runs_list[:], proc(e: RunElements) -> u64 {return e.run_order_z})
 
 
-	print("RUNS: ", len(runs_list))
-	for run, i in runs_list {
-		print("  run", i, ": ", run.key)
-		for el, j in run.elements {
-			if el.el_key.run_el_kind == .Div {
-				div := cast(^DivElement)el.el_ptr
-				print("    ", j, ": ", el.el_key, div.size, div.color)
-			}
-		}
-	}
+	// print("RUNS: ", len(runs_list))
+	// for run, i in runs_list {
+	// 	print("  run", i, ": ", run.key)
+	// 	for el, j in run.elements {
+	// 		if el.el_key.run_el_kind == .Div {
+	// 			div := cast(^DivElement)el.el_ptr
+	// 			print("    ", j, ": ", el.el_key, div.size, div.color)
+	// 		}
+	// 	}
+	// }
 
 	// then go over all runs and try to add batches:
 	ui_batches_clear(out_batches)

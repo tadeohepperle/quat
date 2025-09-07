@@ -8,12 +8,12 @@ var t_diffuse: texture_2d_array<f32>;
 var s_diffuse: sampler;
 
 struct VertexOutput{
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) pos:              vec2<f32>,
+    @builtin(position) clip_position: Vec4,
+    @location(0) pos:              Vec2,
     @location(1) old_indices:      vec3<u32>, // indices into texture array
     @location(2) new_indices:      vec3<u32>, // indices into texture array
-    @location(3) weights:          vec3<f32>,
-    @location(4) new_fact_and_vis: vec2<f32>,
+    @location(3) weights:          Vec3,
+    @location(4) new_fact_and_vis: Vec2,
 }
 
 @vertex
@@ -141,7 +141,7 @@ d is the center of the hex at {x,y+1}
     out.pos = w_pos;
     // let old_and_new_index_sum: u32 = out.old_indices.x + out.old_indices.y + out.old_indices.z + out.new_indices.x + out.new_indices.y + out.new_indices.z;
     // if (old_and_new_index_sum == 0u) {
-    //     out.clip_position = vec4<f32>(0.0);
+    //     out.clip_position = Vec4(0.0);
     //     return out;
     // }
     out.clip_position = world_2d_pos_to_clip_pos(vec2(w_pos.x, w_pos.y));
@@ -149,7 +149,7 @@ d is the center of the hex at {x,y+1}
 }
 
 
-fn terrain_color(indices: vec3<u32>, weights: vec3<f32>, uv: vec2<f32>) -> vec4<f32>{
+fn terrain_color(indices: vec3<u32>, weights: Vec3, uv: Vec2) -> Vec4{
     let color_0 =  texture_rgb(uv, indices[0]);
     let color_1 =  texture_rgb(uv, indices[1]);
     let color_2 =  texture_rgb(uv, indices[2]);
@@ -170,7 +170,7 @@ const BLUR: f32 = 0.5;
 const GRID_WIDTH: f32 = 0.03;
 const GRID_STREGTH: f32 = 2.0;
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput) -> @location(0) Vec4 {
     let sample_uv = Vec2(in.pos.x, -in.pos.y) * 0.4; 
 
     let new_fact = in.new_fact_and_vis.x;
@@ -219,7 +219,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // return color;
 }
 
-fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {
+fn vis_noised(vis: f32, w_pos: Vec2) -> f32 {
     let vis_noise_stregth = 1.0 - vis;
     let noise = noise2(w_pos * 1.3  + frame.total_time *0.3) + noise2((w_pos + frame.total_time*0.5) * 3.127) - 2.0;
     return clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);
@@ -229,8 +229,8 @@ fn sum(v: Vec3) -> f32{
     return v.x + v.y + v.z;
 }
 
-const VOID_COLOR: vec4<f32> = RED; // Vec4(0.0)
-fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
+const VOID_COLOR: Vec4 = RED; // Vec4(0.0)
+fn texture_rgb(sample_uv: Vec2, idx: u32) ->Vec4{
     let uv = select(sample_uv, sample_uv * 0.5, idx == 1);
     return select(textureSample(t_diffuse, s_diffuse, uv, idx-1).rgba, VOID_COLOR, idx == 0);
 }
@@ -238,13 +238,13 @@ fn texture_rgb(sample_uv: vec2f, idx: u32) ->vec4f{
 const WAVELENGTH: f32 = 0.3;
 const AMPLITUDE: f32 = 0.15;
 const SEED: f32 = 234.2;
-fn noise_based_on_indices(pos: vec2f, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> vec3f {
+fn noise_based_on_indices(pos: Vec2, indices: vec3<u32>, wavelength: f32, amplitude: f32, seed: f32) -> Vec3 {
     let offset = pos / wavelength ;
     // let offset = (pos + frame.total_time * 0.05)/ wavelength ;
     let off_a = offset + (f32(indices[0]) + seed);
     let off_b = offset + (f32(indices[1]) + seed);
     let off_c = offset + (f32(indices[2]) + seed);
-    let noise_val : vec3f = vec3f(
+    let noise_val : Vec3 = Vec3(
         noise2(off_a),
         noise2(off_b),
         noise2(off_c),

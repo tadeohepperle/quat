@@ -1,8 +1,9 @@
 #import utils.wgsl
 
+
 struct Vertex {
-    @location(0) pos:   Vec2,
-    @location(1) color: Vec4,
+    @location(0) pos:      Vec3,
+    @location(1) color:    Vec4,
 }
 
 struct VertexOutput{
@@ -13,7 +14,7 @@ struct VertexOutput{
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = world_2d_pos_to_clip_pos(vertex.pos);
+    out.clip_position = camera3d.view_proj * Vec4(vertex.pos, 1.0); //  
     out.color = vertex.color;
     return out;
 }

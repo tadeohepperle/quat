@@ -1,3 +1,7 @@
+alias Vec2  = vec2<f32>;
+alias Vec3  = vec3<f32>;
+alias Vec4  = vec4<f32>;
+
 @group(0)
 @binding(0)
 var hdr_image: texture_2d<f32>;
@@ -10,15 +14,14 @@ const TONEMAP_DISABLED : u32 = 0u;
 const TONEMAP_ACES : u32 = 1u;
 var<push_constant> tonemap_mode: u32;
 
-
 struct VertexOutput {
-    @location(0) uv: vec2<f32>,
-    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: Vec2,
+    @builtin(position) clip_position: Vec4,
 };
 
 @fragment
-fn fs_main(vs: VertexOutput) -> @location(0) vec4<f32> {
-    let color_with_a: vec4<f32> = textureSample(hdr_image, hdr_sampler, vs.uv);
+fn fs_main(vs: VertexOutput) -> @location(0) Vec4 {
+    let color_with_a: Vec4 = textureSample(hdr_image, hdr_sampler, vs.uv);
     if tonemap_mode == TONEMAP_ACES{
         let color = aces_tone_map(color_with_a.rgb);
         return vec4(color, color_with_a.a);   
@@ -29,7 +32,7 @@ fn fs_main(vs: VertexOutput) -> @location(0) vec4<f32> {
 
 // Maps HDR values to linear values
 // Based on http://www.oscars.org/science-technology/sci-tech-projects/aces
-fn aces_tone_map(hdr: vec3<f32>) -> vec3<f32> {
+fn aces_tone_map(hdr: Vec3) -> Vec3 {
     let m1 = mat3x3(
         0.59719, 0.07600, 0.02840,
         0.35458, 0.90834, 0.13383,

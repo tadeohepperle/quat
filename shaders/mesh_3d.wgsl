@@ -8,18 +8,18 @@ var t_diffuse: texture_2d<f32>;
 var s_diffuse: sampler;
 
 struct Vertex {
-    @location(0) pos:    vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) uv:     vec2<f32>,
-    @location(3) color:  vec4<f32>,
+    @location(0) pos:    Vec3,
+    @location(1) normal: Vec3,
+    @location(2) uv:     Vec2,
+    @location(3) color:  Vec4,
 }
 
 struct VertexOutput{
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) pos:    vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) uv:     vec2<f32>,
-    @location(3) color:  vec4<f32>,
+    @builtin(position) clip_position: Vec4,
+    @location(0) pos:    Vec3,
+    @location(1) normal: Vec3,
+    @location(2) uv:     Vec2,
+    @location(3) color:  Vec4,
 }
 
 @vertex
@@ -35,7 +35,7 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
+fn fs_main(in: VertexOutput) -> @location(0) Vec4  {
     let color = calculate_color(in.color, in.normal, in.pos.z);
     return color;
 }
@@ -43,7 +43,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
 const LIGHT_DIR : Vec3 = Vec3(0.0,0.5,1.3);
 const TERRAIN_NORMAL : Vec3 = Vec3(0.0,0.0,1.0);
 const BLEND_UNTIL_HEIGHT : f32 = 0.01;
-fn calculate_color(color: vec4<f32>, normal: vec3<f32>, pos_z: f32) -> vec4<f32> {
+fn calculate_color(color: Vec4, normal: Vec3, pos_z: f32) -> Vec4 {
     let blend =  smoothstep(0.0, BLEND_UNTIL_HEIGHT, pos_z);
     // let blend : f32 = 1.0 - (blend_rev * blend_rev * blend_rev *blend_rev);
     
@@ -81,7 +81,7 @@ fn local_pos_to_chunk_idx(local_pos: IVec2) -> u32 {
 }
 
 
-fn world_pos_to_hex_visibility(w_pos: vec2<f32>) -> f32 {
+fn world_pos_to_hex_visibility(w_pos: Vec2) -> f32 {
     let hex_pos_float = world_to_hex_pos(w_pos);
 
     let hex_pos = IVec2(i32(floor(hex_pos_float.x)), i32(floor(hex_pos_float.y)));
@@ -136,7 +136,7 @@ fn world_pos_to_hex_visibility(w_pos: vec2<f32>) -> f32 {
 
 
 @fragment
-fn fs_hex_mask(in: VertexOutput) -> @location(0) vec4<f32>  {
+fn fs_hex_mask(in: VertexOutput) -> @location(0) Vec4  {
 
     // let blend_rev = smoothstep(1.5,0.0, in.pos.z);
     // let blend : f32 = 1.0 - (blend_rev * blend_rev * blend_rev *blend_rev);
@@ -145,7 +145,7 @@ fn fs_hex_mask(in: VertexOutput) -> @location(0) vec4<f32>  {
     // let light: f32 = max(dot(normal,normalize(LIGHT_DIR)),0.05);
     // var color_w_light = in.color.rgb * light;
 
-    // return vec4f(vec3f(in.pos.z), 1.0);
+    // return Vec4(Vec3(in.pos.z), 1.0);
 
     // let vis = world_pos_to_hex_visibility(in.pos.xy);
     let vis = 1.0;
@@ -166,7 +166,7 @@ fn fs_hex_mask(in: VertexOutput) -> @location(0) vec4<f32>  {
     // return Vec4(Vec3(vis), 0.9);
 }
 
-fn vis_noised(vis: f32, w_pos: vec2<f32>) -> f32 {
+fn vis_noised(vis: f32, w_pos: Vec2) -> f32 {
     let vis_noise_stregth = 1.0 - vis;
     let noise = noise2(w_pos * 1.3  + frame.total_time *0.3) + noise2((w_pos + frame.total_time*0.5) * 3.127) - 2.0;
     return clamp(vis + vis_noise_stregth * noise, 0.0, 1.0);

@@ -5,13 +5,13 @@ const GIZMOS_MODE_UI : u32 = 1u;
 var<push_constant> gizmos_mode: u32;
 
 struct Vertex {
-    @location(0) pos:      vec2<f32>,
-    @location(1) color:    vec4<f32>,
+    @location(0) pos:      Vec2,
+    @location(1) color:    Vec4,
 }
 
 struct VertexOutput{
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec4<f32>,
+    @builtin(position) clip_position: Vec4,
+    @location(0) color: Vec4,
 }
 
 @vertex
@@ -30,6 +30,6 @@ fn vs_main(vertex: Vertex) -> VertexOutput {
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>  {
+fn fs_main(in: VertexOutput) -> @location(0) Vec4  {
     return in.color;
 }

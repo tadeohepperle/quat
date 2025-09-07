@@ -65,6 +65,7 @@ Engine :: struct {
 	ui_id_interaction:                q.InteractionState(q.UiId),
 	ui_tag_interaction:               q.InteractionState(q.UiTag),
 	screen_ui_layout_extent:          Vec2,
+	screen_ui_cursor_pos:             Vec2,
 	camera_2d_uniform_data:           q.Camera2DUniformData,
 	camera_2d_uniform:                q.UniformBuffer(q.Camera2DUniformData),
 	frame_uniform_data:               q.FrameUniformData,
@@ -152,7 +153,7 @@ HitInfo :: struct {
 }
 
 _scene_create :: proc(scene: ^Scene) {
-	scene.camera = q.DEFAULT_CAMERA
+	scene.camera = q.DEFAULT_CAMERA_2D
 }
 
 _scene_destroy :: proc(scene: ^Scene) {
@@ -320,7 +321,7 @@ _engine_start_frame :: proc(engine: ^Engine) -> bool {
 		screen_size,
 	)
 
-	screen_layout_cursor_pos := q.screen_to_layout_space(
+	engine.screen_ui_cursor_pos = q.screen_to_layout_space(
 		cursor_pos,
 		engine.settings.screen_ui_reference_size,
 		screen_size,
@@ -407,7 +408,6 @@ _engine_end_frame :: proc(engine: ^Engine) {
 
 	// PREPARE
 	_engine_prepare(engine)
-
 
 	// print("batches: ", len(engine.ui_batches.batches))
 	// for b in engine.ui_batches.batches {
@@ -789,17 +789,6 @@ set_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) 
 draw_skinned_mesh :: proc(handle: q.SkinnedMeshHandle, pos: Vec2 = Vec2{0, 0}, color: Color = q.ColorWhite) {
 	append(&ENGINE.scene.skinned_render_commands, q.SkinnedRenderCommand{pos, color, handle})
 }
-// expected to be 8bit RGBA png
-load_texture_from_path :: proc(
-	path: string,
-	settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA,
-) -> q.TextureHandle {
-	texture, err := q.texture_from_image_path(path, settings)
-	if err, has_err := err.(string); has_err {
-		panic(err)
-	}
-	return q.assets_insert(texture)
-}
 create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
 	texture := q.texture_from_image(img, q.TEXTURE_SETTINGS_RGBA)
 	return q.assets_insert(texture)
@@ -819,6 +808,7 @@ load_depth_texture :: proc(path: string) -> q.TextureHandle {
 	}
 	return q.assets_insert(depth_texture)
 }
+// expected to be 8bit RGBA png
 load_texture :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureHandle {
 	texture, err := q.texture_from_image_path(path, settings)
 	if err, has_err := err.(string); has_err {
@@ -1059,7 +1049,6 @@ draw_motion_particles :: proc(
 	append(&ENGINE.scene.motion_particles_draw_commands, _MotionParticleDrawCommand{particles, flipbook, texture})
 }
 
-
 get_default_font_line_metrics :: proc() -> q.LineMetrics {
 	return q.assets_get(q.DEFAULT_FONT).line_metrics
 }
@@ -1067,4 +1056,9 @@ get_default_font_line_metrics :: proc() -> q.LineMetrics {
 set_default_font_line_metrics :: proc(line_metrics: q.LineMetrics) {
 	font: ^q.Font = q.assets_get_ref(q.DEFAULT_FONT)
 	font.line_metrics = line_metrics
+}
+
+
+get_ui_cursor_pos :: proc() -> Vec2 {
+	return ENGINE.screen_ui_cursor_pos
 }

@@ -15,7 +15,7 @@ GizmosRenderer :: struct {
 }
 
 GizmosMode :: enum u32 {
-	WORLD  = 0, // 
+	WORLD  = 0, //
 	SCREEN = 1, // pixels on screen
 }
 GIZMOS_COLOR := Color{1, 0, 0, 1}
