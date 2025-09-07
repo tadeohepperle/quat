@@ -51,19 +51,17 @@ camera_2d_projection_matrix :: proc "contextless" (self: Camera2D, screen_size: 
 	scale_y := 2.0 / self.height
 	cos_theta := math.cos(self.rotation)
 	sin_theta := math.sin(self.rotation)
-	
-	// odinfmt: disable
-	translation := Mat3{
-		1, 0, -self.focus_pos.x, 
-		0, 1, -self.focus_pos.y, 
+
+	translation := matrix[3, 3]f32{
+		1, 0, -self.focus_pos.x,
+		0, 1, -self.focus_pos.y,
 		0, 0, 1,
 	}
-	rotation_scale := Mat3 {
+	rotation_scale := matrix[3, 3]f32{
 		cos_theta * scale_x, -sin_theta * scale_x, 0,
 		sin_theta * scale_y, cos_theta * scale_y, 0,
 		0, 0, 1,
 	}
-	// odinfmt: enable
 
 	return rotation_scale * translation
 }

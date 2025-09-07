@@ -2,6 +2,7 @@ package quat
 
 import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:math/linalg"
 import "core:os"
 import "core:strings"
@@ -760,6 +761,9 @@ get_total_secs :: proc() -> f32 {
 }
 get_total_secs_f64 :: proc() -> f64 {
 	return PLATFORM.total_secs_f64
+}
+get_osc :: proc(speed: f32 = 1, amplitude: f32 = 1, bias: f32 = 0, phase: f32 = 0) -> f32 {
+	return math.sin_f32(PLATFORM.total_secs * speed + phase) * amplitude + bias
 }
 get_screen_size :: proc() -> Vec2 {
 	return PLATFORM.screen_size

@@ -79,20 +79,20 @@ main :: proc() {
 	}
 
 	for engine.next_frame() {
-		if engine.is_key_pressed(.SPACE) {
-			flipbook.time += engine.get_delta_secs() * 0.8
+		if q.is_key_pressed(.SPACE) {
+			flipbook.time += q.get_delta_secs() * 0.8
 		}
-		if engine.is_key_just_pressed_or_repeated(.LEFT) {
+		if q.is_key_just_pressed_or_repeated(.LEFT) {
 			flipbook.time -= 1.0 / f32(flipbook.n_tiles)
 		}
-		if engine.is_key_just_pressed_or_repeated(.RIGHT) {
+		if q.is_key_just_pressed_or_repeated(.RIGHT) {
 			flipbook.time += 1.0 / f32(flipbook.n_tiles)
 		}
 		engine.add_window(
 			"Settings",
 			[]q.Ui {
-				engine.slider_f32(&flipbook.time, slider_width = 600),
-				engine.slider_f32(&engine.access_shader_globals_xxx().x),
+				q.slider_f32(&flipbook.time, slider_width = 600),
+				q.slider_f32(&engine.access_shader_globals_xxx().x),
 			},
 			window_width = 700,
 		)

@@ -235,7 +235,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p[.ScreenUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(true))
 	p[.WorldUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(false))
 	p[.WorldUiRect] = q.make_render_pipeline(q.ui_rect_pipeline_config(false))
-	// p[.MotionParticles] = q.make_render_pipeline(q.motion_particles_pipeline_config())
+	p[.MotionParticles] = q.make_render_pipeline(q.motion_particles_pipeline_config())
 	p[.Tonemapping] = q.make_render_pipeline(q.tonemapping_pipeline_config())
 
 
@@ -409,10 +409,10 @@ _engine_end_frame :: proc(engine: ^Engine) {
 	_engine_prepare(engine)
 
 
-	print("batches: ", len(engine.ui_batches.batches))
-	for b in engine.ui_batches.batches {
-		print("    ", b.end_idx - b.start_idx, b.kind, b.clipping_rect)
-	}
+	// print("batches: ", len(engine.ui_batches.batches))
+	// for b in engine.ui_batches.batches {
+	// 	print("    ", b.end_idx - b.start_idx, b.kind, b.clipping_rect)
+	// }
 
 	// RENDER
 	_engine_render(engine)
@@ -455,31 +455,6 @@ _engine_prepare :: proc(engine: ^Engine) {
 	}
 	q.ui_system_layout_elements_and_build_batches(engine.top_level_elements_scratch[:], &engine.ui_batches)
 	q.ui_render_buffers_prepare(&engine.ui_buffers, engine.ui_batches)
-
-	// todo! put world ui back in!
-	// for e in scene.world_ui {
-	// 	engine.top_level_elements_scratch
-	// 	q.ui_system_layout_in_world_2d_space(
-	// 		e.ui,
-	// 		e.world_pos,
-	// 		q.UI_UNIT_TRANSFORM_2D,
-	// 		engine.settings.world_2d_ui_px_per_unit,
-	// 	)
-	// 	projection := q.UiWorld2DProjection {
-	// 		transform = q.UI_UNIT_TRANSFORM_2D,
-	// 	}
-	// 	append(
-	// 		&engine.top_level_elements_scratch,
-	// 		q.TopLevelElement{e.ui, q.UiTransform{space = .World2D, data = {transform2d = e.transform}}},
-	// 	)
-	// }
-
-	// q.ui_update_ui_cache_end_of_frame_after_layout_before_batching(engine.platform.delta_secs)
-	// q.ui_render_buffers_batch_and_prepare(
-	// 	&engine.world_ui_buffers,
-	// 	engine.top_level_elements_scratch[:len(scene.world_ui)],
-	// )
-
 
 	q.color_mesh_2d_renderer_prepare(&engine.color_mesh_2d_renderer)
 	q.mesh_2d_renderer_prepare(&engine.mesh_2d_renderer)
@@ -585,14 +560,14 @@ _engine_render :: proc(engine: ^Engine) {
 		frame_uniform,
 		camera_2d_uniform,
 	)
-	// q.motion_particles_render(
-	// 	engine.pipelines[.MotionParticles].pipeline,
-	// 	engine.motion_particles_buffer,
-	// 	engine.motion_particles_render_commands[:],
-	// 	hdr_pass,
-	// 	frame_uniform,
-	// 	camera_2d_uniform,
-	// )
+	q.motion_particles_render(
+		engine.pipelines[.MotionParticles].pipeline,
+		engine.motion_particles_buffer,
+		engine.motion_particles_render_commands[:],
+		hdr_pass,
+		frame_uniform,
+		camera_2d_uniform,
+	)
 	q.mesh_2d_renderer_render(&engine.mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
 	q.color_mesh_2d_renderer_render(&engine.color_mesh_2d_renderer, hdr_pass, frame_uniform, camera_2d_uniform)
 
@@ -781,9 +756,6 @@ get_hit :: #force_inline proc() -> HitInfo {
 get_hit_pos :: proc() -> Vec2 {
 	return ENGINE.hit.hit_pos
 }
-get_osc :: proc(speed: f32 = 1, amplitude: f32 = 1, bias: f32 = 0, phase: f32 = 0) -> f32 {
-	return math.sin_f32(PLATFORM.total_secs * speed + phase) * amplitude + bias
-}
 get_ui_layout_extent :: proc() -> Vec2 {
 	return ENGINE.screen_ui_layout_extent
 }
@@ -798,12 +770,6 @@ draw_mesh_3d_hex_chunk_masked :: proc(mesh: q.Mesh3d, hex_chunk_bind_group: wgpu
 }
 draw_hex_chunk :: proc(chunk: q.HexChunkUniform) {
 	append(&ENGINE.scene.hex_chunks, chunk)
-}
-create_hex_chunk :: proc(chunk_pos: [2]i32) -> q.HexChunkUniform {
-	return q.hex_chunk_uniform_create(PLATFORM.device, PLATFORM.queue, chunk_pos)
-}
-destroy_hex_chunk :: proc(hex_chunk: ^q.HexChunkUniform) {
-	q.hex_chunk_uniform_destroy(hex_chunk)
 }
 create_skinned_mesh :: proc(
 	triangles: []q.Triangle,
@@ -1076,7 +1042,7 @@ _engine_draw_annotations :: proc(engine: ^Engine) {
 			str       = ann.str,
 		},
 		)
-		add_world_ui(ann.pos, ui)
+		add_world_ui(ann.pos, ui, scale = Vec2{1, 1}, rotation = 0)
 	}
 }
 

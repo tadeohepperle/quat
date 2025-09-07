@@ -46,7 +46,7 @@ ui_render :: proc(
 	if len(batches.batches) == 0 {
 		return
 	}
-	// ui_batches_debug_print(batches)
+	ui_batches_debug_print(batches)
 
 	screen_size := batches.screen_size
 
@@ -58,10 +58,7 @@ ui_render :: proc(
 	textures := assets_get_map(Texture)
 	fonts := assets_get_map(Font)
 
-
-	print("batches: ", len(batches.batches))
 	for &batch, i in batches.batches {
-		print("  ", batch.kind, batch.end_idx - batch.start_idx, batch.clipping_rect)
 		// set the render pipeline and buffers:
 		set_push_const := batch.proj_idx != last_proj_idx
 		if batch.kind != last_batch_kind || pipeline == nil {
@@ -132,19 +129,14 @@ ui_render :: proc(
 			max_y := min(u32(max_f32.y), screen_size_u.x)
 			scissor := [4]u32{min_x, min_y, max_x, max_y}
 			if scissor != last_scissor {
-				print("    Set Scissor", scissor)
 				last_scissor = scissor
 				wgpu.RenderPassEncoderSetScissorRect(render_pass, min_x, min_y, max_x - min_x, max_y - min_y)
 			}
 		} else if last_scissor != nil {
-			print("    Remove Scissor")
-
 			// remove scissor
 			last_scissor = nil
 			wgpu.RenderPassEncoderSetScissorRect(render_pass, 0, 0, screen_size_u.x, screen_size_u.y)
 		}
-
-		print("        Draw")
 
 		texture_or_font := u32(batch.texture_or_font_idx)
 		switch batch.kind {
@@ -394,18 +386,17 @@ ui_projection_to_world_ui_push_const :: proc(proj: UiProjection, screen_size: Ve
 	case UiScreenProjection:
 		scaling_factor := ui_screen_projection_scaling_factor(proj, screen_size)
 		s := Vec2(2.0 * scaling_factor) / screen_size
-			// odinfmt: disable
-		return WorldUiPushConst{
-			ui_px_pos_to_clip_pos = Mat4{
-				s.x, 0, 0, -1,
-				0, -s.y, 0, 1,
-				0, 0, 1, 0,
-				0, 0, 0, 1,
-			},
+		ui_px_pos_to_clip_pos := matrix[4, 4]f32{
+			s.x, 0, 0, -1,
+			0, -s.y, 0, 1,
+			0, 0, 1, 0,
+			0, 0, 0, 1,
+		}
+		return WorldUiPushConst {
+			ui_px_pos_to_clip_pos = ui_px_pos_to_clip_pos,
 			ui_px_per_screen_px_at_near_plane = scaling_factor,
 			ui_px_per_screen_px_at_far_plane = scaling_factor,
 		}
-		// odinfmt: enable
 
 
 	case UiWorld2DProjection:

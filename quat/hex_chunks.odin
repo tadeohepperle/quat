@@ -44,13 +44,7 @@ hex_chunk_uniform_write_data :: proc(this: ^HexChunkUniform, terrain_data: ^HexC
 	assert(PLATFORM.queue != nil)
 	wgpu.QueueWriteBuffer(PLATFORM.queue, this.data, 0, terrain_data, size_of(HexChunkUniformData))
 }
-hex_chunk_uniform_create :: proc(
-	device: wgpu.Device,
-	queue: wgpu.Queue,
-	chunk_pos: [2]i32,
-) -> (
-	uniform: HexChunkUniform,
-) {
+hex_chunk_uniform_create :: proc(chunk_pos: [2]i32) -> (uniform: HexChunkUniform) {
 	uniform.chunk_pos = chunk_pos
 	buffer_usage := wgpu.BufferUsageFlags{.CopyDst, .Uniform}
 	uniform.data = wgpu.DeviceCreateBuffer(

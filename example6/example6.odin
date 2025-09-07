@@ -60,7 +60,7 @@ main :: proc() {
 
 	// odinfmt:enable
 
-	mesh := engine.create_3d_mesh()
+	mesh := q.mesh_3d_create()
 	mesh.triangles = slice.clone_to_dynamic(triangles)
 	for pos in v_positions {
 		append(&mesh.vertices, v(pos))
@@ -73,7 +73,7 @@ main :: proc() {
 	engine.set_clear_color(q.Color{0.4, 0.4, 0.6, 1.0})
 	cam := engine.camera_controller_create()
 
-	terrain_textures := engine.load_texture_array(
+	terrain_textures := q.load_texture_array(
 		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_undiscovered_dark.png"},
 	)
 	engine.set_tritex_textures(terrain_textures)
@@ -94,8 +94,8 @@ main :: proc() {
 	new_factor: f32 = 0.0
 	for engine.next_frame() {
 
-		dt := engine.get_delta_secs()
-		if engine.is_key_pressed(.SPACE) {
+		dt := q.get_delta_secs()
+		if q.is_key_pressed(.SPACE) {
 			dt = 0.0
 		}
 		total += dt
@@ -105,10 +105,10 @@ main :: proc() {
 		engine.draw_gizmos_coords()
 
 
-		if engine.is_key_just_pressed(.COMMA) {
+		if q.is_key_just_pressed(.COMMA) {
 			active_chunk_idx -= 1
 		}
-		if engine.is_key_just_pressed(.PERIOD) {
+		if q.is_key_just_pressed(.PERIOD) {
 			active_chunk_idx += 1
 		}
 
@@ -137,17 +137,17 @@ main :: proc() {
 		engine.add_window(
 			"Shader Variables",
 			{
-				engine.row({engine.slider(&new_new_factor), engine.text_from_string("transition")}, gap = 8),
-				engine.row({engine.slider(&shader_xxx.y), engine.text_from_string("noise")}, gap = 8),
-				engine.row({engine.slider(&shader_xxx.z), engine.text_from_string("mesh h")}, gap = 8),
+				q.row({q.slider(&new_new_factor), q.text_from_string("transition")}, gap = 8),
+				q.row({q.slider(&shader_xxx.y), q.text_from_string("noise")}, gap = 8),
+				q.row({q.slider(&shader_xxx.z), q.text_from_string("mesh h")}, gap = 8),
 			},
 		)
 
-		if engine.is_key_pressed(.T) {
-			new_new_factor = q.lerp(new_new_factor, 1.0, engine.get_delta_secs() * 4.0)
+		if q.is_key_pressed(.T) {
+			new_new_factor = q.lerp(new_new_factor, 1.0, q.get_delta_secs() * 4.0)
 		}
-		if engine.is_key_pressed(.G) {
-			new_new_factor = q.lerp(new_new_factor, 0.0, engine.get_delta_secs() * 4.0)
+		if q.is_key_pressed(.G) {
+			new_new_factor = q.lerp(new_new_factor, 0.0, q.get_delta_secs() * 4.0)
 		}
 
 		if new_new_factor != new_factor {
@@ -158,9 +158,9 @@ main :: proc() {
 		}
 
 
-		rf := engine.get_rf()
+		rf := q.get_rf()
 		if rf != 0 {
-			shader_xxx.z += rf * engine.get_delta_secs() * 3
+			shader_xxx.z += rf * q.get_delta_secs() * 3
 		}
 		shader_xxx.z = clamp(shader_xxx.z, 0, 1)
 
@@ -249,12 +249,12 @@ random_chunk :: proc(chunk_pos: IVec2) -> (res: Chunk) {
 			res.data.tiles[idx] = q.HexTileData{old_ter, new_ter, old_vis, new_vis, new_fact}
 		}
 	}
-	res.uniform = q.hex_chunk_uniform_create(engine.ENGINE.platform.device, engine.ENGINE.platform.queue, chunk_pos)
+	res.uniform = q.hex_chunk_uniform_create(chunk_pos)
 	q.hex_chunk_uniform_write_data(&res.uniform, &res.data)
 	return res
 }
 
-// obj_file 
+// obj_file
 
 /*
 

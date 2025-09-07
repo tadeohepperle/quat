@@ -38,16 +38,16 @@ main :: proc() {
 	n_force_updates_per_frame := 1
 	for engine.next_frame() {
 		engine.camera_controller_update(&cam)
-		dt := engine.get_delta_secs()
+		dt := q.get_delta_secs()
 		hit_node := q.from_collider_metadata(engine.get_hit().hit_collider, NodeId)
 
 		// start drag:
-		if engine.is_left_just_pressed() && hit_node != 0 && dragging_node == 0 {
+		if q.is_left_just_pressed() && hit_node != 0 && dragging_node == 0 {
 			dragging_node = hit_node
 		}
 		// during drag:
 		if dragging_node != 0 {
-			if !engine.is_left_pressed() {
+			if !q.is_left_pressed() {
 				// end drag:
 				dragging_node = 0
 			} else {
@@ -55,7 +55,7 @@ main :: proc() {
 				node.pos = engine.get_hit_pos()
 			}
 		}
-		engine.add_ui(engine.slider_int(&n_force_updates_per_frame, 0, 8))
+		engine.add_ui(q.slider_int(&n_force_updates_per_frame, 0, 8))
 
 
 		for _ in 0 ..< n_force_updates_per_frame {
@@ -78,6 +78,8 @@ main :: proc() {
 			engine.add_circle_collider(node.pos, 0.2, q.to_collider_metadata(node_id), int(node_id))
 			engine.draw_annotation(node.pos, fmt.tprint(node_id))
 		}
+
+		engine.display_value(int(q.PLATFORM.total_secs))
 	}
 }
 

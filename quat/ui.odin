@@ -1,5 +1,6 @@
 package quat
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:hash"
@@ -9,6 +10,7 @@ import "core:math/linalg"
 import "core:math/rand"
 import "core:mem"
 import "core:os"
+import "core:reflect"
 import "core:slice"
 import "core:unicode/utf8"
 /*
@@ -118,30 +120,25 @@ ui_world_2d_projection_matrix :: proc(proj: UiWorld2DProjection, screen_size: Ve
 	return mat4
 }
 
-// odinfmt: disable
 ui_world_2d_transform_px_pos_to_2d_pos_matrix :: proc(t: UiWorld2DTransform) -> Mat3 {
 	// todo: z is missing
 	b := t.basis_x
-	return Mat3{
-		b .x, b.y, t.pos.x, 
-		b .y, -b.x,  t.pos.y,
-		0,0,1
+	return matrix[3, 3]f32{
+		b.x, b.y, t.pos.x,
+		b.y, -b.x, t.pos.y,
+		0, 0, 1,
 	}
 }
-// odinfmt: enable
-// odinfmt: disable
-ui_world_2d_transform_2d_pos_to_px_pos_matrix :: proc(t: UiWorld2DTransform) -> Mat3{
+ui_world_2d_transform_2d_pos_to_px_pos_matrix :: proc(t: UiWorld2DTransform) -> Mat3 {
 	b := t.basis_x
-	det := b.x*b.x + b.y*b.y
-	w_to_px := Mat3{
-		b.x/det,  b.y/det,  -(b.x * t.pos.x + b.y * t.pos.y)/det,
-	   -b.y/det,  b.x/det,   (b.y * t.pos.x - b.x * t.pos.y)/det,
+	det := b.x * b.x + b.y * b.y
+	w_to_px := matrix[3, 3]f32{
+		b.x / det, b.y / det, -(b.x * t.pos.x + b.y * t.pos.y) / det,
+		-b.y / det, b.x / det, (b.y * t.pos.x - b.x * t.pos.y) / det,
 		0, 0, 1,
 	}
 	return w_to_px
 }
-// odinfmt: enable
-
 // converts a ui_transform and a
 ui_projection_to_local_cursor_pos :: proc(proj: UiProjection, cursor_pos: Vec2, screen_size: Vec2) -> Vec2 {
 	switch proj in proj {
@@ -881,7 +878,8 @@ ui_system_measure_element :: proc(ui: Ui, max_size: Maybe(Vec2) = nil) -> Vec2 {
 }
 
 _layout_element :: proc(ui: Ui, projection: UiProjection, run_rec: ^RunRecorder) {
-	proj_idx := _get_or_register_projection_idx(projection)
+	// the initial_pos_offset is due to using a potentially different projection (but with the same basis!) for better batching
+	proj_idx, initial_pos_offset := _get_or_register_projection_idx(projection)
 
 	layout_extent: Vec2
 	if screen_proj, ok := projection.(UiScreenProjection); ok {
@@ -908,7 +906,7 @@ _layout_element :: proc(ui: Ui, projection: UiProjection, run_rec: ^RunRecorder)
 			initial_pos = -used_size * 0.5
 		}
 	}
-
+	initial_pos += initial_pos_offset
 
 	run_key := RunKey {
 		proj_idx   = proj_idx,
@@ -923,17 +921,64 @@ _layout_element :: proc(ui: Ui, projection: UiProjection, run_rec: ^RunRecorder)
 }
 
 UiProjectionIdx :: distinct u16
-_get_or_register_projection_idx :: proc(proj: UiProjection) -> UiProjectionIdx {
+
+// This function is not only returning the projection_idx but also an initial offset, why?
+// The proj input argument here is not guaranteed to be really registered:
+// Instead we try to combine multiple projections with the same basis together.
+// Example: There are 2 ui elements in the world (UiWorld2DProjection), same camera, same basis_x, but with
+// different UiWorld2DTransform.pos in the world. It is always possible to just use one of these projections,
+// by modifying the initial_offset of elements using a different world_pos.
+// This way, more elements can be batched together by the batcher.
+_get_or_register_projection_idx :: proc(proj: UiProjection) -> (proj_idx: UiProjectionIdx, initial_offset: Vec2) {
 	for other, idx in UI_CTX.new_projections {
-		if other == proj {
-			return UiProjectionIdx(idx)
-		}
+		initial_offset = ui_projection_b_is_same_as_a_except_world_pos(other, proj) or_continue
+		return UiProjectionIdx(idx), initial_offset
 	}
 	idx := UiProjectionIdx(len(UI_CTX.new_projections))
 	append(&UI_CTX.new_projections, proj)
-	return idx
+	return idx, Vec2{0, 0}
 }
 
+ui_projection_b_is_same_as_a_except_world_pos :: proc(
+	a: UiProjection,
+	b: UiProjection,
+) -> (
+	b_px_offset_to_a: Vec2,
+	same: bool,
+) {
+	switch &a in a {
+	case UiScreenProjection:
+		b := b.(UiScreenProjection) or_return
+		if a == b {
+			return {}, true
+		}
+	case UiWorld3DProjection:
+		b := b.(UiWorld3DProjection) or_return
+		if a == b {
+			return {}, true
+		}
+	case UiWorld2DProjection:
+		b := b.(UiWorld2DProjection) or_return
+
+		// if the basis is the same
+		if a.camera == b.camera && a.transform.basis_x == b.transform.basis_x && a.transform.z == b.transform.z {
+			if a.transform.pos != b.transform.pos {
+				b_world_offset_to_a := b.transform.pos - a.transform.pos
+				// transform from world space to px space using the transform basis_x:
+				ba := a.transform.basis_x
+				det := ba.x * ba.x + ba.y * ba.y
+				ban := ba / det
+				w_to_px := matrix[2, 2]f32{
+					ban.x, ban.y,
+					ban.y, -ban.x,
+				}
+				b_px_offset_to_a = w_to_px * b_world_offset_to_a
+			}
+			return b_px_offset_to_a, true
+		}
+	}
+	return {}, false
+}
 
 _set_size :: proc(ui: Ui, max_size: Vec2) -> (used_size: Vec2) {
 	switch el in ui {

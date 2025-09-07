@@ -1,10 +1,10 @@
 #import utils.wgsl
 
-@group(1) @binding(0)
+@group(2) @binding(0)
 var t_diffuse: texture_2d<f32>;
-@group(1) @binding(1)
+@group(2) @binding(1)
 var t_motion: texture_2d<f32>;
-@group(1) @binding(2)
+@group(2) @binding(2)
 var s_sampler: sampler;
 
 struct MotionParticleInstance {

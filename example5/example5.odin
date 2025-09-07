@@ -123,7 +123,7 @@ main :: proc() {
 	settings.debug_ui_gizmos = true
 	engine.init(settings)
 	defer engine.deinit()
-	terrain_textures := engine.load_texture_array(
+	terrain_textures := q.load_texture_array(
 		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_3.png"},
 	)
 	engine.set_tritex_textures(terrain_textures)
@@ -147,7 +147,7 @@ main :: proc() {
 		{8, 6} = .Sand,
 		{8, 7} = .Sand,
 	}
-	terrain_mesh := engine.create_tritex_mesh(world_vertices(world))
+	terrain_mesh := q.tritex_mesh_create(world_vertices(world))
 	cam := engine.camera_controller_create()
 	for engine.next_frame() {
 		engine.camera_controller_update(&cam)

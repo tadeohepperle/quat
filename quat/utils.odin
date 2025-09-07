@@ -1,5 +1,6 @@
 package quat
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:math"
@@ -220,6 +221,13 @@ print_line :: proc(message: string = "") {
 		fmt.println("------------------------------------------------------------------------")
 	}
 
+}
+
+is_same_variant :: #force_inline proc "contextless" (a: ^$T, b: ^T) -> bool where intrinsics.type_is_union(T) {
+	TAG_OFFSET: uintptr : intrinsics.type_union_tag_offset(T)
+	a_tag := (cast(^intrinsics.type_union_tag_type(T))(uintptr(a) + TAG_OFFSET))^
+	b_tag := (cast(^intrinsics.type_union_tag_type(T))(uintptr(b) + TAG_OFFSET))^
+	return a_tag == b_tag
 }
 
 
