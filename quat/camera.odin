@@ -122,6 +122,16 @@ camera_3d_ray_from_screen_pos :: proc(camera: Camera3D, screen_pos: Vec2, screen
 	direction := linalg.normalize(far_plane_pt - near_plane_pt)
 	return Ray{origin = near_plane_pt, direction = direction}
 }
+camera_3d_xz_plane_hit_pos :: proc(camera: Camera3D, cursor_pos: Vec2, screen_size: Vec2, height: f32) -> Maybe(Vec2) {
+	ray := camera_3d_ray_from_screen_pos(camera, cursor_pos, screen_size)
+	dist := ray_intersects_plane(ray, Vec3{0, height, 0}, Vec3{0, 1, 0})
+	if dist, ok := dist.(f32); ok {
+		hit_pos := ray_get_point(ray, dist)
+		return hit_pos.xz
+	} else {
+		return nil
+	}
+}
 
 mat4_project :: proc(m: Mat4, pt: Vec3) -> Vec3 {
 	r := m * Vec4{pt.x, pt.y, pt.z, 1.0}

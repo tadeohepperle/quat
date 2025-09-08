@@ -200,6 +200,11 @@ _create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^Rende
 		}
 	}
 
+	cull_mode: wgpu.CullMode = config.cull_mode
+	if cull_mode == .Undefined {
+		cull_mode = .None
+	}
+
 	pipeline_descriptor := wgpu.RenderPipelineDescriptor {
 		label = config.debug_name,
 		layout = pipeline.layout,
@@ -220,7 +225,7 @@ _create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^Rende
 			},
 		},
 		depthStencil = depth_stencil,
-		primitive = wgpu.PrimitiveState{topology = config.topology, cullMode = .None},
+		primitive = wgpu.PrimitiveState{topology = config.topology, frontFace = .CCW, cullMode = cull_mode},
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 	}
 	wgpu_pipeline := wgpu.DeviceCreateRenderPipeline(reg.device, &pipeline_descriptor)

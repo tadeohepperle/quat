@@ -102,8 +102,8 @@ PipelineType :: enum {
 	// SkinnedTransparent,
 	// SkinnedShine,
 	// SkinnedShine,
-	Mesh3d,
-	Mesh3dHexChunkMasked,
+	MeshFake3d,
+	MeshFake3dHexChunkMasked,
 	Tritex,
 	ScreenUiGlyph,
 	ScreenUiRect,
@@ -123,8 +123,8 @@ Scene :: struct {
 	// geometry:
 	tritex_meshes:                  [dynamic]q.TritexMesh,
 	tritex_textures:                q.TextureArrayHandle, // not owned! just set by the user.
-	meshes_3d:                      [dynamic]q.Mesh3d,
-	meshes_3d_hex_chunk_masked:     [dynamic]q.Mesh3dHexChunkMasked,
+	meshes_3d:                      [dynamic]q.MeshFake3d,
+	meshes_3d_hex_chunk_masked:     [dynamic]q.MeshFake3dHexChunkMasked,
 	// cutout discard shader depth rendering:
 	cutout_sprites:                 [dynamic]q.Sprite,
 	// transparency layer 1:
@@ -228,8 +228,8 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p[.SpriteCutout] = q.make_render_pipeline(q.sprite_pipeline_config(.Cutout))
 	p[.SpriteShine] = q.make_render_pipeline(q.sprite_pipeline_config(.Shine))
 	p[.SpriteTransparent] = q.make_render_pipeline(q.sprite_pipeline_config(.Transparent))
-	p[.Mesh3d] = q.make_render_pipeline(q.mesh_3d_pipeline_config())
-	p[.Mesh3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
+	p[.MeshFake3d] = q.make_render_pipeline(q.mesh_3d_pipeline_config())
+	p[.MeshFake3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
 	p[.SkinnedCutout] = q.make_render_pipeline(q.skinned_pipeline_config())
 	p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
 	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(true))
@@ -529,14 +529,14 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.tritex_textures,
 	)
 	q.mesh_3d_renderer_render(
-		engine.pipelines[.Mesh3d].pipeline,
+		engine.pipelines[.MeshFake3d].pipeline,
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
 		engine.scene.meshes_3d[:],
 	)
 	q.mesh_3d_renderer_render_hex_chunk_masked(
-		engine.pipelines[.Mesh3dHexChunkMasked].pipeline,
+		engine.pipelines[.MeshFake3dHexChunkMasked].pipeline,
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
@@ -762,11 +762,11 @@ get_ui_layout_extent :: proc() -> Vec2 {
 get_ui_id_hovered :: proc() -> q.UiId {
 	return ENGINE.ui_id_interaction.hovered
 }
-draw_mesh_3d :: proc(mesh: q.Mesh3d) {
+draw_mesh_3d :: proc(mesh: q.MeshFake3d) {
 	append(&ENGINE.scene.meshes_3d, mesh)
 }
-draw_mesh_3d_hex_chunk_masked :: proc(mesh: q.Mesh3d, hex_chunk_bind_group: wgpu.BindGroup) {
-	append(&ENGINE.scene.meshes_3d_hex_chunk_masked, q.Mesh3dHexChunkMasked{mesh, hex_chunk_bind_group})
+draw_mesh_3d_hex_chunk_masked :: proc(mesh: q.MeshFake3d, hex_chunk_bind_group: wgpu.BindGroup) {
+	append(&ENGINE.scene.meshes_3d_hex_chunk_masked, q.MeshFake3dHexChunkMasked{mesh, hex_chunk_bind_group})
 }
 draw_hex_chunk :: proc(chunk: q.HexChunkUniform) {
 	append(&ENGINE.scene.hex_chunks, chunk)

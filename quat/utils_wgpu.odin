@@ -150,6 +150,7 @@ RenderPipelineConfig :: struct {
 	fs_shader:            string,
 	fs_entry_point:       string,
 	topology:             wgpu.PrimitiveTopology,
+	cull_mode:            wgpu.CullMode,
 	vertex:               VertLayout,
 	instance:             VertLayout,
 	bind_group_layouts:   []wgpu.BindGroupLayout,

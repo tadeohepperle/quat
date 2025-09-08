@@ -22,8 +22,8 @@ main :: proc() {
 
 	defer engine.deinit()
 
-	v :: proc(pos: Vec3) -> q.Mesh3dVertex {
-		return q.Mesh3dVertex{pos = pos, color = q.Color{pos.x / 3.0, pos.y / 3.0, pos.z / 3.0, 1.0}}
+	v :: proc(pos: Vec3) -> q.MeshFake3dVertex {
+		return q.MeshFake3dVertex{pos = pos, color = q.Color{pos.x / 3.0, pos.y / 3.0, pos.z / 3.0, 1.0}}
 	}
 	L :: 0.00
 	H :: 3.0
