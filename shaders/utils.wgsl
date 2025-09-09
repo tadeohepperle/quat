@@ -110,3 +110,5 @@ fn rotate(pos: Vec2, rot: f32) -> Vec2{
         s * pos.x + c * pos.y,
     );
 }
+
+const LIGHT_DIR : Vec3 = Vec3(-0.4, 0.8, 0.2);

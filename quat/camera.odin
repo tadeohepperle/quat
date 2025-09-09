@@ -101,7 +101,7 @@ sqrt :: math.sqrt
 
 DEFAULT_CAMERA_3D :: Camera3D {
 	transform = Camera3DTransform{eye_pos = Vec3{2, 5, 10}, focus_pos = Vec3{0, 0, 0}, up = Vec3{0, 1, 0}},
-	projection = Camera3DProjection{kind = .Perspective, z_near = 0.1, z_far = 100.0, fov_y = 0.7, height_y = 10.0},
+	projection = Camera3DProjection{kind = .Perspective, z_near = 0.01, z_far = 200.0, fov_y = 0.7, height_y = 10.0},
 }
 
 Camera3D :: struct {

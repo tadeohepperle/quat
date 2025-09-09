@@ -21,7 +21,6 @@ _target_buffer_size :: #force_inline proc "contextless" (n_elements: int, size_o
 	return u64(max(next_power_of_two(n_elements * size_of_t), MIN_BUFFER_SIZE))
 }
 
-
 dynamic_buffer_reserve :: proc(this: ^DynamicBuffer($T), for_n_total_elements: int, loc := #caller_location) {
 	target_size := _target_buffer_size(for_n_total_elements, size_of(T))
 	if target_size > this.size {
@@ -35,6 +34,31 @@ dynamic_buffer_reserve :: proc(this: ^DynamicBuffer($T), for_n_total_elements: i
 			&wgpu.BufferDescriptor{usage = this.usage, size = target_size, mappedAtCreation = false},
 		)
 	}
+}
+
+dynamic_buffer_write_exact :: proc(this: ^DynamicBuffer($T), elements: []T) {
+	this.length = len(elements)
+	if len(elements) == 0 {
+		if this.buffer != nil {
+			wgpu.BufferRelease(this.buffer)
+			this.buffer = nil
+		}
+		this.size = 0
+		return
+	}
+	new_size := u64(this.length * size_of(T))
+	if this.buffer != nil && this.size != new_size {
+		wgpu.BufferRelease(this.buffer)
+		this.buffer = nil
+	}
+	if this.buffer == nil {
+		this.buffer = wgpu.DeviceCreateBuffer(
+			PLATFORM.device,
+			&wgpu.BufferDescriptor{usage = this.usage, size = new_size, mappedAtCreation = false},
+		)
+	}
+	this.size = new_size
+	wgpu.QueueWriteBuffer(PLATFORM.queue, this.buffer, 0, raw_data(elements), uint(new_size))
 }
 
 dynamic_buffer_clear :: proc "contextless" (this: ^DynamicBuffer($T)) {

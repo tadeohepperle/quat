@@ -132,6 +132,11 @@ mesh_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,
 		format = HDR_FORMAT,
-		depth = DEPTH_IGNORE,
+		depth = DEPTH_CONFIG_3D,
 	}
+}
+
+DEPTH_CONFIG_3D :: DepthConfig {
+	depth_write_enabled = true,
+	depth_compare       = wgpu.CompareFunction.Less,
 }
