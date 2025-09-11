@@ -40,7 +40,7 @@ fn fs_main(in: VertexOutput) -> @location(0) Vec4  {
     return color;
 }
 
-const LIGHT_DIR : Vec3 = Vec3(0.0,0.5,1.3);
+const FAKE_LIGHT_DIR : Vec3 = Vec3(0.0,0.5,1.3);
 const TERRAIN_NORMAL : Vec3 = Vec3(0.0,0.0,1.0);
 const BLEND_UNTIL_HEIGHT : f32 = 0.01;
 fn calculate_color(color: Vec4, normal: Vec3, pos_z: f32) -> Vec4 {
@@ -48,7 +48,7 @@ fn calculate_color(color: Vec4, normal: Vec3, pos_z: f32) -> Vec4 {
     // let blend : f32 = 1.0 - (blend_rev * blend_rev * blend_rev *blend_rev);
     
     let normal_blended = mix(TERRAIN_NORMAL, normal, blend);
-    let light: f32 = max(dot(normal_blended,normalize(LIGHT_DIR)),0.05);
+    let light: f32 = max(dot(normal_blended,normalize(FAKE_LIGHT_DIR)),0.05);
     var color_w_light = color.rgb * light;
 
     return Vec4(color_w_light, blend);

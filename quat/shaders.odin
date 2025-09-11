@@ -3,17 +3,28 @@ package quat
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import wgpu "vendor:wgpu"
 
+
+// all allocations in NEVER_FREE_ALLOCATOR
 ShaderRegistry :: struct {
-	shaders_dir_path:                 string,
+	shader_directories:               []string,
 	changed_shaders_since_last_watch: [dynamic]string,
 	device:                           wgpu.Device,
 	shaders:                          map[string]Shader, // maps shader names, i.e foo.wgsl without the .wgsl to the shaders
 	pipelines:                        [dynamic]^RenderPipeline, // owned by the shader registry!!!
 	hot_reload_shaders:               bool,
+}
+
+shader_registry_add_directory :: proc(dir_path: string) {
+	reg := &PLATFORM.shader_registry
+	new_shader_directories := make([]string, len(reg.shader_directories) + 1)
+	copy(new_shader_directories, reg.shader_directories)
+	new_shader_directories[len(reg.shader_directories)] = strings.clone(dir_path, NEVER_FREE_ALLOCATOR)
+	reg.shader_directories = new_shader_directories
 }
 
 Shader :: struct {
@@ -58,12 +69,13 @@ shader_registry_destroy :: proc(reg: ^ShaderRegistry) {
 
 shader_registry_create :: proc(
 	device: wgpu.Device,
-	shaders_dir_path: string = "./shaders",
+	shaders_dir_path: string,
 	hot_reload_shaders: bool,
 ) -> ShaderRegistry {
+
 	return ShaderRegistry {
 		device = device,
-		shaders_dir_path = shaders_dir_path,
+		shader_directories = slice.clone([]string{shaders_dir_path}, NEVER_FREE_ALLOCATOR),
 		hot_reload_shaders = hot_reload_shaders,
 		shaders = make(map[string]Shader, context.allocator),
 		pipelines = make([dynamic]^RenderPipeline, context.allocator),
@@ -247,7 +259,7 @@ _create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^Rende
 get_or_load_shader :: proc(reg: ^ShaderRegistry, shader_name: string) -> (shader: ^Shader, err: Error) {
 	if shader_name not_in reg.shaders {
 		shader: Shader
-		src_path := shader_src_path(reg, shader_name)
+		src_path := shader_src_path(reg, shader_name) or_return
 		src_wgsl, src_file_mod_time := load_shader_wgsl(reg, src_path) or_return
 		composited_wgsl, import_shader_names := composite_wgsl_code(reg, src_wgsl) or_return
 		reg.shaders[shader_name] = Shader {
@@ -318,8 +330,15 @@ composite_wgsl_code :: proc(
 	return strings.to_string(b), import_shader_names, nil
 }
 
-shader_src_path :: proc(reg: ^ShaderRegistry, shader_name: string) -> string {
-	return fmt.aprintf("{}/{}.wgsl", reg.shaders_dir_path, shader_name, allocator = NEVER_FREE_ALLOCATOR)
+shader_src_path :: proc(reg: ^ShaderRegistry, shader_name: string) -> (path: string, err: Error) {
+	for dir_path in reg.shader_directories {
+		path_candidate := fmt.tprintf("{}{}{}.wgsl", dir_path, filepath.SEPARATOR, shader_name)
+		if _, err := os.stat(path_candidate, context.temp_allocator); err == nil {
+			fmt.printfln("selected path {} for {}", path_candidate, shader_name)
+			return strings.clone(path_candidate, NEVER_FREE_ALLOCATOR), nil
+		}
+	}
+	return {}, tprint("shader with name", shader_name, "not found in any of the directories:", reg.shader_directories)
 }
 
 /// Note: Does not create the actual shader module!

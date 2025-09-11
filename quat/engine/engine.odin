@@ -229,7 +229,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	p[.SpriteShine] = q.make_render_pipeline(q.sprite_pipeline_config(.Shine))
 	p[.SpriteTransparent] = q.make_render_pipeline(q.sprite_pipeline_config(.Transparent))
 	p[.MeshFake3d] = q.make_render_pipeline(q.mesh_3d_pipeline_config())
-	p[.MeshFake3dHexChunkMasked] = q.make_render_pipeline(q.mesh_3d_hex_chunk_masked_pipeline_config())
+	p[.MeshFake3dHexChunkMasked] = q.make_render_pipeline(q.mesh_fake_3d_hex_chunk_masked_pipeline_config())
 	p[.SkinnedCutout] = q.make_render_pipeline(q.skinned_pipeline_config())
 	p[.Tritex] = q.make_render_pipeline(q.tritex_mesh_pipeline_config())
 	p[.ScreenUiGlyph] = q.make_render_pipeline(q.ui_glyph_pipeline_config(true))
@@ -429,6 +429,7 @@ _engine_prepare :: proc(engine: ^Engine) {
 	// prepare the globals bindgroup:
 	engine.frame_uniform_data.screen_size = PLATFORM.screen_size
 	engine.frame_uniform_data.cursor_pos = PLATFORM.cursor_pos
+	engine.frame_uniform_data.total_time = PLATFORM.total_secs
 	engine.frame_uniform_data.space_pressed = q.is_key_pressed(.SPACE)
 	engine.frame_uniform_data.ctrl_pressed = q.is_ctrl_pressed()
 	engine.frame_uniform_data.shift_pressed = q.is_shift_pressed()
@@ -503,12 +504,12 @@ _engine_render :: proc(engine: ^Engine) {
 		PLATFORM.hdr_screen_texture,
 		PLATFORM.depth_screen_texture,
 		engine.settings.clear_color,
+		0.0,
 	)
 
-	// todo!: reenable this check!
-	// for pipeline in engine.pipelines {
-	// 	assert(pipeline != nil)
-	// }
+	for pipeline in engine.pipelines {
+		assert(pipeline != nil)
+	}
 	frame_uniform := engine.frame_uniform.bind_group
 	camera_2d_uniform := engine.camera_2d_uniform.bind_group
 
@@ -528,14 +529,14 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.tritex_meshes[:],
 		engine.scene.tritex_textures,
 	)
-	q.mesh_3d_renderer_render(
+	q.mesh_fake_3d_renderer_render(
 		engine.pipelines[.MeshFake3d].pipeline,
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
 		engine.scene.meshes_3d[:],
 	)
-	q.mesh_3d_renderer_render_hex_chunk_masked(
+	q.mesh_fake_3d_renderer_render_hex_chunk_masked(
 		engine.pipelines[.MeshFake3dHexChunkMasked].pipeline,
 		hdr_pass,
 		frame_uniform,

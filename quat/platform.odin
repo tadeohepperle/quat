@@ -275,6 +275,7 @@ start_hdr_render_pass :: proc(
 	hdr_screen_texture: Texture,
 	depth_screen_texture: Texture,
 	clear_color: Color,
+	depth_clear_value: f32,
 ) -> wgpu.RenderPassEncoder {
 	hdr_pass := wgpu.CommandEncoderBeginRenderPass(
 		command_encoder,
@@ -293,7 +294,7 @@ start_hdr_render_pass :: proc(
 				view = depth_screen_texture.view,
 				depthLoadOp = .Clear,
 				depthStoreOp = .Store,
-				depthClearValue = 1.0,
+				depthClearValue = depth_clear_value,
 			},
 			timestampWrites = nil,
 		},
