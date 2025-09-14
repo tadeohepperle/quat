@@ -2,6 +2,11 @@ alias Vec2  = vec2<f32>;
 alias Vec3  = vec3<f32>;
 alias Vec4  = vec4<f32>;
 alias IVec2 = vec2<i32>;
+alias IVec3 = vec3<i32>;
+alias IVec4 = vec4<i32>;
+alias UVec2 = vec2<u32>;
+alias UVec3 = vec3<u32>;
+alias UVec4 = vec4<u32>;
 alias Mat4  = mat4x4<f32>;
 alias Mat3  = mat3x3<f32>;
 

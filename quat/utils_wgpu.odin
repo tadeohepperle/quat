@@ -77,6 +77,19 @@ dynamic_buffer_write :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #ca
 	wgpu.QueueWriteBuffer(PLATFORM.queue, this.buffer, 0, raw_data(elements), used_size)
 }
 
+// needs to have reserved enough space upfront!
+dynamic_buffer_write_at_offset :: proc(this: ^DynamicBuffer($T), elements: []T, offset_idx: int) {
+	assert(offset_idx + len(elements) <= this.length)
+
+	write_size := uint(len(elements) * size_of(T))
+	wgpu.QueueWriteBuffer(PLATFORM.queue, this.buffer, u64(offset_idx * size_of(T)), raw_data(elements), write_size)
+}
+// warning: call only if enough space reserved upfront!
+dynamic_buffer_set_length :: proc(this: ^DynamicBuffer($T), length: int) {
+	assert(u64(length * size_of(T)) <= this.size)
+	this.length = length
+}
+
 // appends to the end of the buffer, but requires that the buffer has enough size allocated, for this to succeed.
 // use in combination with `dynamic_buffer_reserve`
 dynamic_buffer_append_no_resize :: proc(this: ^DynamicBuffer($T), elements: []T, loc := #caller_location) {
@@ -101,6 +114,7 @@ dynamic_buffer_destroy :: proc(buffer: ^DynamicBuffer($T)) {
 		wgpu.BufferRelease(buffer.buffer)
 		buffer.buffer = nil
 	}
+	buffer.size = 0
 }
 
 UniformBuffer :: struct($T: typeid) {
@@ -359,4 +373,11 @@ WGPU_DOWNLEVEL_LIMITS :: wgpu.Limits {
 	maxComputeWorkgroupSizeY                  = 256,
 	maxComputeWorkgroupSizeZ                  = 64,
 	maxComputeWorkgroupsPerDimension          = 65535,
+}
+
+DrawIndirectCommand :: struct {
+	vertex_count:   u32,
+	instance_count: u32,
+	first_vertex:   u32,
+	first_instance: u32,
 }

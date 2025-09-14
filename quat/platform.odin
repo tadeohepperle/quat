@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:time"
 import glfw "vendor:glfw"
@@ -56,27 +57,29 @@ platform_deinit :: proc() {
 }
 
 PlatformSettings :: struct {
-	title:              string,
-	initial_size:       UVec2,
-	clear_color:        Color,
-	shaders_dir_path:   string,
-	default_font_path:  string,
-	power_preference:   wgpu.PowerPreference,
-	present_mode:       wgpu.PresentMode,
-	hot_reload_shaders: bool,
-	debug_fps_in_title: bool,
+	title:                    string,
+	initial_size:             UVec2,
+	clear_color:              Color,
+	shaders_dir_path:         string,
+	default_font_path:        string,
+	power_preference:         wgpu.PowerPreference,
+	present_mode:             wgpu.PresentMode,
+	hot_reload_shaders:       bool,
+	debug_fps_in_title:       bool,
+	additional_wgpu_features: []wgpu.FeatureName,
 }
 
 PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
-	title              = "Quat App",
-	initial_size       = {800, 600},
-	clear_color        = ColorBlack,
-	shaders_dir_path   = "./shaders",
-	default_font_path  = "",
-	power_preference   = .LowPower,
-	present_mode       = .Fifo,
-	debug_fps_in_title = true,
-	hot_reload_shaders = true,
+	title                    = "Quat App",
+	initial_size             = {800, 600},
+	clear_color              = ColorBlack,
+	shaders_dir_path         = "./shaders",
+	default_font_path        = "",
+	power_preference         = .LowPower,
+	present_mode             = .Fifo,
+	debug_fps_in_title       = true,
+	hot_reload_shaders       = true,
+	additional_wgpu_features = {.MultiDrawIndirect, .IndirectFirstInstance},
 }
 @(private = "file")
 DEFAULT_FONT_TTF := #load("../assets/Lora-Medium.ttf")
@@ -566,7 +569,15 @@ _init_wgpu :: proc(platform: ^Platform) {
 	}
 	device_res: DeviceRes
 
-	required_features := [?]wgpu.FeatureName{.PushConstants, .TimestampQuery, .TextureFormat16bitNorm}
+	required_features := []wgpu.FeatureName{.PushConstants, .TimestampQuery, .TextureFormat16bitNorm}
+	features := make([dynamic]wgpu.FeatureName)
+	defer delete(features)
+	for f in required_features do append(&features, f)
+	for f in platform.settings.additional_wgpu_features {
+		if !slice.contains(features[:], f) do append(&features, f)
+	}
+
+
 	required_limits_extras := wgpu.NativeLimits {
 		chain = {sType = .NativeLimits},
 		maxPushConstantSize = 128,
@@ -579,8 +590,8 @@ _init_wgpu :: proc(platform: ^Platform) {
 		&wgpu.DeviceDescriptor {
 			nextInChain = nil,
 			label = "Device",
-			requiredFeatureCount = uint(len(required_features)),
-			requiredFeatures = &required_features[0],
+			requiredFeatureCount = uint(len(features)),
+			requiredFeatures = raw_data(features),
 			requiredLimits = &required_limits,
 			defaultQueue = wgpu.QueueDescriptor{nextInChain = nil, label = "Queue"},
 			deviceLostCallbackInfo = wgpu.DeviceLostCallbackInfo {
