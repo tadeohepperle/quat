@@ -210,6 +210,8 @@ Camera3DUniformData :: struct {
 	proj:      Mat4,
 	view_pos:  Vec4, // eye pos of the camera, extended by 1.0
 	_pad:      Vec4, // because all the Mat4s are 32-byte aligned
+	inv_view:  Mat4,
+	inv_proj:  Mat4,
 }
 
 camera_3d_uniform_data :: proc(camera: Camera3D, screen_size: Vec2) -> Camera3DUniformData {
@@ -217,7 +219,18 @@ camera_3d_uniform_data :: proc(camera: Camera3D, screen_size: Vec2) -> Camera3DU
 	proj := camera_3d_projection_matrix(camera.projection, screen_size)
 	view_proj := proj * view
 	view_pos := Vec4{camera.eye_pos.x, camera.eye_pos.y, camera.eye_pos.z, 1.0}
-	return Camera3DUniformData{view_proj = view_proj, view = view, proj = proj, view_pos = view_pos}
+
+	inv_view := linalg.matrix4_inverse(view)
+	inv_proj := linalg.matrix4_inverse(proj)
+
+	return Camera3DUniformData {
+		view_proj = view_proj,
+		view = view,
+		proj = proj,
+		view_pos = view_pos,
+		inv_view = inv_view,
+		inv_proj = inv_proj,
+	}
 }
 
 camera_3d_view_matrix :: proc(transform: Camera3DTransform) -> Mat4 {

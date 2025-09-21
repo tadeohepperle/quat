@@ -53,8 +53,8 @@ main :: proc() {
 		frame_0to1 := q.image_load("./assets/frame_0to1_fine.png") or_else panic("not found")
 		frame_1to0 := q.image_load("./assets/frame_1to0_fine.png") or_else panic("not found")
 
-		diffuse := q.image_create({1024, 512})
-		motion := q.image_create({256, 128})
+		diffuse := q.image_create({1024, 512}, q.Rgba)
+		motion := q.image_create({256, 128}, q.Rgba)
 		q.image_copy_into(&diffuse, q.image_view(frame_0), {0, 0})
 		q.image_copy_into(&diffuse, q.image_view(frame_1), {512, 0})
 		q.image_copy_into(&motion, q.image_view(frame_0to1), {0, 0})

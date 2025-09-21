@@ -60,13 +60,13 @@ main :: proc() {
 
 	// odinfmt:enable
 
-	mesh := q.mesh_3d_create()
+	mesh := q.mesh_fake_3d_create()
 	mesh.triangles = slice.clone_to_dynamic(triangles)
 	for pos in v_positions {
 		append(&mesh.vertices, v(pos))
 	}
-	q.mesh_3d_unshare_vertices(&mesh)
-	q.mesh_3d_sync(&mesh)
+	q.mesh_fake_3d_unshare_vertices(&mesh)
+	q.mesh_fake_3d_sync(&mesh)
 	mesh_vertices_unshared := slice.clone(mesh.vertices[:])
 
 	corn := engine.load_texture_tile("./assets/corn.png")
@@ -187,7 +187,7 @@ main :: proc() {
 			new_pos.z *= shader_xxx.z
 			mesh.vertices[idx].pos = new_pos
 		}
-		q.mesh_3d_sync(&mesh)
+		q.mesh_fake_3d_sync(&mesh)
 		engine.draw_mesh_3d_hex_chunk_masked(mesh, hex_chunks[active_chunk_idx].uniform.bind_group)
 	}
 }

@@ -36,10 +36,17 @@ main :: proc() {
 	engine.init(settings)
 	defer engine.deinit()
 
-	for engine.next_frame() {
-		// div := q.div(q.Div{padding = {20, 20, 20, 20}, color = {0, 0, 0.1, 1.0}})
-		// q.child(div, q.button("Hello").ui)
-		// engine.add_ui(div)
-		// engine.draw_gizmos_coords()
-	}
+
+	reader := q.equirect_reader_create()
+	defer q.equirect_reader_drop(&reader)
+
+
+	q.equirect_reader_load_cube_texture(reader, "./assets/pure-sky.hdr", 1080)
+
+	// for engine.next_frame() {
+	// 	// div := q.div(q.Div{padding = {20, 20, 20, 20}, color = {0, 0, 0.1, 1.0}})
+	// 	// q.child(div, q.button("Hello").ui)
+	// 	// engine.add_ui(div)
+	// 	// engine.draw_gizmos_coords()
+	// }
 }

@@ -4,7 +4,7 @@ import "core:fmt"
 import "vendor:wgpu"
 
 IVec2 :: [2]int
-Image :: q.Image
+Image :: q.RgbaImage
 Atlas :: q.Atlas
 TextureTile :: q.TextureTile
 TextureHandle :: q.TextureHandle
@@ -21,6 +21,9 @@ MotionTextureAllocator :: struct {
 	ratio:       int, // diffuse_img.size should be an integer multiple of motion_img.size
 	texture:     q.MotionTextureHandle,
 }
+
+Rgba :: q.Rgba
+
 // currently only supports fixed size, no resizing
 motion_texture_allocator_create :: proc(diffuse_size: IVec2, motion_size: IVec2) -> (res: MotionTextureAllocator) {
 	ratio, is_ratio := _is_ratio(diffuse_size, motion_size)
@@ -30,8 +33,8 @@ motion_texture_allocator_create :: proc(diffuse_size: IVec2, motion_size: IVec2)
 	texture := q.motion_texture_create(diffuse_size, motion_size)
 	q.atlas_init(&res.atlas, diffuse_size)
 	res.texture = q.assets_insert(texture)
-	res.diffuse_img = q.image_create(diffuse_size)
-	res.motion_img = q.image_create(motion_size)
+	res.diffuse_img = q.image_create(diffuse_size, Rgba)
+	res.motion_img = q.image_create(motion_size, Rgba)
 	return res
 }
 
@@ -55,13 +58,13 @@ _is_ratio :: proc(big: IVec2, small: IVec2) -> (ratio: int, ok: bool) {
 }
 
 DiffuseAndMotionImage :: struct {
-	diffuse: q.ImageView,
-	motion:  q.ImageView,
+	diffuse: q.RgbaImageView,
+	motion:  q.RgbaImageView,
 }
 motion_texture_allocator_allocate_flipbook :: proc(
 	this: ^MotionTextureAllocator,
-	diffuse_image: q.ImageView,
-	motion_image: q.ImageView,
+	diffuse_image: q.RgbaImageView,
+	motion_image: q.RgbaImageView,
 	n_x_tiles: int,
 	n_y_tiles: int,
 	n_tiles: int,
@@ -327,7 +330,7 @@ _try_add_img :: proc(
 				q.texture_destroy(&texture)
 				this.texture = {}
 			}
-			this.image = q.image_create(this.atlas.size)
+			this.image = q.image_create(this.atlas.size, Rgba)
 			assert(len(remap_allocs) == len(this.src_image_ids))
 			for id in this.src_image_ids {
 				src_img := &src_images[id].(SrcImage) or_else panic("slot not filled")
@@ -392,7 +395,7 @@ _atlas_create :: proc(id: AtlasId, size: IVec2) -> (this: _TextureAtlas) {
 	assert(size != {0, 0})
 	this.id = id
 	q.atlas_init(&this.atlas, size)
-	this.image = q.image_create(size)
+	this.image = q.image_create(size, Rgba)
 	return this
 }
 

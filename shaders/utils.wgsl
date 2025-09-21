@@ -34,6 +34,8 @@ struct Camera3D {
     proj:        Mat4,
     view_pos:    Vec4,
     _pad:        Vec4, // because of Odin 32 bytes Mat4 alignment
+    inv_view:    Mat4,
+	inv_proj:    Mat4,
 }
 
 

@@ -20,12 +20,7 @@ depth_image_load :: proc(path: string) -> (DepthImage16, Error) {
 	DESIRED_CHANNELS :: 1
 	im_ptr := stbi.load_16(tmp_cstr(path), &x, &y, &c, DESIRED_CHANNELS)
 	if im_ptr == nil {
-		msg := tprint(
-			"stbi could not load depth image from ",
-			path,
-			"reason:",
-			stbi.failure_reason(),
-		)
+		msg := tprint("stbi could not load depth image from ", path, "reason:", stbi.failure_reason())
 		return {}, msg
 	}
 
@@ -44,9 +39,11 @@ depth_image_drop :: proc(this: ^DepthImage16) {
 	}
 }
 
-Image :: struct {
+RgbaImage :: Image(Rgba)
+
+Image :: struct($PIX: typeid) {
 	size:                IVec2,
-	pixels:              []Rgba `fmt:"-"`,
+	pixels:              []PIX `fmt:"-"`,
 	backed_by_stbi:      bool,
 	premultiplied_alpha: bool,
 }
@@ -57,24 +54,41 @@ Rgba :: [4]u8
 is_image_path :: proc(path: string) -> bool {
 	return strings.ends_with(path, ".png") // todo: extend further later, needs to support jpeg as well
 }
-image_load :: proc(path: string) -> (Image, Error) {
+
+
+image_load :: proc(path: string) -> (RgbaImage, Error) {
+	return image_load_of_type(path, Rgba)
+}
+
+image_load_of_type :: proc(path: string, $PIX: typeid) -> (Image(PIX), Error) {
 	x, y, c: i32
-	DESIRED_CHANNELS :: 4
-	im_ptr := stbi.load(tmp_cstr(path), &x, &y, &c, DESIRED_CHANNELS)
+	channels, element_type := channels_and_element_type(PIX)
+	im_ptr: rawptr
+	switch element_type {
+	case u8:
+		im_ptr = stbi.load(tmp_cstr(path), &x, &y, &c, i32(channels))
+	case u16:
+		im_ptr = stbi.load_16(tmp_cstr(path), &x, &y, &c, i32(channels))
+	case f32:
+		im_ptr = stbi.loadf(tmp_cstr(path), &x, &y, &c, i32(channels))
+	case:
+		fmt.panicf("pixel element type {} not supported, onlpy u8, u16 and f32 are valid", typeid_of(PIX))
+	}
+
 	if im_ptr == nil {
 		msg := tprint("stbi could not load image from ", path, "reason:", stbi.failure_reason())
 		return {}, msg
 	}
 
-	img := Image {
+	img := Image(PIX) {
 		size           = IVec2{int(x), int(y)},
-		pixels         = slice.from_ptr(cast(^Rgba)im_ptr, int(x * y)),
+		pixels         = slice.from_ptr(cast(^PIX)im_ptr, int(x * y)),
 		backed_by_stbi = true,
 	}
 	return img, nil
 }
 // multiplies rgb channels by alpha
-image_premultiply_alpha :: proc(this: ^Image) {
+image_premultiply_alpha :: proc(this: ^RgbaImage) {
 	if this.premultiplied_alpha {
 		return
 	}
@@ -86,80 +100,109 @@ image_premultiply_alpha :: proc(this: ^Image) {
 	}
 	this.premultiplied_alpha = true
 }
-image_load_from_memory :: proc(bytes: []u8) -> (Image, Error) {
+
+channels_and_element_type :: proc($PIX: typeid) -> (int, typeid) {
+	when PIX == Rgba {
+		return 4, u8
+	} else when PIX == Rgb {
+		return 3, u8
+	} else when PIX == u16 {
+		return 1, u8
+	} else when PIX == [4]f32 {
+		return 4, f32
+	} else when PIX == f32 {
+		return 1, f32
+	} else {
+		#panic("PIX type not supported")
+	}
+}
+
+image_load_from_memory :: proc(bytes: []u8, $PIX: typeid) -> (Image(PIX), Error) {
 	x, y, c: i32
-	DESIRED_CHANNELS :: 4
-	im_ptr := stbi.load_from_memory(raw_data(bytes), i32(len(bytes)), &x, &y, &c, DESIRED_CHANNELS)
+	channels, element_type := channels_and_element_type(PIX)
+
+	im_ptr: rawptr
+	switch element_type {
+	case u8:
+		im_ptr = stbi.load_from_memory(raw_data(bytes), i32(len(bytes)), &x, &y, &c, i32(channels))
+	case u16:
+		im_ptr = stbi.load_16_from_memory(raw_data(bytes), i32(len(bytes)), &x, &y, &c, i32(channels))
+	case f32:
+		im_ptr = stbi.loadf_from_memory(raw_data(bytes), i32(len(bytes)), &x, &y, &c, i32(channels))
+	case:
+		fmt.panicf("pixel element type {} not supported, onlpy u8, u16 and f32 are valid", PIX)
+	}
+
+
 	if im_ptr == nil {
 		msg := tprint("stbi could not load image from bytes reason:", stbi.failure_reason())
 		return {}, msg
 	}
-	img := Image {
+	img := Image(PIX) {
 		size           = IVec2{int(x), int(y)},
 		pixels         = slice.from_ptr(cast(^Rgba)im_ptr, int(x * y)),
 		backed_by_stbi = true,
 	}
 	return img, nil
-
 }
-image_drop :: proc(this: ^Image) {
+image_drop :: proc(this: ^Image($PIX)) {
 	if this.backed_by_stbi {
 		stbi.image_free(raw_data(this.pixels))
 	} else {
 		delete(this.pixels)
 	}
 }
-image_clear :: proc(this: ^Image) {
+image_clear :: proc(this: ^Image($PIX)) {
 	mem.zero_slice(this.pixels)
 }
-image_create :: proc(size: IVec2) -> Image {
+
+image_create :: proc(size: IVec2, $PIX: typeid) -> Image(PIX) {
 	buf_len := size.x * size.y
-	backing := make([dynamic]Rgba, cap = buf_len, len = buf_len)
-	return Image{size = size, pixels = backing[:], backed_by_stbi = false}
+	backing := make([dynamic]PIX, cap = buf_len, len = buf_len)
+	return Image(PIX){size = size, pixels = backing[:], backed_by_stbi = false}
 }
-image_create_colored :: proc(size: IVec2, color: Rgba) -> Image {
-	res := image_create(size)
+image_create_colored :: proc(size: IVec2, color: $PIX) -> RgbaImage {
+	res := image_create(size, PIX)
 	for &px in res.pixels {
 		px = color
 	}
 	return res
 }
-image_clone :: proc(this: Image) -> Image {
-	res := image_create(this.size)
+image_clone :: proc(this: Image($PIX)) -> Image(PIX) {
+	res := image_create(this.size, PIX)
 	assert(len(res.pixels) == len(this.pixels))
-	mem.copy_non_overlapping(raw_data(res.pixels), raw_data(this.pixels), len(this.pixels) * 4)
+	mem.copy_non_overlapping(raw_data(res.pixels), raw_data(this.pixels), len(this.pixels) * size_of(PIX))
 	return res
 }
 
-image_save_as_png :: proc(this: Image, path: string) -> Error {
+image_save_as_png :: proc(this: Image($PIX), path: string) -> Error {
 	path_c_str := tmp_cstr(path)
-	res := stbi.write_png(
-		path_c_str,
-		i32(this.size.x),
-		i32(this.size.y),
-		4,
-		raw_data(this.pixels),
-		0,
-	)
+	channels, elem_ty = channels_and_element_type(PIX)
+	if elem_ty != u8 {
+		fmt.panicf("cannot save image with pixel type", typeid_of(PIX))
+	}
+	res := stbi.write_png(path_c_str, i32(this.size.x), i32(this.size.y), channels, raw_data(this.pixels), 0)
 	if res != 1 {
 		return tprint("stbi was not able to write image to ", path)
 	}
 	return nil
 }
 
-ImageView :: struct {
+
+RgbaImageView :: ImageView(Rgba)
+ImageView :: struct($PIX: typeid) {
 	size: IVec2,
-	rows: [][]Rgba,
+	rows: [][]PIX,
 }
 
 // returns a slice in tmp that contains lines of the image in the specified rect.
 // provide {0,0}, {0,0} or {0,0}, this.size to view the whole image
 image_view :: proc(
-	this: Image,
+	this: Image($PIX),
 	min: IVec2 = IVec2{0, 0},
 	max: IVec2 = IVec2{0, 0},
 	allocator := context.temp_allocator,
-) -> ImageView {
+) -> ImageView(PIX) {
 	assert(size_contains(this.size, min))
 	assert(size_contains(this.size, max))
 	max := max
@@ -171,7 +214,7 @@ image_view :: proc(
 	}
 	row_len := max.x - min.x
 
-	rows := make([][]Rgba, max.y - min.y, allocator)
+	rows := make([][]PIX, max.y - min.y, allocator)
 	for &row, i in rows {
 		start_idx := (min.y + i) * this.size.x + min.x
 		end_idx := start_idx + row_len
@@ -180,11 +223,11 @@ image_view :: proc(
 	view_size := max - min
 	return {view_size, rows}
 }
-image_from_view :: proc(view: ImageView) -> (res: Image) {
+image_from_view :: proc(view: ImageView($PIX)) -> (res: Image(PIX)) {
 	res = image_create(view.size)
 	for row, i in view.rows {
 		assert(len(row) == view.size.x)
-		mem.copy(&res.pixels[i * view.size.x], raw_data(row), view.size.x * 4)
+		mem.copy(&res.pixels[i * view.size.x], raw_data(row), view.size.x * size_of(PIX))
 	}
 	return res
 }
@@ -193,7 +236,7 @@ size_contains :: proc(size: IVec2, pt: IVec2) -> bool {
 	return pt.x >= 0 && pt.y >= 0 && pt.x <= size.x && pt.y <= size.y
 }
 
-image_copy_into :: proc(target: ^Image, view: ImageView, pos_in_target: IVec2) {
+image_copy_into :: proc(target: ^Image($PIX), view: ImageView(PIX), pos_in_target: IVec2) {
 	if view.size == {} {
 		return
 	}
@@ -205,11 +248,11 @@ image_copy_into :: proc(target: ^Image, view: ImageView, pos_in_target: IVec2) {
 	for row, i in view.rows {
 		assert(len(row) == view_width)
 		start_idx := (i + pos_in_target.y) * target.size.x + pos_in_target.x
-		mem.copy(&target.pixels[start_idx], raw_data(row), view_width * 4)
+		mem.copy(&target.pixels[start_idx], raw_data(row), view_width * size_of(PIX))
 	}
 }
 
-image_get_pixel :: proc(this: Image, pos: IVec2) -> Rgba {
+image_get_pixel :: proc(this: Image($PIX), pos: IVec2) -> PIX {
 	assert(pos.x < this.size.x)
 	assert(pos.y < this.size.y)
 	assert(pos.x >= 0)
@@ -217,8 +260,8 @@ image_get_pixel :: proc(this: Image, pos: IVec2) -> Rgba {
 	return this.pixels[pos.y * this.size.x + pos.x]
 }
 
-image_rotate_90 :: proc(this: Image) -> Image {
-	res := image_create(IVec2{this.size.y, this.size.x})
+image_rotate_90 :: proc(this: Image($PIX)) -> Image(PIX) {
+	res := image_create(IVec2{this.size.y, this.size.x}, PIX)
 	for y in 0 ..< this.size.y {
 		for x in 0 ..< this.size.x {
 			res_x := this.size.y - y - 1
@@ -229,8 +272,7 @@ image_rotate_90 :: proc(this: Image) -> Image {
 	return res
 }
 
-
-image_to_grey_scale :: proc(img: Image) -> Image {
+image_to_grey_scale :: proc(img: RgbaImage) -> RgbaImage {
 	res := image_clone(img)
 	for &p in res.pixels {
 		grey := u8((int(p.r) + int(p.g) + int(p.b)) / 3)
@@ -250,9 +292,9 @@ DEFAULT_SDF_OPTIONS :: SdfOptions {
 	max_dist              = 32,
 	solid_alpha_threshold = 100,
 }
-create_signed_distance_field :: proc(img: Image, using options := DEFAULT_SDF_OPTIONS) -> Image {
+create_signed_distance_field :: proc(img: RgbaImage, using options := DEFAULT_SDF_OPTIONS) -> RgbaImage {
 	p_size := img.size + IVec2{pad * 2, pad * 2}
-	p_img := image_create(p_size) // padded image
+	p_img := image_create(p_size, Rgba) // padded image
 
 	distances, size := _distance_field(img, options)
 	assert(size == p_size)
@@ -265,21 +307,20 @@ create_signed_distance_field :: proc(img: Image, using options := DEFAULT_SDF_OP
 	return p_img
 }
 // padding is applied on each side seperately.
-transparent_pad :: proc(img: Image, pad: IVec2) -> Image {
-	out := image_create(img.size + pad * 2)
+transparent_pad :: proc(img: RgbaImage, pad: IVec2) -> RgbaImage {
+	out := image_create(img.size + pad * 2, Rgba)
 	image_copy_into(&out, image_view(img), pad)
 	return out
 }
 
-
 // returns x_n * y_n tiles of the same size (if img size allows for clean even tiling)
 image_slice_into_tiles :: proc(
-	img: Image,
+	img: Image($PIX),
 	x_n: int,
 	y_n: int,
 	allocator := context.temp_allocator,
 ) -> (
-	res: []ImageView,
+	res: []ImageView(PIX),
 ) {
 	tile_width := img.size.x / x_n
 	tile_height := img.size.y / y_n
@@ -312,7 +353,7 @@ _rgba_from_hdr :: proc(pix: RgbaHdr) -> Rgba {
 	return {u8(pix.r * 255.0), u8(pix.g * 255.0), u8(pix.b * 255.0), u8(pix.a * 255.0)}
 }
 
-to_hdr :: proc(img: Image) -> (out: HdrImage) {
+to_hdr :: proc(img: RgbaImage) -> (out: HdrImage) {
 	out.size = img.size
 	out.pixels = make([]RgbaHdr, len(img.pixels))
 	for pix, i in img.pixels {
@@ -321,7 +362,7 @@ to_hdr :: proc(img: Image) -> (out: HdrImage) {
 	return out
 }
 
-from_hdr :: proc(img: HdrImage) -> (out: Image) {
+from_hdr :: proc(img: HdrImage) -> (out: RgbaImage) {
 	out.size = img.size
 	out.pixels = make([]Rgba, len(img.pixels))
 	for pix, i in img.pixels {
@@ -330,13 +371,13 @@ from_hdr :: proc(img: HdrImage) -> (out: Image) {
 	return out
 }
 
-_get_pixel_clamped :: #force_inline proc(img: Image, pos: IVec2) -> Rgba {
+_get_pixel_clamped :: #force_inline proc(img: RgbaImage, pos: IVec2) -> Rgba {
 	pos := IVec2{clamp(pos.x, 0, img.size.x - 1), clamp(pos.y, 0, img.size.y - 1)}
 	return img.pixels[pos.y * img.size.x + pos.x]
 }
 
-gaussian_blur :: proc(img: Image) -> (out: Image) {
-	blurred_h := image_create(img.size)
+gaussian_blur :: proc(img: RgbaImage) -> (out: RgbaImage) {
+	blurred_h := image_create(img.size, Rgba)
 	defer {image_drop(&blurred_h)}
 
 	_rgba_to_u32 :: #force_inline proc(p: Rgba) -> [4]u32 {
@@ -346,7 +387,7 @@ gaussian_blur :: proc(img: Image) -> (out: Image) {
 		return {u8(p.r), u8(p.g), u8(p.b), u8(p.a)}
 	}
 
-	// Kernel :: [5]f32{7, 26, 41, 26, 7} 
+	// Kernel :: [5]f32{7, 26, 41, 26, 7}
 	for y in 0 ..< img.size.y {
 		for x in 0 ..< img.size.x {
 			acc: [4]u32
@@ -360,7 +401,7 @@ gaussian_blur :: proc(img: Image) -> (out: Image) {
 		}
 	}
 
-	out = image_create(img.size)
+	out = image_create(img.size, Rgba)
 	for y in 0 ..< img.size.y {
 		for x in 0 ..< img.size.x {
 			acc: [4]u32
@@ -377,16 +418,10 @@ gaussian_blur :: proc(img: Image) -> (out: Image) {
 	return out
 }
 
-distance_field_in_alpha_channel_image :: proc(
-	img: Image,
-	using options := DEFAULT_SDF_OPTIONS,
-) -> Image {
-	assert(
-		options.pad == 0,
-		"distance_field_in_alpha_channel_image works only with 0 padding at the moment!",
-	)
+distance_field_in_alpha_channel_image :: proc(img: RgbaImage, using options := DEFAULT_SDF_OPTIONS) -> RgbaImage {
+	assert(options.pad == 0, "distance_field_in_alpha_channel_image works only with 0 padding at the moment!")
 	p_size := img.size + IVec2{pad * 2, pad * 2}
-	p_img := image_create(p_size) // padded image
+	p_img := image_create(p_size, Rgba) // padded image
 	distances, size := _distance_field(img, options)
 	assert(size == p_size)
 	for y in 0 ..< img.size.y {
@@ -438,7 +473,7 @@ _dist :: proc(a: IVec2, b: IVec2) -> f32 {
 	return math.sqrt(x * x + y * y)
 }
 _distance_field :: proc(
-	img: Image,
+	img: RgbaImage,
 	using options := DEFAULT_SDF_OPTIONS,
 ) -> (
 	distances: []DistancePixel,
@@ -472,11 +507,7 @@ _distance_field :: proc(
 				pix_undefined := pix.dist == UNDEFINED_DIST
 				for nei_off in neighbor_offsets {
 					nei_pos := pos + nei_off
-					is_in_bounds :=
-						nei_pos.x >= 0 &&
-						nei_pos.y >= 0 &&
-						nei_pos.x < p_size.x &&
-						nei_pos.y < p_size.y
+					is_in_bounds := nei_pos.x >= 0 && nei_pos.y >= 0 && nei_pos.x < p_size.x && nei_pos.y < p_size.y
 					if is_in_bounds {
 						nei_pix := &distances[nei_pos.y * p_size.x + nei_pos.x]
 						if nei_pix.dist != UNDEFINED_DIST {
@@ -518,7 +549,7 @@ create_voronoi_texture :: proc(
 	n: int,
 	mode: VoronoiMode = .RandomColors,
 ) -> (
-	out: Image,
+	out: RgbaImage,
 	pts: []IVec2,
 ) {
 	pts = make([]IVec2, n)
@@ -565,7 +596,7 @@ create_voronoi_texture :: proc(
 		}
 	}
 
-	out = image_create(size)
+	out = image_create(size, Rgba)
 
 	switch mode {
 	case .Distances:
@@ -581,12 +612,7 @@ create_voronoi_texture :: proc(
 	case .RandomColors:
 		colors: []Rgba = make([]Rgba, n, allocator = context.temp_allocator)
 		for i in 0 ..< n {
-			colors[i] = Rgba {
-				u8(rand.uint32() % 255),
-				u8(rand.uint32() % 255),
-				u8(rand.uint32() % 255),
-				255,
-			}
+			colors[i] = Rgba{u8(rand.uint32() % 255), u8(rand.uint32() % 255), u8(rand.uint32() % 255), 255}
 		}
 		for pix, i in distances {
 			out.pixels[i] = colors[pix.id]
@@ -601,8 +627,8 @@ create_voronoi_texture :: proc(
 	return out, pts
 }
 
-tile :: proc(img: Image, times: IVec2) -> Image {
-	out := image_create(img.size * times)
+tile :: proc(img: Image($PIX), times: IVec2) -> Image(PIX) {
+	out := image_create(img.size * times, PIX)
 	img_view := image_view(img)
 	for y in 0 ..< times.y {
 		for x in 0 ..< times.x {

@@ -175,14 +175,14 @@ motion_texture_create :: proc(diffuse_size: IVec2, motion_size: IVec2) -> (res: 
 	return
 }
 
-motion_texture_create_from_images :: proc(diffuse: Image, motion: Image) -> (res: MotionTexture) {
+motion_texture_create_from_images :: proc(diffuse: RgbaImage, motion: RgbaImage) -> (res: MotionTexture) {
 
 	res = motion_texture_create(diffuse.size, motion.size)
 	motion_texture_write(res, diffuse, motion)
 	return res
 }
 
-motion_texture_write :: proc(this: MotionTexture, diffuse: Image, motion: Image) {
+motion_texture_write :: proc(this: MotionTexture, diffuse: RgbaImage, motion: RgbaImage) {
 	assert(UVec2{u32(diffuse.size.x), u32(diffuse.size.y)} == this.diffuse_size)
 	assert(UVec2{u32(motion.size.x), u32(motion.size.y)} == this.motion_size)
 

@@ -76,7 +76,7 @@ texture_from_image_path :: proc(
 }
 
 COPY_BYTES_PER_ROW_ALIGNMENT: u32 : 256 // Buffer-Texture copies must have [`bytes_per_row`] aligned to this number.
-texture_from_image :: proc(img: Image, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> (texture: Texture) {
+texture_from_image :: proc(img: RgbaImage, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> (texture: Texture) {
 	// todo: remove this stupid restriction, but we currently only support rgba8 textures
 	assert(settings.format == wgpu.TextureFormat.RGBA8UnormSrgb || settings.format == wgpu.TextureFormat.RGBA8Unorm)
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
@@ -89,7 +89,7 @@ texture_from_image :: proc(img: Image, settings: TextureSettings = TEXTURE_SETTI
 	texture_write_from_image(texture, img)
 	return texture
 }
-texture_write_from_image :: proc(texture: Texture, img: Image) {
+texture_write_from_image :: proc(texture: Texture, img: RgbaImage) {
 	size := texture.info.size
 	assert(size.x == u32(img.size.x))
 	assert(size.y == u32(img.size.y))
@@ -324,9 +324,9 @@ texture_destroy :: proc(texture: ^Texture) {
 	wgpu.TextureRelease(texture.texture)
 }
 
-RBGA_BIND_GROUP_LAYOUT_CACHED: wgpu.BindGroupLayout
+RBGA_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	if RBGA_BIND_GROUP_LAYOUT_CACHED == nil {
+	if RBGA_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -339,12 +339,12 @@ rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
-		RBGA_BIND_GROUP_LAYOUT_CACHED = wgpu.DeviceCreateBindGroupLayout(
+		RBGA_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return RBGA_BIND_GROUP_LAYOUT_CACHED
+	return RBGA_BIND_GROUP_LAYOUT
 }
 
 RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
@@ -375,7 +375,6 @@ rgba_texture_array_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu
 }
 
 texture_array_create :: proc(
-	device: wgpu.Device,
 	size: UVec2,
 	layers: u32,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
@@ -394,7 +393,7 @@ texture_array_create :: proc(
 		viewFormatCount = 1,
 		viewFormats = &array.info.settings.format,
 	}
-	array.texture = wgpu.DeviceCreateTexture(device, &descriptor)
+	array.texture = wgpu.DeviceCreateTexture(PLATFORM.device, &descriptor)
 
 	texture_view_descriptor := wgpu.TextureViewDescriptor {
 		format          = settings.format,
@@ -417,18 +416,18 @@ texture_array_create :: proc(
 		maxAnisotropy = 1,
 		// ...
 	}
-	array.sampler = wgpu.DeviceCreateSampler(device, &sampler_descriptor)
+	array.sampler = wgpu.DeviceCreateSampler(PLATFORM.device, &sampler_descriptor)
 
 	bind_group_descriptor_entries := [?]wgpu.BindGroupEntry {
 		wgpu.BindGroupEntry{binding = 0, textureView = array.view},
 		wgpu.BindGroupEntry{binding = 1, sampler = array.sampler},
 	}
 	bind_group_descriptor := wgpu.BindGroupDescriptor {
-		layout     = rgba_texture_array_bind_group_layout_cached(device),
+		layout     = rgba_texture_array_bind_group_layout_cached(PLATFORM.device),
 		entryCount = uint(len(bind_group_descriptor_entries)),
 		entries    = &bind_group_descriptor_entries[0],
 	}
-	array.bind_group = wgpu.DeviceCreateBindGroup(device, &bind_group_descriptor)
+	array.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
 
 	return array
 }
@@ -440,7 +439,7 @@ texture_array_from_image_paths :: proc(
 	array: Texture,
 	error: Error,
 ) {
-	images := make([dynamic]Image)
+	images := make([dynamic]RgbaImage)
 
 	width: int
 	height: int
@@ -474,7 +473,7 @@ texture_array_from_image_paths :: proc(
 
 
 texture_array_from_images :: proc(
-	images: []Image,
+	images: []RgbaImage,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
 	array: Texture,
@@ -486,7 +485,7 @@ texture_array_from_images :: proc(
 	}
 	size := UVec2{u32(images[0].size.x), u32(images[0].size.y)}
 	layers := u32(len(images))
-	array = texture_array_create(PLATFORM.device, size, layers, settings)
+	array = texture_array_create(size, layers, settings)
 
 	assert(settings.format == IMAGE_FORMAT)
 	block_size: u32 = 4

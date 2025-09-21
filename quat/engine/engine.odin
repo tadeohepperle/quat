@@ -790,14 +790,14 @@ set_skinned_mesh_bones :: proc(handle: q.SkinnedMeshHandle, bones: []q.Affine2) 
 draw_skinned_mesh :: proc(handle: q.SkinnedMeshHandle, pos: Vec2 = Vec2{0, 0}, color: Color = q.ColorWhite) {
 	append(&ENGINE.scene.skinned_render_commands, q.SkinnedRenderCommand{pos, color, handle})
 }
-create_texture_from_image :: proc(img: q.Image) -> q.TextureHandle {
+create_texture_from_image :: proc(img: q.RgbaImage) -> q.TextureHandle {
 	texture := q.texture_from_image(img, q.TEXTURE_SETTINGS_RGBA)
 	return q.assets_insert(texture)
 }
 get_texture_info :: proc(handle: q.TextureHandle) -> q.TextureInfo {
 	return q.assets_get(handle).info
 }
-write_image_to_texture :: proc(img: q.Image, handle: q.TextureHandle) {
+write_image_to_texture :: proc(img: q.RgbaImage, handle: q.TextureHandle) {
 	texture := q.assets_get(handle)
 	q.texture_write_from_image(texture, img)
 }

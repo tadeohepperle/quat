@@ -20,7 +20,6 @@ platform_init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	_init_platform(&PLATFORM, settings)
 }
 platform_deinit :: proc() {
-	print("MotionTexture  map before drop", assets_get_map(MotionTexture))
 	assets_drop(&PLATFORM.assets)
 	shader_registry_destroy(&PLATFORM.shader_registry)
 	texture_destroy(&PLATFORM.hdr_screen_texture)
@@ -30,6 +29,7 @@ platform_deinit :: proc() {
 		DIFFUSE_AND_MOTION_TEXTURE_BIND_GROUP_LAYOUT,
 		TRITEX_TEXTURES_BIND_GROUP_LAYOUT,
 		DEPTH_TEXTURE_BIND_GROUP_LAYOUT,
+		RBGA_BIND_GROUP_LAYOUT,
 		RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT,
 		BONES_STORAGE_BUFFER_BIND_GROUP_LAYOUT,
 	}
@@ -161,6 +161,7 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	assets_register_drop_fn(MotionTexture, motion_texture_destroy)
 	assets_register_drop_fn(SkinnedGeometry, skinned_mesh_geometry_drop)
 	assets_register_drop_fn(SkinnedMesh, skinned_mesh_drop)
+	assets_register_drop_fn(CubeTexture, cube_texture_destroy)
 
 	default_texture_handle := assets_insert(_texture_create_1px_white())
 	assert(DEFAULT_TEXTURE == default_texture_handle)
