@@ -202,8 +202,7 @@ _create_or_reload_render_pipeline :: proc(reg: ^ShaderRegistry, pipeline: ^Rende
 	}
 	depth_stencil: ^wgpu.DepthStencilState = nil
 	if depth_config, ok := config.depth.(DepthConfig); ok {
-		depth_stencil =
-		&wgpu.DepthStencilState {
+		depth_stencil = &wgpu.DepthStencilState {
 			format = DEPTH_TEXTURE_FORMAT,
 			depthWriteEnabled = wgpu_optional_bool(depth_config.depth_write_enabled),
 			depthCompare = depth_config.depth_compare,
@@ -416,31 +415,36 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 		shader_name := pop_front(&queue)
 		shader := &reg.shaders[shader_name]
 
+		fmt.printfln("took {} from queue", shader_name)
+
 		new_composited_wgsl, new_import_shader_names, composite_err := composite_wgsl_code(reg, shader.src_wgsl)
 		if composite_err, has_err := composite_err.(string); has_err {
 			fmt.eprintfln("Error compositing wgsl for %s: %s", shader.src_path, composite_err)
 			continue
 		}
 		if new_composited_wgsl == shader.composited_wgsl {
+			fmt.printfln("new_composited_wgsl == shader.composited_wgsl for {}", shader_name)
 			continue
 		}
 
 		if old_shader_module, ok := shader.shader_module.(wgpu.ShaderModule); ok {
 			new_shader_module, create_err := create_shader_module(shader_name, new_composited_wgsl)
+
 			if create_err, has_err := create_err.(WgpuError); has_err {
 				fmt.printfln("Error creating shader module %s:\n%s", shader.src_path, create_err)
 				continue
+			} else {
+				fmt.printfln("Created new shader module for shader {} at {}", shader_name, shader.src_path)
 			}
 
 			// swap out shader module:
 			wgpu.ShaderModuleRelease(old_shader_module)
 
 			shader.shader_module = new_shader_module
-			shader.composited_wgsl = new_composited_wgsl
-			shader.import_shader_names = new_import_shader_names
-
 			shaders_with_changed_modules[shader_name] = None{}
 		}
+		shader.composited_wgsl = new_composited_wgsl
+		shader.import_shader_names = new_import_shader_names
 
 		// inefficient but good enough for <50 shaders I guess
 		for other, shader in reg.shaders {
@@ -451,6 +455,8 @@ shader_registry_hot_reload :: proc(reg: ^ShaderRegistry) {
 			}
 		}
 	}
+
+	print(shaders_with_changed_modules)
 
 	// if we get until here, no error has occurred, we can recreate pipelines:
 	for pipeline in reg.pipelines {

@@ -271,7 +271,7 @@ cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> Cube
 		wgpu.BindGroupEntry{binding = 1, sampler = sampler},
 	}
 	bind_group_descriptor := wgpu.BindGroupDescriptor {
-		layout     = cube_map_texture_bind_group_layout_cached(),
+		layout     = sky_box_bind_group_layout_cached(),
 		entryCount = uint(len(bind_group_descriptor_entries)),
 		entries    = &bind_group_descriptor_entries[0],
 	}
@@ -287,10 +287,10 @@ cube_texture_destroy :: proc(texture: ^CubeTexture) {
 	wgpu.TextureRelease(texture.texture)
 }
 
-CUBE_MAP_TEXTURE_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
+SKY_BOX_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 
-cube_map_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
-	if CUBE_MAP_TEXTURE_BIND_GROUP_LAYOUT == nil {
+sky_box_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
+	if SKY_BOX_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
@@ -307,12 +307,12 @@ cube_map_texture_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 				sampler = wgpu.SamplerBindingLayout{type = .NonFiltering},
 			},
 		}
-		CUBE_MAP_TEXTURE_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
+		SKY_BOX_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
 			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
-	return CUBE_MAP_TEXTURE_BIND_GROUP_LAYOUT
+	return SKY_BOX_BIND_GROUP_LAYOUT
 }
 
 sky_box_render :: proc(
@@ -343,7 +343,7 @@ sky_box_pipeline_config :: proc() -> RenderPipelineConfig {
 		bind_group_layouts = bind_group_layouts(
 			uniform_bind_group_layout_cached(FrameUniformData),
 			uniform_bind_group_layout_cached(Camera3DUniformData),
-			cube_map_texture_bind_group_layout_cached(),
+			sky_box_bind_group_layout_cached(),
 		),
 		push_constant_ranges = {},
 		blend = ALPHA_BLENDING,

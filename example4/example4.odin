@@ -42,7 +42,7 @@ main :: proc() {
 
 	ta := engine.texture_allocator_create({max_size = {512, 512}, max_n_atlases = 1, auto_grow_shrink = false})
 
-	panel_bg_img := q.image_load("./assets/nineslice3.png", q.Rgba) or_else panic(" not found")
+	panel_bg_img := q.image_load("./assets/nineslice3.png") or_else panic(" not found")
 	panel_bg := engine.texture_allocator_add_img(&ta, panel_bg_img).tile
 	q.image_drop(&panel_bg_img)
 

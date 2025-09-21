@@ -16,9 +16,7 @@ import wgpu "vendor:wgpu"
 
 import "core:math/rand"
 None :: struct {}
-Error :: union {
-	string,
-}
+Error :: Maybe(string)
 
 print :: fmt.println
 dbgval :: proc(val: any, label := "", loc := #caller_location, expr := #caller_expression) {

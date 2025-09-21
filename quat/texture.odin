@@ -348,7 +348,7 @@ rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 }
 
 RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
-rgba_texture_array_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu.BindGroupLayout {
+rgba_texture_array_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 	if RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT == nil {
 		entries := [?]wgpu.BindGroupLayoutEntry {
 			wgpu.BindGroupLayoutEntry {
@@ -367,7 +367,7 @@ rgba_texture_array_bind_group_layout_cached :: proc(device: wgpu.Device) -> wgpu
 			},
 		}
 		RGBA_TEXTURE_ARRAY_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
-			device,
+			PLATFORM.device,
 			&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
 		)
 	}
@@ -390,8 +390,6 @@ texture_array_create :: proc(
 		format = settings.format,
 		mipLevelCount = 1,
 		sampleCount = 1,
-		viewFormatCount = 1,
-		viewFormats = &array.info.settings.format,
 	}
 	array.texture = wgpu.DeviceCreateTexture(PLATFORM.device, &descriptor)
 
@@ -423,7 +421,7 @@ texture_array_create :: proc(
 		wgpu.BindGroupEntry{binding = 1, sampler = array.sampler},
 	}
 	bind_group_descriptor := wgpu.BindGroupDescriptor {
-		layout     = rgba_texture_array_bind_group_layout_cached(PLATFORM.device),
+		layout     = rgba_texture_array_bind_group_layout_cached(),
 		entryCount = uint(len(bind_group_descriptor_entries)),
 		entries    = &bind_group_descriptor_entries[0],
 	}
@@ -440,6 +438,12 @@ texture_array_from_image_paths :: proc(
 	error: Error,
 ) {
 	images := make([dynamic]RgbaImage)
+
+	defer {
+		for &img in images do image_drop(&img)
+		delete(images)
+	}
+
 
 	width: int
 	height: int
@@ -464,10 +468,7 @@ texture_array_from_image_paths :: proc(
 	}
 	array = texture_array_from_images(images[:], settings)
 
-	for &img in images {
-		image_drop(&img)
-	}
-	delete(images)
+
 	return
 }
 

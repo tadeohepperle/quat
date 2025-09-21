@@ -20,6 +20,7 @@ TextureHandle :: Handle(Texture)
 MotionTextureHandle :: Handle(MotionTexture)
 TextureArrayHandle :: Handle(Texture) // just the same ...
 SkinnedMeshHandle :: Handle(SkinnedMesh)
+
 CubeTextureHandle :: Handle(CubeTexture)
 
 Assets :: struct {
