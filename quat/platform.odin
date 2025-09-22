@@ -79,7 +79,7 @@ PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
 	present_mode             = .Fifo,
 	debug_fps_in_title       = true,
 	hot_reload_shaders       = true,
-	additional_wgpu_features = {.MultiDrawIndirect, .IndirectFirstInstance},
+	additional_wgpu_features = {.MultiDrawIndirect, .IndirectFirstInstance, .Float32Filterable},
 }
 @(private = "file")
 DEFAULT_FONT_TTF := #load("../assets/Lora-Medium.ttf")

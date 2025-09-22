@@ -81,10 +81,9 @@ equirect_reader_load_cube_texture :: proc(
 
 	cube_size := UVec2{cube_texture_size, cube_texture_size}
 	cube_texture = cube_texture_create(cube_size)
-	defer if err != nil {
-		cube_texture_destroy(&cube_texture)
-	}
-
+	// defer if err != nil {
+	// 	cube_texture_destroy(&cube_texture)
+	// }
 
 	cube_map_2d_arr_view := wgpu.TextureCreateView(
 		cube_texture.texture,
@@ -258,7 +257,7 @@ cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> Cube
 			addressModeU  = .ClampToEdge,
 			addressModeV  = .ClampToEdge,
 			addressModeW  = .ClampToEdge,
-			magFilter     = .Nearest, // or .Nearest?
+			magFilter     = .Linear, // or .Nearest?
 			minFilter     = .Nearest,
 			mipmapFilter  = .Nearest,
 			maxAnisotropy = 1,
@@ -295,16 +294,12 @@ sky_box_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
 			wgpu.BindGroupLayoutEntry {
 				binding = 0,
 				visibility = {.Fragment},
-				texture = wgpu.TextureBindingLayout {
-					sampleType = .UnfilterableFloat,
-					viewDimension = .Cube,
-					multisampled = false,
-				},
+				texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = .Cube, multisampled = false},
 			},
 			wgpu.BindGroupLayoutEntry {
 				binding = 1,
 				visibility = {.Fragment},
-				sampler = wgpu.SamplerBindingLayout{type = .NonFiltering},
+				sampler = wgpu.SamplerBindingLayout{type = .Filtering},
 			},
 		}
 		SKY_BOX_BIND_GROUP_LAYOUT = wgpu.DeviceCreateBindGroupLayout(
