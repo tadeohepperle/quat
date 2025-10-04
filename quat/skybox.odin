@@ -1,11 +1,35 @@
 package quat
 
+import "core:c"
 import "core:fmt"
+import "core:math"
 import "core:slice"
 import "core:strings"
 import wgpu "vendor:wgpu"
 
 import stbi "vendor:stb/image"
+
+
+// todo: follow https://learnopengl.com/PBR/IBL/Diffuse-irradiance
+
+load_cube_texture_and_generate_mip_levels :: proc(
+	reader: EquirectReader,
+	mip_generator: CubeTextureMipGenerator,
+	path: string,
+	cube_texture_size: u32,
+) -> (
+	cube_texture: CubeTexture,
+	err: Error,
+) {
+
+	if !is_power_of_two(int(cube_texture_size)) {
+		return {}, tprint("cube texture size has to be power of 2, got ", cube_texture_size)
+	}
+
+	cube_texture = equirect_reader_load_cube_texture(reader, path, cube_texture_size) or_return
+	cube_texture_generate_mip_levels(mip_generator, cube_texture)
+	return cube_texture, nil
+}
 
 equirect_reader_load_cube_texture :: proc(
 	reader: EquirectReader,
@@ -115,10 +139,10 @@ equirect_reader_load_cube_texture :: proc(
 	defer wgpu.BindGroupRelease(bind_group)
 
 	// now ready to dispatch compute:
+
 	encoder := wgpu.DeviceCreateCommandEncoder(PLATFORM.device)
 
 	pass := wgpu.CommandEncoderBeginComputePass(encoder, &wgpu.ComputePassDescriptor{label = "equirect pass"})
-
 	num_workgroups := (cube_texture_size + 15) / 16
 	wgpu.ComputePassEncoderSetPipeline(pass, reader.compute_pipeline)
 	wgpu.ComputePassEncoderSetBindGroup(pass, 0, bind_group)
@@ -137,11 +161,12 @@ equirect_reader_load_cube_texture :: proc(
 	} else {
 		return cube_texture, nil
 	}
+
 }
 
 
-EQUIRECTANGULAR_WGSL: string : #load("equirectangular.wgsl")
-
+SKYBOX_EQUIRECTANGULAR_WGSL: string : #load("skybox_equirectangular.wgsl")
+SKYBOX_MIP_LEVEL_WGSL: string : #load("skybox_mip_level.wgsl")
 
 SKY_TEXTURE_FORMAT :: wgpu.TextureFormat.RGBA32Float
 
@@ -188,7 +213,7 @@ equirect_reader_create :: proc() -> EquirectReader {
 		PLATFORM.device,
 		&wgpu.ShaderModuleDescriptor {
 			label = "equirect_to_cubemap",
-			nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = EQUIRECTANGULAR_WGSL},
+			nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = SKYBOX_EQUIRECTANGULAR_WGSL},
 		},
 	)
 
@@ -214,16 +239,150 @@ equirect_reader_drop :: proc(this: ^EquirectReader) {
 	wgpu.ShaderModuleRelease(this.shader_module)
 }
 
-
 CubeTexture :: struct {
-	size:       UVec2,
-	texture:    wgpu.Texture,
-	view:       wgpu.TextureView,
-	sampler:    wgpu.Sampler,
-	bind_group: wgpu.BindGroup,
+	size:            UVec2,
+	mip_level_count: u32,
+	texture:         wgpu.Texture,
+	view:            wgpu.TextureView,
+	sampler:         wgpu.Sampler,
+	bind_group:      wgpu.BindGroup,
 }
+
+mip_level_count_for_texture_size :: proc(size: UVec2) -> u32 {
+	return u32(math.log2(f32(min(size.x, size.y)))) + 1
+}
+
+
+CubeTextureMipGenerator :: struct {
+	bind_group_layout: wgpu.BindGroupLayout,
+	pipeline_layout:   wgpu.PipelineLayout,
+	shader_module:     wgpu.ShaderModule,
+	compute_pipeline:  wgpu.ComputePipeline,
+}
+
+cube_texture_mip_generator_create :: proc() -> CubeTextureMipGenerator {
+	entries := [?]wgpu.BindGroupLayoutEntry {
+		wgpu.BindGroupLayoutEntry {
+			binding = 0,
+			visibility = {.Compute},
+			texture = wgpu.TextureBindingLayout{sampleType = .Float, viewDimension = ._2DArray, multisampled = false},
+		},
+		wgpu.BindGroupLayoutEntry {
+			binding = 1,
+			visibility = {.Compute},
+			storageTexture = wgpu.StorageTextureBindingLayout {
+				access = .WriteOnly,
+				format = SKY_TEXTURE_FORMAT,
+				viewDimension = ._2DArray,
+			},
+		},
+	}
+	bind_group_layout := wgpu.DeviceCreateBindGroupLayout(
+		PLATFORM.device,
+		&wgpu.BindGroupLayoutDescriptor{entryCount = uint(len(entries)), entries = &entries[0]},
+	)
+
+	pipeline_layout := wgpu.DeviceCreatePipelineLayout(
+		PLATFORM.device,
+		&wgpu.PipelineLayoutDescriptor{bindGroupLayoutCount = 1, bindGroupLayouts = &bind_group_layout},
+	)
+	shader_module := wgpu.DeviceCreateShaderModule(
+		PLATFORM.device,
+		&wgpu.ShaderModuleDescriptor {
+			label = "skybox_mip_level",
+			nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = SKYBOX_MIP_LEVEL_WGSL},
+		},
+	)
+
+	compute_pipeline := wgpu.DeviceCreateComputePipeline(
+		PLATFORM.device,
+		&wgpu.ComputePipelineDescriptor {
+			layout = pipeline_layout,
+			label = "skybox_mip_level",
+			compute = wgpu.ProgrammableStageDescriptor{module = shader_module, entryPoint = "compute_mip_level"},
+		},
+	)
+
+	return CubeTextureMipGenerator{bind_group_layout, pipeline_layout, shader_module, compute_pipeline}
+}
+
+cube_texture_mip_generator_drop :: proc(this: ^CubeTextureMipGenerator) {
+	wgpu.BindGroupLayoutRelease(this.bind_group_layout)
+	wgpu.PipelineLayoutRelease(this.pipeline_layout)
+	wgpu.ComputePipelineRelease(this.compute_pipeline)
+	wgpu.ShaderModuleRelease(this.shader_module)
+}
+
+cube_texture_generate_mip_levels :: proc(mip_generator: CubeTextureMipGenerator, cube_texture: CubeTexture) {
+	assert(cube_texture.size.x == cube_texture.size.y)
+
+	n_mip_levels := cube_texture
+	mip_level_texture_views := make([]wgpu.TextureView, cube_texture.mip_level_count)
+	defer {
+		for view in mip_level_texture_views do wgpu.TextureViewRelease(view)
+		delete(mip_level_texture_views)
+	}
+
+	for &view, i in mip_level_texture_views {
+		view = wgpu.TextureCreateView(
+			cube_texture.texture,
+			&wgpu.TextureViewDescriptor {
+				label = tprint("cube texture mip level", i),
+				dimension = wgpu.TextureViewDimension._2DArray,
+				baseMipLevel = u32(i),
+				mipLevelCount = 1,
+				baseArrayLayer = 0,
+				arrayLayerCount = 6,
+				aspect = .All,
+			},
+		)
+	}
+
+	encoder := wgpu.DeviceCreateCommandEncoder(PLATFORM.device)
+	defer wgpu.CommandEncoderRelease(encoder)
+
+	dst_view_size := cube_texture.size
+	for dst_mip_level in 1 ..< cube_texture.mip_level_count {
+		dst_view_size /= 2
+		src_view := mip_level_texture_views[dst_mip_level - 1]
+		dst_view := mip_level_texture_views[dst_mip_level]
+
+		bind_group_entries := [?]wgpu.BindGroupEntry {
+			wgpu.BindGroupEntry{binding = 0, textureView = src_view},
+			wgpu.BindGroupEntry{binding = 1, textureView = dst_view},
+		}
+		bind_group := wgpu.DeviceCreateBindGroup(
+			PLATFORM.device,
+			&wgpu.BindGroupDescriptor {
+				layout = mip_generator.bind_group_layout,
+				entryCount = uint(len(bind_group_entries)),
+				entries = &bind_group_entries[0],
+			},
+		)
+		defer wgpu.BindGroupRelease(bind_group)
+
+		// dispatch compute:
+		pass := wgpu.CommandEncoderBeginComputePass(encoder, &wgpu.ComputePassDescriptor{label = "mip level pass"})
+
+		wgpu.ComputePassEncoderSetPipeline(pass, mip_generator.compute_pipeline)
+		wgpu.ComputePassEncoderSetBindGroup(pass, 0, bind_group)
+		wgpu.ComputePassEncoderDispatchWorkgroups(pass, dst_view_size.x, dst_view_size.y, 6)
+		wgpu.ComputePassEncoderEnd(pass)
+		wgpu.ComputePassEncoderRelease(pass)
+	}
+
+	command_buffer := wgpu.CommandEncoderFinish(encoder, nil)
+	wgpu.QueueSubmit(PLATFORM.queue, {command_buffer})
+}
+
 cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> CubeTexture {
 	format := SKY_TEXTURE_FORMAT
+
+	assert(size.x == size.y)
+	assert(next_power_of_two(int(size.x)) == int(size.x))
+
+	mip_level_count := mip_level_count_for_texture_size(size)
+	print("size:", size, "mip level count", mip_level_count)
 	texture := wgpu.DeviceCreateTexture(
 		PLATFORM.device,
 		&wgpu.TextureDescriptor {
@@ -232,7 +391,7 @@ cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> Cube
 			dimension = wgpu.TextureDimension._2D,
 			size = wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 6},
 			format = format,
-			mipLevelCount = 1,
+			mipLevelCount = mip_level_count,
 			sampleCount = 1,
 			viewFormatCount = 0,
 			viewFormats = nil,
@@ -245,7 +404,8 @@ cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> Cube
 			label = label,
 			dimension = wgpu.TextureViewDimension.Cube,
 			format = format,
-			mipLevelCount = 1,
+			baseMipLevel = 0,
+			mipLevelCount = mip_level_count,
 			arrayLayerCount = 6,
 			aspect = .All,
 		},
@@ -258,9 +418,11 @@ cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> Cube
 			addressModeV  = .ClampToEdge,
 			addressModeW  = .ClampToEdge,
 			magFilter     = .Linear, // or .Nearest?
-			minFilter     = .Nearest,
-			mipmapFilter  = .Nearest,
+			minFilter     = .Linear,
+			mipmapFilter  = .Linear,
 			maxAnisotropy = 1,
+			lodMinClamp   = 0.0,
+			lodMaxClamp   = f32(mip_level_count),
 		},
 	)
 
@@ -276,7 +438,14 @@ cube_texture_create :: proc(size: UVec2, label: string = "cube_texture") -> Cube
 	}
 	bind_group := wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
 
-	return CubeTexture{size = size, texture = texture, view = view, sampler = sampler, bind_group = bind_group}
+	return CubeTexture {
+		size = size,
+		mip_level_count = mip_level_count,
+		texture = texture,
+		view = view,
+		sampler = sampler,
+		bind_group = bind_group,
+	}
 }
 
 cube_texture_destroy :: proc(texture: ^CubeTexture) {

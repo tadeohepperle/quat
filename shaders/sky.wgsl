@@ -31,5 +31,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var ray_direction = normalize((camera3d.inv_view * vec4(view_ray_direction, 0.0)).xyz);
 
     let sample = textureSample(env_map, env_sampler, ray_direction);
-    return sample;
+    return sample;// select(RED, BLUE, textureNumLevels(env_map) == 9u);
 }
