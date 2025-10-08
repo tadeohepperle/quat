@@ -37,12 +37,15 @@ ui_render_buffers_prepare :: proc(this: ^UiRenderBuffers, batches: UiBatches) {
 ui_render :: proc(
 	batches: UiBatches,
 	buffers: UiRenderBuffers,
-	rect_pipeline: wgpu.RenderPipeline,
-	glyph_pipeline: wgpu.RenderPipeline,
+	rect_pipeline: RenderPipelineHandle,
+	glyph_pipeline: RenderPipelineHandle,
 	render_pass: wgpu.RenderPassEncoder,
 	frame_uniform: wgpu.BindGroup,
 	screen_size_u: UVec2,
 ) {
+	rect_pipeline := get_pipeline(rect_pipeline)
+	glyph_pipeline := get_pipeline(glyph_pipeline)
+
 	if len(batches.batches) == 0 {
 		return
 	}
@@ -55,8 +58,8 @@ ui_render :: proc(
 	last_scissor: Maybe([4]u32) = nil
 	pipeline: wgpu.RenderPipeline = nil
 
-	textures := assets_get_map(Texture)
-	fonts := assets_get_map(Font)
+	textures := get_map(Texture)
+	fonts := get_map(Font)
 
 	for &batch, i in batches.batches {
 		// set the render pipeline and buffers:
@@ -184,8 +187,8 @@ legacy_ui_screen_ui_render :: proc(
 	last_scissor: Maybe([4]u32) = nil
 	pipeline: wgpu.RenderPipeline = nil
 
-	textures := assets_get_map(Texture)
-	fonts := assets_get_map(Font)
+	textures := get_map(Texture)
+	fonts := get_map(Font)
 
 	for &batch, i in batches.batches {
 
@@ -296,9 +299,9 @@ layout_to_screen_space :: proc(pt: Vec2, screen_reference_size: Vec2, screen_siz
 ui_rect_pipeline_config :: proc(legacy_screen_render: bool) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "ui_rect",
-		vs_shader = "ui",
+		vs_shader = "ui.wgsl",
 		vs_entry_point = "vs_rect_legacy_screen_render" if legacy_screen_render else "vs_rect",
-		fs_shader = "ui",
+		fs_shader = "ui.wgsl",
 		fs_entry_point = "fs_rect_legacy_screen_render" if legacy_screen_render else "fs_rect",
 		topology = .TriangleList,
 		vertex = {
@@ -339,9 +342,9 @@ ui_glyph_pipeline_config :: proc(legacy_screen_render: bool) -> RenderPipelineCo
 	// todo! add linear scaling for px per height by depth!!!
 	return RenderPipelineConfig {
 		debug_name = "ui_glyph",
-		vs_shader = "ui",
+		vs_shader = "ui.wgsl",
 		vs_entry_point = "vs_glyph_legacy_screen_render" if legacy_screen_render else "vs_glyph",
-		fs_shader = "ui",
+		fs_shader = "ui.wgsl",
 		fs_entry_point = "fs_glyph",
 		topology = .TriangleStrip,
 		vertex = {},

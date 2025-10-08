@@ -9,7 +9,7 @@ GizmosVertex :: struct {
 }
 
 GizmosRenderer :: struct {
-	pipeline:       ^RenderPipeline,
+	pipeline:       RenderPipelineHandle,
 	vertices:       [GizmosMode][dynamic]GizmosVertex,
 	vertex_buffers: [GizmosMode]DynamicBuffer(GizmosVertex),
 }
@@ -49,7 +49,7 @@ gizmos_renderer_render :: proc(
 	if vertex_buffer.length == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(rend.pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer.buffer, 0, vertex_buffer.size)
@@ -72,7 +72,7 @@ gizmos_renderer_render_all_modes :: proc(
 		}
 		if !bound_pipeline_and_bind_group {
 			bound_pipeline_and_bind_group = true
-			wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+			wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(rend.pipeline))
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 		}
@@ -172,9 +172,9 @@ gizmos_renderer_add_rect :: proc(
 gizmos_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "gizmos",
-		vs_shader = "gizmos",
+		vs_shader = "gizmos.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "gizmos",
+		fs_shader = "gizmos.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .LineList,
 		vertex = {

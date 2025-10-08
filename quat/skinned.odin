@@ -3,6 +3,7 @@ package quat
 import "core:math"
 import "core:mem"
 import "core:slice"
+import slotman "shared:slotman"
 import wgpu "vendor:wgpu"
 
 
@@ -38,13 +39,13 @@ skinned_mesh_drop :: proc(this: ^SkinnedMesh) {
 
 // queues a write of new bone transforms into the bone buffer, can be done every frame e.g. for the bone transforms between two keyframes in an animation
 skinned_mesh_update_bones :: proc(handle: SkinnedMeshHandle, bones: []Affine2) {
-	mesh: ^SkinnedMesh = assets_get_ref(handle)
+	mesh: ^SkinnedMesh = slotman.get_ref(handle)
 	assert(len(bones) == mesh.bone_count)
 	wgpu.QueueWriteBuffer(PLATFORM.queue, mesh.bones_buffer, 0, raw_data(bones), uint(len(bones) * size_of(Affine2)))
 }
 // creates new buffer for the bones we can write to seperately, but points to the same verts + indices as the cloned mesh
 skinned_mesh_clone :: proc(handle: SkinnedMeshHandle) -> SkinnedMeshHandle {
-	mesh: SkinnedMesh = assets_get(handle)
+	mesh: SkinnedMesh = slotman.get(handle)
 	_geometry_clone(mesh.geometry) // increases the reference count
 	// create a new buffer with unit transforms for all the bones:
 	mesh.bones_buffer, mesh.bones_bind_group = _create_bones_buffer_and_bind_group(
@@ -52,12 +53,12 @@ skinned_mesh_clone :: proc(handle: SkinnedMeshHandle) -> SkinnedMeshHandle {
 		PLATFORM.queue,
 		mesh.bone_count,
 	)
-	return assets_insert(mesh)
+	return slotman.insert(mesh)
 }
 skinned_mesh_deregister :: proc(handle: SkinnedMeshHandle) {
-	mesh: SkinnedMesh = assets_remove(handle) or_else panic("skinned mesh not found!")
-	_geometry_deregister(mesh.geometry)
-	skinned_mesh_drop(&mesh)
+	geometry := slotman.get(handle).geometry
+	slotman.remove(handle)
+	_geometry_deregister(geometry)
 }
 skinned_mesh_register :: proc(
 	triangles: []Triangle,
@@ -73,7 +74,7 @@ skinned_mesh_register :: proc(
 		bones_bind_group = bones_bind_group,
 		bone_count       = bone_count,
 	}
-	return assets_insert(skinned_mesh)
+	return slotman.insert(skinned_mesh)
 }
 _create_bones_buffer_and_bind_group :: proc(
 	device: wgpu.Device,
@@ -102,7 +103,7 @@ _create_bones_buffer_and_bind_group :: proc(
 	return bones_buffer, bones_bind_group
 }
 _geometry_clone :: proc(handle: SkinnedGeometryHandle) {
-	geom: ^SkinnedGeometry = assets_get_ref(handle)
+	geom: ^SkinnedGeometry = slotman.get_ref(handle)
 	geom.reference_count += 1
 }
 _geometry_register :: proc(
@@ -111,15 +112,14 @@ _geometry_register :: proc(
 	texture: TextureHandle,
 ) -> SkinnedGeometryHandle {
 	geom := _geometry_create(indices, vertices, texture, PLATFORM.device, PLATFORM.queue)
-	return assets_insert(geom)
+	return slotman.insert(geom)
 }
 _geometry_deregister :: proc(handle: SkinnedGeometryHandle) {
-	geom: ^SkinnedGeometry = assets_get_ref(handle)
+	geom: ^SkinnedGeometry = slotman.get_ref(handle)
 	assert(geom.reference_count > 0)
 	geom.reference_count -= 1
 	if geom.reference_count == 0 {
-		geom_removed := assets_remove(handle)
-		skinned_mesh_geometry_drop(&geom_removed)
+		slotman.remove(handle)
 	}
 }
 _geometry_create :: proc(
@@ -161,19 +161,19 @@ skinned_mesh_geometry_drop :: proc(geometry: ^SkinnedGeometry) {
 }
 
 
-// Idea: 
-// right now every skinned mesh has its own bones buffer allocated. This could be improved by 
-// having just one big bones buffer we index into and then 
+// Idea:
+// right now every skinned mesh has its own bones buffer allocated. This could be improved by
+// having just one big bones buffer we index into and then
 // every mesh just gets a region of that big buffer.
-// for meshes with the same geometry but different bone transforms we can then 
+// for meshes with the same geometry but different bone transforms we can then
 // use instanced rendering, where the instance contains a start idx, that is added to the bone_idx stored per vertex.
-// 
-// we could just have one big instances buffer for the entire renderer, 
+//
+// we could just have one big instances buffer for the entire renderer,
 // that sorted by z and batched into regions that share the same geometry (vertices + indices)
 // each of those regions has its own storage buffer of M * bone_count Affine2 structs in it,
 // we can render all of them in a single instanced draw call by giving each instance
 // an offset into this buffer.
-// 
+//
 // but lets keep it simple for now (Tadeo Hepperle 2024-12-21)
 SkinnedRenderCommand :: struct {
 	pos:   Vec2,
@@ -181,7 +181,7 @@ SkinnedRenderCommand :: struct {
 	mesh:  SkinnedMeshHandle,
 }
 skinned_mesh_render :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	commands: []SkinnedRenderCommand,
 	render_pass: wgpu.RenderPassEncoder,
 	frame_uniform: wgpu.BindGroup,
@@ -191,14 +191,14 @@ skinned_mesh_render :: proc(
 		return
 	}
 	// todo: maybe sort and batch the commands here by their z or whatever, like for sprites???
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 
-	textures := assets_get_map(Texture)
-	skinned_meshes := assets_get_map(SkinnedMesh)
-	skinned_geometries := assets_get_map(SkinnedGeometry)
+	textures := get_map(Texture)
+	skinned_meshes := get_map(SkinnedMesh)
+	skinned_geometries := get_map(SkinnedGeometry)
 
 	for command in commands {
 		mesh: SkinnedMesh = slotmap_get(skinned_meshes, command.mesh)
@@ -241,9 +241,9 @@ SkinnedRendererPushConstants :: struct {
 skinned_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "skinned",
-		vs_shader = "skinned",
+		vs_shader = "skinned.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "skinned",
+		fs_shader = "skinned.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {

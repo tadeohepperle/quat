@@ -8,6 +8,7 @@ import q "../"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
+import "shared:slotman"
 import wgpu "vendor:wgpu"
 
 Vec2 :: q.Vec2
@@ -29,6 +30,7 @@ EngineSettings :: struct {
 	screen_ui_x_scaling_factor: f32, // between 0 (fully scaled by y-axis) and 1 (fully scaled by x axis)
 	world_2d_ui_px_per_unit:    f32,
 	tonemapping:                q.TonemappingMode,
+	asset_path:                 string,
 }
 DEFAULT_ENGINE_SETTINGS := EngineSettings {
 	platform                   = q.PLATFORM_SETTINGS_DEFAULT,
@@ -40,9 +42,9 @@ DEFAULT_ENGINE_SETTINGS := EngineSettings {
 	screen_ui_x_scaling_factor = 0.5,
 	world_2d_ui_px_per_unit    = 100,
 	tonemapping                = q.TonemappingMode.Disabled,
+	asset_path                 = "./assets",
 }
 
-Pipeline :: ^q.RenderPipeline
 Engine :: struct {
 	settings:                         EngineSettings,
 	hit:                              HitInfo,
@@ -51,7 +53,7 @@ Engine :: struct {
 	gizmos_renderer:                  q.GizmosRenderer,
 	color_mesh_2d_renderer:           q.ColorMesh2DRenderer,
 	mesh_2d_renderer:                 q.Mesh2dRenderer,
-	pipelines:                        [PipelineType]^q.RenderPipeline,
+	pipelines:                        [PipelineType]q.RenderPipelineHandle,
 	cutout_sprites:                   SpriteBuffers,
 	shine_sprites:                    SpriteBuffers,
 	transparent_sprites_low:          SpriteBuffers,
@@ -213,6 +215,7 @@ _engine_create :: proc(engine: ^Engine, settings: EngineSettings) {
 	engine.settings = settings
 
 	q.platform_init(settings.platform)
+	slotman.register_asset_directory(settings.asset_path)
 	q.ui_system_init()
 
 	_scene_create(&engine.scene)
@@ -507,14 +510,14 @@ _engine_render :: proc(engine: ^Engine) {
 		0.0,
 	)
 
-	for pipeline in engine.pipelines {
-		assert(pipeline != nil)
-	}
+	// for pipeline in engine.pipelines {
+	// 	assert(pipeline != nil)
+	// }
 	frame_uniform := engine.frame_uniform.bind_group
 	camera_2d_uniform := engine.camera_2d_uniform.bind_group
 
 	q.hex_chunks_render(
-		engine.pipelines[.HexChunk].pipeline,
+		engine.pipelines[.HexChunk],
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
@@ -522,7 +525,7 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.hex_chunks[:],
 	)
 	q.tritex_mesh_render(
-		engine.pipelines[.Tritex].pipeline,
+		engine.pipelines[.Tritex],
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
@@ -530,14 +533,14 @@ _engine_render :: proc(engine: ^Engine) {
 		engine.scene.tritex_textures,
 	)
 	q.mesh_fake_3d_renderer_render(
-		engine.pipelines[.MeshFake3d].pipeline,
+		engine.pipelines[.MeshFake3d],
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
 		engine.scene.meshes_3d[:],
 	)
 	q.mesh_fake_3d_renderer_render_hex_chunk_masked(
-		engine.pipelines[.MeshFake3dHexChunkMasked].pipeline,
+		engine.pipelines[.MeshFake3dHexChunkMasked],
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
@@ -546,7 +549,7 @@ _engine_render :: proc(engine: ^Engine) {
 
 	simple_sprite_shader := engine.settings.use_simple_sprite_shader
 	q.sprite_batches_render(
-		engine.pipelines[.SpriteSimple if simple_sprite_shader else .SpriteCutout].pipeline,
+		engine.pipelines[.SpriteSimple if simple_sprite_shader else .SpriteCutout],
 		engine.cutout_sprites.batches[:],
 		engine.cutout_sprites.instance_buffer,
 		hdr_pass,
@@ -555,14 +558,14 @@ _engine_render :: proc(engine: ^Engine) {
 	)
 	// // todo: this is certainly stupid, because then we render all skinned meshes on top of sprites:
 	q.skinned_mesh_render(
-		engine.pipelines[.SkinnedCutout].pipeline,
+		engine.pipelines[.SkinnedCutout],
 		engine.scene.skinned_render_commands[:],
 		hdr_pass,
 		frame_uniform,
 		camera_2d_uniform,
 	)
 	q.motion_particles_render(
-		engine.pipelines[.MotionParticles].pipeline,
+		engine.pipelines[.MotionParticles],
 		engine.motion_particles_buffer,
 		engine.motion_particles_render_commands[:],
 		hdr_pass,
@@ -574,7 +577,7 @@ _engine_render :: proc(engine: ^Engine) {
 
 	// // sandwich the world ui, e.g. health bars in two layers of transparent sprites + cutout sprites on top:
 	q.sprite_batches_render(
-		engine.pipelines[.SpriteTransparent].pipeline,
+		engine.pipelines[.SpriteTransparent],
 		engine.transparent_sprites_low.batches[:],
 		engine.transparent_sprites_low.instance_buffer,
 		hdr_pass,
@@ -582,7 +585,7 @@ _engine_render :: proc(engine: ^Engine) {
 		camera_2d_uniform,
 	)
 	q.sprite_batches_render(
-		engine.pipelines[.SpriteTransparent].pipeline,
+		engine.pipelines[.SpriteTransparent],
 		engine.transparent_sprites_high.batches[:],
 		engine.transparent_sprites_high.instance_buffer,
 		hdr_pass,
@@ -590,7 +593,7 @@ _engine_render :: proc(engine: ^Engine) {
 		camera_2d_uniform,
 	)
 	q.sprite_batches_render(
-		engine.pipelines[.SpriteShine].pipeline,
+		engine.pipelines[.SpriteShine],
 		engine.shine_sprites.batches[:],
 		engine.shine_sprites.instance_buffer,
 		hdr_pass,
@@ -607,8 +610,8 @@ _engine_render :: proc(engine: ^Engine) {
 	q.ui_render(
 		engine.ui_batches,
 		engine.ui_buffers,
-		engine.pipelines[.WorldUiRect].pipeline,
-		engine.pipelines[.WorldUiGlyph].pipeline,
+		engine.pipelines[.WorldUiRect],
+		engine.pipelines[.WorldUiGlyph],
 		hdr_pass,
 		frame_uniform,
 		PLATFORM.screen_size_u,
@@ -617,8 +620,8 @@ _engine_render :: proc(engine: ^Engine) {
 	// 	q.legacy_ui_screen_ui_render(
 	// 		engine.screen_ui_batches,
 	// 		engine.screen_ui_buffers,
-	// 		engine.pipelines[.ScreenUiRect].pipeline,
-	// 		engine.pipelines[.ScreenUiGlyph].pipeline,
+	// 		engine.pipelines[.ScreenUiRect],
+	// 		engine.pipelines[.ScreenUiGlyph],
 	// 		hdr_pass,
 	// 		frame_uniform,
 	// 		PLATFORM.screen_size_u,
@@ -641,7 +644,7 @@ _engine_render :: proc(engine: ^Engine) {
 
 	q.tonemap(
 		command_encoder,
-		engine.pipelines[.Tonemapping].pipeline,
+		q.get_pipeline(engine.pipelines[.Tonemapping]),
 		PLATFORM.hdr_screen_texture,
 		surface_view,
 		engine.settings.tonemapping,
@@ -792,30 +795,22 @@ draw_skinned_mesh :: proc(handle: q.SkinnedMeshHandle, pos: Vec2 = Vec2{0, 0}, c
 }
 create_texture_from_image :: proc(img: q.RgbaImage) -> q.TextureHandle {
 	texture := q.texture_from_image(img, q.TEXTURE_SETTINGS_RGBA)
-	return q.assets_insert(texture)
+	return slotman.insert(texture)
 }
 get_texture_info :: proc(handle: q.TextureHandle) -> q.TextureInfo {
-	return q.assets_get(handle).info
+	return slotman.get(handle).info
 }
 write_image_to_texture :: proc(img: q.RgbaImage, handle: q.TextureHandle) {
-	texture := q.assets_get(handle)
+	texture := slotman.get(handle)
 	q.texture_write_from_image(texture, img)
 }
 // is expected to be 16bit R channel only png
-load_depth_texture :: proc(path: string) -> q.TextureHandle {
-	depth_texture, err := q.depth_texture_16bit_r_from_image_path(path)
-	if err, has_err := err.(string); has_err {
-		panic(err)
-	}
-	return q.assets_insert(depth_texture)
+load_depth_texture :: proc(path: string) -> q.DepthTextureHandle {
+	return slotman.load_from_path(q.DepthTexture, path)
 }
 // expected to be 8bit RGBA png
 load_texture :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureHandle {
-	texture, err := q.texture_from_image_path(path, settings)
-	if err, has_err := err.(string); has_err {
-		panic(err)
-	}
-	return q.assets_insert(texture)
+	return slotman.load(q.Texture, q.TextureSettingsAndPath{path, settings})
 }
 load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.TextureTile {
 	return q.TextureTile{load_texture(path, settings), q.UNIT_AABB}
@@ -823,7 +818,7 @@ load_texture_tile :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_
 load_texture_as_sprite :: proc(path: string, settings: q.TextureSettings = q.TEXTURE_SETTINGS_RGBA) -> q.Sprite {
 	texture_handle := load_texture(path, settings)
 	texture_tile := q.TextureTile{texture_handle, q.UNIT_AABB}
-	texture_info := q.assets_get(texture_handle).info
+	texture_info := slotman.get(texture_handle).info
 	sprite_size := Vec2{f32(texture_info.size.x), f32(texture_info.size.y)} / 100.0
 	return q.Sprite {
 		pos = {0, 0},
@@ -833,6 +828,9 @@ load_texture_as_sprite :: proc(path: string, settings: q.TextureSettings = q.TEX
 		rotation = 0,
 		z = 0,
 	}
+}
+load_texture_array :: proc(paths: []string) -> q.TextureArrayHandle {
+	return slotman.load(q.TextureArray, paths)
 }
 draw_sprite :: #force_inline proc(sprite: q.Sprite) {
 	append(&ENGINE.scene.cutout_sprites, sprite)
@@ -1051,15 +1049,18 @@ draw_motion_particles :: proc(
 }
 
 get_default_font_line_metrics :: proc() -> q.LineMetrics {
-	return q.assets_get(q.DEFAULT_FONT).line_metrics
+	return slotman.get(q.DEFAULT_FONT).line_metrics
 }
 
 set_default_font_line_metrics :: proc(line_metrics: q.LineMetrics) {
-	font: ^q.Font = q.assets_get_ref(q.DEFAULT_FONT)
+	font: ^q.Font = slotman.get_ref(q.DEFAULT_FONT)
 	font.line_metrics = line_metrics
 }
 
-
 get_ui_cursor_pos :: proc() -> Vec2 {
 	return ENGINE.screen_ui_cursor_pos
+}
+
+add_asset_path :: proc(path: string) {
+	slotman.register_asset_directory(path)
 }

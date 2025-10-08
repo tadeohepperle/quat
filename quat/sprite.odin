@@ -101,7 +101,7 @@ _sprite_batch_key :: #force_inline proc(sprite: Sprite) -> u32 {
 }
 
 sprite_batches_render :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	batches: []SpriteBatch,
 	instance_buffer: DynamicBuffer(SpriteInstance),
 	render_pass: wgpu.RenderPassEncoder,
@@ -111,11 +111,11 @@ sprite_batches_render :: proc(
 	if len(batches) == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
-	textures := assets_get_map(Texture)
+	textures := get_map(Texture)
 	for batch in batches {
 		texture_bind_group := slotmap_get(textures, batch.texture).bind_group
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_bind_group)
@@ -162,9 +162,9 @@ SPRITE_VERTEX_ATTRIBUTES := []VertAttibute {
 sprite_pipeline_config :: proc(kind: SpriteKind) -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "sprite",
-		vs_shader = "sprite",
+		vs_shader = "sprite.wgsl",
 		vs_entry_point = SPRITE_KIND_VS_NAMES[kind],
-		fs_shader = "sprite",
+		fs_shader = "sprite.wgsl",
 		fs_entry_point = SPRITE_KIND_FS_NAMES[kind],
 		topology = .TriangleStrip,
 		vertex = {},

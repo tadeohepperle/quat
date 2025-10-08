@@ -21,10 +21,10 @@ BLOOM_SETTINGS_DEFAULT :: BloomSettings {
 }
 
 BloomRenderer :: struct {
-	first_downsample_pipeline: ^RenderPipeline,
-	downsample_pipeline:       ^RenderPipeline,
-	upsample_pipeline:         ^RenderPipeline,
-	final_upsample_pipeline:   ^RenderPipeline,
+	first_downsample_pipeline: RenderPipelineHandle,
+	downsample_pipeline:       RenderPipelineHandle,
+	upsample_pipeline:         RenderPipelineHandle,
+	final_upsample_pipeline:   RenderPipelineHandle,
 	textures:                  [N_BLOOM_TEXTURES]Maybe(Texture), // is none, if it would be too small to matter, that means, once one is nil all textures after it also nil
 }
 
@@ -49,9 +49,9 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 	)
 	first_downsample_config := RenderPipelineConfig {
 		debug_name           = "bloom first_downsample",
-		vs_shader            = "screen",
+		vs_shader            = "screen.wgsl",
 		vs_entry_point       = "vs_main",
-		fs_shader            = "bloom",
+		fs_shader            = "bloom.wgsl",
 		fs_entry_point       = "first_downsample",
 		topology             = .TriangleStrip,
 		vertex               = {},
@@ -63,9 +63,9 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 	}
 	downsample_config := RenderPipelineConfig {
 		debug_name           = "bloom downsample",
-		vs_shader            = "screen",
+		vs_shader            = "screen.wgsl",
 		vs_entry_point       = "vs_main",
-		fs_shader            = "bloom",
+		fs_shader            = "bloom.wgsl",
 		fs_entry_point       = "downsample",
 		topology             = .TriangleStrip,
 		vertex               = {},
@@ -77,9 +77,9 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 	}
 	upsample_config := RenderPipelineConfig {
 		debug_name = "bloom upsample",
-		vs_shader = "screen",
+		vs_shader = "screen.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "bloom",
+		fs_shader = "bloom.wgsl",
 		fs_entry_point = "upsample",
 		topology = .TriangleStrip,
 		vertex = {},
@@ -94,9 +94,9 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 	}
 	final_upsample_config := RenderPipelineConfig {
 		debug_name = "bloom final_upsample",
-		vs_shader = "screen",
+		vs_shader = "screen.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "bloom",
+		fs_shader = "bloom.wgsl",
 		fs_entry_point = "upsample", // same entry point as normal upsample, only blend state different.
 		topology = .TriangleStrip,
 		vertex = {},
@@ -109,7 +109,6 @@ bloom_renderer_create :: proc(rend: ^BloomRenderer) {
 		},
 		format = HDR_FORMAT,
 	}
-	reg := &PLATFORM.shader_registry
 	rend.first_downsample_pipeline = make_render_pipeline(first_downsample_config)
 	rend.downsample_pipeline = make_render_pipeline(downsample_config)
 	rend.upsample_pipeline = make_render_pipeline(upsample_config)
@@ -139,9 +138,8 @@ render_bloom :: proc(
 		from_tex := ladder[i]
 		target_tex := ladder[i + 1]
 		is_first_downsample := i == 0
-		pipeline: wgpu.RenderPipeline
-		if is_first_downsample do pipeline = rend.first_downsample_pipeline.pipeline
-		else do pipeline = rend.downsample_pipeline.pipeline
+		pipeline: RenderPipelineHandle =
+			rend.first_downsample_pipeline if is_first_downsample else rend.downsample_pipeline
 
 		bloom_pass := wgpu.CommandEncoderBeginRenderPass(
 			command_encoder,
@@ -155,7 +153,9 @@ render_bloom :: proc(
 			},
 		)
 		defer wgpu.RenderPassEncoderRelease(bloom_pass)
-		wgpu.RenderPassEncoderSetPipeline(bloom_pass, pipeline)
+
+
+		wgpu.RenderPassEncoderSetPipeline(bloom_pass, get_pipeline(pipeline))
 		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 0, frame_uniform)
 		wgpu.RenderPassEncoderSetBindGroup(bloom_pass, 1, from_tex.bind_group)
 		wgpu.RenderPassEncoderDraw(bloom_pass, 3, 1, 0, 0)
@@ -167,9 +167,7 @@ render_bloom :: proc(
 		from_tex := ladder[i]
 		target_tex := ladder[i - 1]
 		is_final_upsample := i == 1
-		pipeline: wgpu.RenderPipeline
-		if is_final_upsample do pipeline = rend.final_upsample_pipeline.pipeline
-		else do pipeline = rend.upsample_pipeline.pipeline
+		pipeline: RenderPipelineHandle = rend.final_upsample_pipeline if is_final_upsample else rend.upsample_pipeline
 
 		bloom_pass := wgpu.CommandEncoderBeginRenderPass(
 			command_encoder,
@@ -183,7 +181,7 @@ render_bloom :: proc(
 			},
 		)
 		defer wgpu.RenderPassEncoderRelease(bloom_pass)
-		wgpu.RenderPassEncoderSetPipeline(bloom_pass, pipeline)
+		wgpu.RenderPassEncoderSetPipeline(bloom_pass, get_pipeline(pipeline))
 		if is_final_upsample {
 			b := settings.blend_factor
 			blend_color := wgpu.Color{b, b, b, b}

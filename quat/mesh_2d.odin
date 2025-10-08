@@ -8,7 +8,7 @@ Mesh2dVertex :: struct {
 }
 
 Mesh2dRenderer :: struct {
-	pipeline:        ^RenderPipeline,
+	pipeline:        RenderPipelineHandle,
 	vertices:        [dynamic]Mesh2dVertex,
 	vertex_buffer:   DynamicBuffer(Mesh2dVertex),
 	triangles:       [dynamic]Triangle,
@@ -78,8 +78,8 @@ mesh_2d_renderer_render :: proc(
 		)
 	}
 
-	textures := assets_get_map(Texture)
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	textures: Slotmap(Texture) = get_map(Texture)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(rend.pipeline))
 
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
@@ -100,9 +100,9 @@ mesh_2d_renderer_render :: proc(
 mesh_2d_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_2d",
-		vs_shader = "mesh_2d",
+		vs_shader = "mesh_2d.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "mesh_2d",
+		fs_shader = "mesh_2d.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {

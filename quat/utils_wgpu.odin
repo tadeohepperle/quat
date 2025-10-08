@@ -3,6 +3,7 @@ package quat
 import "base:runtime"
 import "core:fmt"
 import "core:strings"
+import "shared:slotman"
 import wgpu "vendor:wgpu"
 
 DynamicBuffer :: struct($T: typeid) {
@@ -239,28 +240,27 @@ VertLayout :: struct {
 }
 
 RenderPipeline :: struct {
-	config:   RenderPipelineConfig,
-	layout:   wgpu.PipelineLayout,
-	pipeline: wgpu.RenderPipeline,
+	config:    RenderPipelineConfig,
+	fs_shader: WgslSourceHandle,
+	vs_shader: WgslSourceHandle,
+	layout:    wgpu.PipelineLayout,
+	pipeline:  wgpu.RenderPipeline,
 }
 
-render_pipeline_destroy :: proc(pipeline: ^RenderPipeline) {
-	// todo! config is not destroyed
-	if pipeline.layout != nil {
-		wgpu.PipelineLayoutRelease(pipeline.layout)
-	}
-	if pipeline.pipeline != nil {
-		wgpu.RenderPipelineRelease(pipeline.pipeline)
-	}
+render_pipeline_drop :: proc(this: ^RenderPipeline) {
+	// config is treated as static data, not destroyed
+	slotman.remove(this.fs_shader)
+	slotman.remove(this.vs_shader)
+	wgpu.PipelineLayoutRelease(this.layout)
+	wgpu.RenderPipelineRelease(this.pipeline)
+	this^ = {}
 }
 
 WgpuError :: struct {
 	type:    wgpu.ErrorType,
 	message: string,
 }
-MaybeWgpuError :: union {
-	WgpuError,
-}
+MaybeWgpuError :: Maybe(WgpuError)
 wgpu_pop_error_scope :: proc(device: wgpu.Device) -> MaybeWgpuError {
 	ErrorRes :: struct {
 		state: enum {

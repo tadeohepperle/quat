@@ -35,10 +35,11 @@ main :: proc() {
 	settings := engine.DEFAULT_ENGINE_SETTINGS
 	settings.debug_ui_gizmos = true
 	engine.init(settings)
+
 	defer {engine.deinit()}
 
-	corn := engine.load_texture_tile("./assets/corn.png")
-	sprite := engine.load_texture_tile("./assets/can.png")
+	corn := engine.load_texture_tile("corn.png")
+	sprite := engine.load_texture_tile("can.png")
 	cam := engine.camera_controller_create()
 	cam.settings.move_with_wasd = false
 	cam.settings.min_size = 0.03

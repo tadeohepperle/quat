@@ -11,9 +11,10 @@ main :: proc() {
 	settings.bloom_enabled = false
 	settings.debug_ui_gizmos = true
 	engine.init(settings)
+
 	defer engine.deinit()
 
-	can_texture := engine.load_texture_tile("./assets/can.png")
+	can_texture := engine.load_texture_tile("can.png")
 	camera := q.Camera2D {
 		focus_pos = {0, 0},
 		rotation  = 0,

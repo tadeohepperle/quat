@@ -18,6 +18,7 @@ Mat2 :: matrix[2, 2]f32
 
 main :: proc() {
 	engine.init()
+
 	defer {engine.deinit()}
 	engine.set_bloom_enabled(false)
 	engine.set_clear_color({0.02, 0.02, 0.04, 1.0})
@@ -27,7 +28,7 @@ main :: proc() {
 	cam.target.focus_pos = {0, 3}
 	cam.current.focus_pos = cam.target.focus_pos
 
-	texture := engine.load_texture("assets/t_0.png")
+	texture := engine.load_texture("t_0.png")
 	base_bones := []Bone{Bone{{0, 0}, {0, 2}}, Bone{{0, 2}, {0, 4}}}
 	pose1_bones := []Bone{Bone{{0, 0}, {1.5, 1.5}}, Bone{{1.5, 1.5}, {1, 3}}}
 	pose2_bones := []Bone{Bone{{0, 0}, {0, 3}}, Bone{{0, 3}, {-1, 5}}}

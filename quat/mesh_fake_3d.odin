@@ -105,7 +105,7 @@ mesh_fake_3d_rotate_around_z_axis :: proc(this: ^MeshFake3d, angle: f32, center:
 }
 
 mesh_fake_3d_renderer_render :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	render_pass: wgpu.RenderPassEncoder,
 	frame_uniform: wgpu.BindGroup,
 	camera_2d_uniform: wgpu.BindGroup,
@@ -114,13 +114,13 @@ mesh_fake_3d_renderer_render :: proc(
 	if len(meshes) == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 	last_texture_handle := TextureHandle{max(u32)}
 
-	textures := assets_get_map(Texture)
+	textures := get_map(Texture)
 	for mesh in meshes {
 		if mesh.diffuse_texture != last_texture_handle {
 			diffuse_bind_group := slotmap_get(textures, mesh.diffuse_texture).bind_group
@@ -135,7 +135,7 @@ mesh_fake_3d_renderer_render :: proc(
 
 
 mesh_fake_3d_renderer_render_hex_chunk_masked :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	render_pass: wgpu.RenderPassEncoder,
 	frame_uniform: wgpu.BindGroup,
 	camera_2d_uniform: wgpu.BindGroup,
@@ -144,13 +144,13 @@ mesh_fake_3d_renderer_render_hex_chunk_masked :: proc(
 	if len(meshes) == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
 	last_texture_handle := TextureHandle{max(u32)}
 	last_hex_chunk_bind_group: wgpu.BindGroup = nil
-	textures := assets_get_map(Texture)
+	textures := get_map(Texture)
 	for mesh in meshes {
 		if mesh.diffuse_texture != last_texture_handle {
 			diffuse_bind_group := slotmap_get(textures, mesh.diffuse_texture).bind_group
@@ -171,9 +171,9 @@ mesh_fake_3d_renderer_render_hex_chunk_masked :: proc(
 mesh_fake_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_fake_3d",
-		vs_shader = "mesh_fake_3d",
+		vs_shader = "mesh_fake_3d.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "mesh_fake_3d",
+		fs_shader = "mesh_fake_3d.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {
@@ -201,9 +201,9 @@ mesh_fake_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 mesh_fake_3d_hex_chunk_masked_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_fake_3d",
-		vs_shader = "mesh_fake_3d",
+		vs_shader = "mesh_fake_3d.wgsl",
 		vs_entry_point = "vs_hex_mask",
-		fs_shader = "mesh_fake_3d",
+		fs_shader = "mesh_fake_3d.wgsl",
 		fs_entry_point = "fs_hex_mask",
 		topology = .TriangleList,
 		vertex = {

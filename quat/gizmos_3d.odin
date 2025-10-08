@@ -11,7 +11,7 @@ Gizmos3DVertex :: struct {
 IndexLine :: [2]u32
 
 Gizmos3DRenderer :: struct {
-	pipeline:      ^RenderPipeline,
+	pipeline:      RenderPipelineHandle,
 	vertices:      [dynamic]Gizmos3DVertex,
 	lines:         [dynamic]IndexLine,
 	vertex_buffer: DynamicBuffer(Gizmos3DVertex),
@@ -44,7 +44,7 @@ gizmos_3d_renderer_render :: proc(
 	if rend.vertex_buffer.length == 0 || rend.index_buffer.length == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(rend.pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_3d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, rend.vertex_buffer.buffer, 0, rend.vertex_buffer.size)
@@ -128,9 +128,9 @@ gizmos_3d_renderer_add_box :: proc(rend: ^Gizmos3DRenderer, center: Vec3, size: 
 gizmos_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "gizmos_3d",
-		vs_shader = "gizmos_3d",
+		vs_shader = "gizmos_3d.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "gizmos_3d",
+		fs_shader = "gizmos_3d.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .LineList,
 		vertex = {

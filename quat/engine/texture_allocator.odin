@@ -1,6 +1,7 @@
 package engine
 import q ".."
 import "core:fmt"
+import "shared:slotman"
 import "vendor:wgpu"
 
 IVec2 :: [2]int
@@ -32,7 +33,7 @@ motion_texture_allocator_create :: proc(diffuse_size: IVec2, motion_size: IVec2)
 
 	texture := q.motion_texture_create(diffuse_size, motion_size)
 	q.atlas_init(&res.atlas, diffuse_size)
-	res.texture = q.assets_insert(texture)
+	res.texture = slotman.insert(texture)
 	res.diffuse_img = q.image_create(diffuse_size, Rgba)
 	res.motion_img = q.image_create(motion_size, Rgba)
 	return res
@@ -122,7 +123,7 @@ motion_texture_allocator_allocate_flipbook :: proc(
 }
 
 _motion_texture_allocator_sync :: proc(this: ^MotionTextureAllocator) {
-	texture: q.MotionTexture = q.assets_get(this.texture)
+	texture: q.MotionTexture = slotman.get(this.texture)
 	q.motion_texture_write(texture, this.diffuse_img, this.motion_img)
 }
 
@@ -193,8 +194,7 @@ texture_allocator_drop :: proc(this: ^TextureAllocator) {
 		q.image_drop(&atlas.image)
 		delete(atlas.src_image_ids)
 		if atlas.texture != {} {
-			texture := q.assets_remove(atlas.texture)
-			q.texture_destroy(&texture)
+			texture := slotman.remove(atlas.texture)
 			atlas.texture = {}
 		}
 	}
@@ -326,8 +326,7 @@ _try_add_img :: proc(
 		if grew {
 			q.image_drop(&this.image)
 			if this.texture != {} {
-				texture := q.assets_remove(this.texture)
-				q.texture_destroy(&texture)
+				slotman.remove(this.texture)
 				this.texture = {}
 			}
 			this.image = q.image_create(this.atlas.size, Rgba)
@@ -370,8 +369,7 @@ _sync_atlas_texture_to_atlas_image :: proc(this: ^_TextureAtlas, src_images: ^[d
 			write_image_to_texture(this.image, this.texture)
 			return
 		} else {
-			texture := q.assets_remove(this.texture)
-			q.texture_destroy(&texture)
+			slotman.remove(this.texture)
 			this.texture = create_texture_from_image(this.image)
 		}
 	}

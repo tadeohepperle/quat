@@ -8,6 +8,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import slotman "shared:slotman"
 import glfw "vendor:glfw"
 import wgpu "vendor:wgpu"
 import wgpu_glfw "vendor:wgpu/glfwglue"
@@ -20,8 +21,8 @@ platform_init :: proc(settings: PlatformSettings = PLATFORM_SETTINGS_DEFAULT) {
 	_init_platform(&PLATFORM, settings)
 }
 platform_deinit :: proc() {
-	assets_drop(&PLATFORM.assets)
-	shader_registry_destroy(&PLATFORM.shader_registry)
+	slotman.drop_all_assets()
+
 	texture_destroy(&PLATFORM.hdr_screen_texture)
 	texture_destroy(&PLATFORM.depth_screen_texture)
 
@@ -64,7 +65,7 @@ PlatformSettings :: struct {
 	default_font_path:        string,
 	power_preference:         wgpu.PowerPreference,
 	present_mode:             wgpu.PresentMode,
-	hot_reload_shaders:       bool,
+	hot_reload:               bool,
 	debug_fps_in_title:       bool,
 	additional_wgpu_features: []wgpu.FeatureName,
 }
@@ -78,7 +79,7 @@ PLATFORM_SETTINGS_DEFAULT :: PlatformSettings {
 	power_preference         = .LowPower,
 	present_mode             = .Fifo,
 	debug_fps_in_title       = true,
-	hot_reload_shaders       = true,
+	hot_reload               = true,
 	additional_wgpu_features = {.MultiDrawIndirect, .IndirectFirstInstance, .Float32Filterable},
 }
 @(private = "file")
@@ -110,12 +111,10 @@ Platform :: struct {
 	adapter:                     wgpu.Adapter,
 	device:                      wgpu.Device,
 	queue:                       wgpu.Queue,
-	assets:                      Assets,
-	shader_registry:             ShaderRegistry,
 	hdr_screen_texture:          Texture,
 	depth_screen_texture:        DepthTexture,
 	_surface_texture:            wgpu.SurfaceTexture, // a little hacky... acquired before input polling and stored here at start of frame to avoid V-Sync latency.
-	// tonemapping_pipeline:        ^RenderPipeline, // owned by ShaderRegistry
+	// tonemapping_pipeline:        RenderPipelineHandle, // owned by ShaderRegistry
 
 	// input related fields:
 	total_secs_f64:              f64,
@@ -145,6 +144,9 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	platform^ = {}
 	platform.settings = settings
 
+	register_asset_types()
+	slotman.register_asset_directory(settings.shaders_dir_path)
+
 	// /////////////////////////////////////////////////////////////////////////////
 	// Setup window and wgpu
 
@@ -153,18 +155,7 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 
 	// /////////////////////////////////////////////////////////////////////////////
 	// Setup Assets (Default 1px white Texture + Default Font)
-
-	platform.assets = Assets{}
-
-	assets_register_drop_fn(Texture, texture_destroy)
-	assets_register_drop_fn(Font, font_destroy)
-	assets_register_drop_fn(MotionTexture, motion_texture_destroy)
-	assets_register_drop_fn(SkinnedGeometry, skinned_mesh_geometry_drop)
-	assets_register_drop_fn(SkinnedMesh, skinned_mesh_drop)
-	assets_register_drop_fn(CubeTexture, cube_texture_destroy)
-
-	default_texture_handle := assets_insert(_texture_create_1px_white())
-	assert(DEFAULT_TEXTURE == default_texture_handle)
+	assert(DEFAULT_TEXTURE == slotman.set_default(_texture_create_1px_white()))
 
 	default_font: Font
 	font_err: Error
@@ -173,22 +164,14 @@ _init_platform :: proc(platform: ^Platform, settings: PlatformSettings = PLATFOR
 	} else {
 		default_font, font_err = font_from_path(settings.default_font_path)
 	}
-	default_font_handle := assets_insert(default_font)
-	assert(DEFAULT_FONT == default_font_handle)
-
-	default_motion_texture_handle := assets_insert(_motion_texture_create_1px_white())
-	assert(DEFAULT_MOTION_TEXTURE == default_motion_texture_handle)
+	assert(DEFAULT_FONT == slotman.set_default(default_font))
+	assert(DEFAULT_MOTION_TEXTURE == slotman.set_default(_motion_texture_create_1px_white()))
 
 	// /////////////////////////////////////////////////////////////////////////////
 	// Setup hdr screen texture, depth texture shader registery
 
 	platform.hdr_screen_texture = texture_create(platform.screen_size_u, HDR_SCREEN_TEXTURE_SETTINGS)
 	platform.depth_screen_texture = depth_texture_create(platform.screen_size_u)
-	platform.shader_registry = shader_registry_create(
-		platform.device,
-		settings.shaders_dir_path,
-		settings.hot_reload_shaders,
-	)
 	platform.is_initialized = true
 }
 
@@ -237,8 +220,8 @@ platform_start_frame :: proc() -> (should_keep_running: bool) {
 		return false
 	}
 
-	if platform.settings.hot_reload_shaders {
-		shader_registry_hot_reload(&platform.shader_registry)
+	if platform.settings.hot_reload {
+		slotman.hot_reload()
 	}
 
 	if platform.settings.debug_fps_in_title {

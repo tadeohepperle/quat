@@ -7,6 +7,7 @@ import "core:image/png"
 import "core:os"
 import "core:strings"
 import "shared:sdffont"
+import "shared:slotman"
 import wgpu "vendor:wgpu"
 
 LineMetrics :: sdffont.LineMetrics
@@ -75,7 +76,7 @@ font_from_bytes :: proc(
 		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 	)
 
-	texture_handle := assets_insert(texture)
+	texture_handle: TextureHandle = slotman.insert(texture)
 	font = Font {
 		settings       = settings,
 		name           = strings.clone(name),

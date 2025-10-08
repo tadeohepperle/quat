@@ -15,7 +15,6 @@ MotionTexture :: struct {
 }
 
 motion_texture_destroy :: proc(texture: ^MotionTexture) {
-	print("DESTROY Motion texture:")
 	wgpu.BindGroupRelease(texture.bind_group)
 	wgpu.SamplerRelease(texture.sampler)
 	wgpu.TextureViewRelease(texture.diffuse_view)
@@ -270,7 +269,7 @@ MotionParticlesRenderCommand :: struct {
 
 // all particles share the same instance_buffer, that is rewritten every frame
 motion_particles_render :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	instance_buffer: DynamicBuffer(MotionParticleInstance),
 	commands: []MotionParticlesRenderCommand,
 	render_pass: wgpu.RenderPassEncoder,
@@ -280,11 +279,11 @@ motion_particles_render :: proc(
 	if len(commands) == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 	wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, instance_buffer.buffer, 0, instance_buffer.size)
-	motion_textures := assets_get_map(MotionTexture)
+	motion_textures := get_map(MotionTexture)
 	for &cmd in commands {
 		motion_texture := slotmap_get(motion_textures, cmd.texture)
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, motion_texture.bind_group)
@@ -310,9 +309,9 @@ MOTION_PARTICLE_ATTRIBUTES := []VertAttibute {
 motion_particles_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "motion_particle",
-		vs_shader = "motion_particle",
+		vs_shader = "motion_particle.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "motion_particle",
+		fs_shader = "motion_particle.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleStrip,
 		vertex = {},

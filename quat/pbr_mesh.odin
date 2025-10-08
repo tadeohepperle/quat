@@ -53,7 +53,7 @@ pbr_mesh_render :: proc(
 		return
 	}
 
-	textures := assets_get_map(Texture)
+	textures := get_map(Texture)
 	wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, frame_uniform)
@@ -86,9 +86,9 @@ SunLight :: struct {
 pbr_mesh_render_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "pbr_mesh",
-		vs_shader = "pbr_mesh",
+		vs_shader = "pbr_mesh.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "pbr_mesh",
+		fs_shader = "pbr_mesh.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		cull_mode = .Back,

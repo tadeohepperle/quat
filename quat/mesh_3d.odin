@@ -8,7 +8,7 @@ Mesh3DVertex :: struct {
 }
 
 Mesh3DRenderer :: struct {
-	pipeline:        ^RenderPipeline,
+	pipeline:        RenderPipelineHandle,
 	vertices:        [dynamic]Mesh3DVertex,
 	vertex_buffer:   DynamicBuffer(Mesh3DVertex),
 	triangles:       [dynamic]Triangle,
@@ -86,8 +86,8 @@ mesh_3d_renderer_render :: proc(
 		)
 	}
 
-	textures := assets_get_map(Texture)
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+	textures := get_map(Texture)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(rend.pipeline))
 
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_3d_uniform)
@@ -109,9 +109,9 @@ mesh_3d_renderer_render :: proc(
 mesh_3d_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "mesh_3d",
-		vs_shader = "mesh_3d",
+		vs_shader = "mesh_3d.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "mesh_3d",
+		fs_shader = "mesh_3d.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		cull_mode = .Back,

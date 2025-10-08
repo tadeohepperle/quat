@@ -1,5 +1,6 @@
 package quat
 
+import "shared:slotman"
 import wgpu "vendor:wgpu"
 
 // a mesh where each triangle merges 3 textures
@@ -28,7 +29,7 @@ tritex_mesh_drop :: proc(tritex_mesh: ^TritexMesh) {
 }
 
 tritex_mesh_render :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	render_pass: wgpu.RenderPassEncoder,
 	frame_uniform: wgpu.BindGroup,
 	camera_2d_uniform: wgpu.BindGroup,
@@ -42,11 +43,11 @@ tritex_mesh_render :: proc(
 		print("warning! wants to draw tritex meshes, but TextureArrayHandle is 0!")
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
-	texture_array_bindgroup := assets_get(textures).bind_group
+	texture_array_bindgroup := slotman.get(textures).bind_group
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, texture_array_bindgroup)
 	for mesh in meshes {
 		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, mesh.vertex_buffer.buffer, 0, mesh.vertex_buffer.size)
@@ -57,9 +58,9 @@ tritex_mesh_render :: proc(
 tritex_mesh_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "tritex",
-		vs_shader = "tritex",
+		vs_shader = "tritex.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "tritex",
+		fs_shader = "tritex.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {

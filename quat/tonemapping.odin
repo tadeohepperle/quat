@@ -4,9 +4,9 @@ import wgpu "vendor:wgpu"
 tonemapping_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "tonemapping",
-		vs_shader = "screen",
+		vs_shader = "screen.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "tonemapping",
+		fs_shader = "tonemapping.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {},

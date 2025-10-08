@@ -1,4 +1,5 @@
 package quat
+import slotman "shared:slotman"
 import wgpu "vendor:wgpu"
 
 
@@ -68,7 +69,7 @@ hex_chunk_uniform_create :: proc(chunk_pos: [2]i32) -> (uniform: HexChunkUniform
 }
 
 hex_chunks_render :: proc(
-	pipeline: wgpu.RenderPipeline,
+	pipeline: RenderPipelineHandle,
 	render_pass: wgpu.RenderPassEncoder,
 	frame_uniform: wgpu.BindGroup,
 	camera_2d_uniform: wgpu.BindGroup,
@@ -79,14 +80,14 @@ hex_chunks_render :: proc(
 		return
 	}
 	if textures == {} {
-		print("warning! wants to draw tritex meshes, but TextureArrayHandle is 0!")
+		print("warning! wants to draw hex chunks, but TextureArrayHandle is 0!")
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
-	texture_array, ok := assets_get(textures)
+	texture_array, ok := slotman.try_get(textures)
 	if !ok {
 		print("warning! texture array not found!")
 	}
@@ -116,9 +117,9 @@ HexChunkPushConstants :: struct {
 hex_chunk_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "hex_chunk",
-		vs_shader = "hex_chunk",
+		vs_shader = "hex_chunk.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "hex_chunk",
+		fs_shader = "hex_chunk.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {},

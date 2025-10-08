@@ -7,7 +7,7 @@ ColorMesh2DVertex :: struct {
 }
 
 ColorMesh2DRenderer :: struct {
-	pipeline:      ^RenderPipeline,
+	pipeline:      RenderPipelineHandle,
 	vertices:      [dynamic]ColorMesh2DVertex,
 	vertex_buffer: DynamicBuffer(ColorMesh2DVertex),
 	triangles:     [dynamic]Triangle, // index buffer
@@ -44,7 +44,8 @@ color_mesh_2d_renderer_render :: proc(
 	if rend.index_buffer.length == 0 {
 		return
 	}
-	wgpu.RenderPassEncoderSetPipeline(render_pass, rend.pipeline.pipeline)
+
+	wgpu.RenderPassEncoderSetPipeline(render_pass, get_pipeline(rend.pipeline))
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_2d_uniform)
 
@@ -56,9 +57,9 @@ color_mesh_2d_renderer_render :: proc(
 color_mesh_2d_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "color_mesh_2d",
-		vs_shader = "color_mesh_2d",
+		vs_shader = "color_mesh_2d.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "color_mesh_2d",
+		fs_shader = "color_mesh_2d.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {

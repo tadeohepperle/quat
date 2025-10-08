@@ -13,6 +13,7 @@ import "core:os"
 import "core:reflect"
 import "core:slice"
 import "core:unicode/utf8"
+import "shared:slotman"
 /*
 
 Here is a short overview about how to use this UI system.
@@ -1495,7 +1496,7 @@ _layout_div_in_text_ctx :: proc(ctx: ^TextLayoutCtx, div: ^DivElement) {
 }
 
 _layout_text_in_text_ctx :: proc(ctx: ^TextLayoutCtx, text: ^TextElement) {
-	font := assets_get(text.font)
+	font := slotman.get(text.font)
 	font_size := text.font_size
 	scale := font_size / f32(font.settings.font_size)
 	ctx.current_line.metrics = merge_line_metrics_to_max(

@@ -122,10 +122,9 @@ main :: proc() {
 	settings.bloom_enabled = false
 	settings.debug_ui_gizmos = true
 	engine.init(settings)
+
 	defer engine.deinit()
-	terrain_textures := q.load_texture_array(
-		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_3.png"},
-	)
+	terrain_textures := engine.load_texture_array({"t_0.png", "t_1.png", "t_2.png", "t_3.png"})
 	engine.set_tritex_textures(terrain_textures)
 
 	world := World {

@@ -55,7 +55,7 @@ is_image_path :: proc(path: string) -> bool {
 	return strings.ends_with(path, ".png") // todo: extend further later, needs to support jpeg as well
 }
 
-image_load :: proc(path: string) -> (RgbaImage, Error) {
+image_load_from_path :: proc(path: string) -> (RgbaImage, Error) {
 	return image_load_of_type(path, Rgba)
 }
 

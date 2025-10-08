@@ -19,7 +19,6 @@ main :: proc() {
 	settings.debug_fps_in_title = true
 	// settings.present_mode = .Immediate
 	engine.init(settings)
-
 	defer engine.deinit()
 
 	v :: proc(pos: Vec3) -> q.MeshFake3dVertex {
@@ -69,13 +68,11 @@ main :: proc() {
 	q.mesh_fake_3d_sync(&mesh)
 	mesh_vertices_unshared := slice.clone(mesh.vertices[:])
 
-	corn := engine.load_texture_tile("./assets/corn.png")
+	corn := engine.load_texture_tile("corn.png")
 	engine.set_clear_color(q.Color{0.4, 0.4, 0.6, 1.0})
 	cam := engine.camera_controller_create()
 
-	terrain_textures := q.load_texture_array(
-		{"./assets/t_0.png", "./assets/t_1.png", "./assets/t_2.png", "./assets/t_undiscovered_dark.png"},
-	)
+	terrain_textures := engine.load_texture_array({"t_0.png", "t_1.png", "t_2.png", "t_undiscovered_dark.png"})
 	engine.set_tritex_textures(terrain_textures)
 
 

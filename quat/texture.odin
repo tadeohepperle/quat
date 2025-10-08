@@ -3,6 +3,7 @@ package quat
 import "core:fmt"
 import wgpu "vendor:wgpu"
 
+
 IMAGE_FORMAT :: wgpu.TextureFormat.RGBA8UnormSrgb
 DEPTH_SPRITE_IMAGE_FORMAT :: wgpu.TextureFormat.R16Unorm
 
@@ -45,6 +46,10 @@ DepthTexture :: struct {
 	using _: Texture,
 }
 
+TextureArray :: struct {
+	using _: Texture,
+}
+
 TextureInfo :: struct {
 	size:     UVec2,
 	settings: TextureSettings,
@@ -62,18 +67,24 @@ TextureTileWithDepth :: struct {
 	uv:    Aabb,
 }
 
-texture_from_image_path :: proc(
+TextureSettingsAndPath :: struct {
+	path:     string,
+	settings: TextureSettings,
+}
+
+texture_load_from_image_path :: proc(
 	path: string,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
 	texture: Texture,
 	error: Error,
 ) {
-	img := image_load(path) or_return
+	img := image_load_from_path(path) or_return
 	texture = texture_from_image(img, settings)
 	image_drop(&img)
 	return
 }
+
 
 COPY_BYTES_PER_ROW_ALIGNMENT: u32 : 256 // Buffer-Texture copies must have [`bytes_per_row`] aligned to this number.
 texture_from_image :: proc(img: RgbaImage, settings: TextureSettings = TEXTURE_SETTINGS_RGBA) -> (texture: Texture) {
@@ -112,18 +123,13 @@ texture_write_from_image :: proc(texture: Texture, img: RgbaImage) {
 	)
 }
 
-depth_texture_16bit_r_from_image_path :: proc(
-	path: string,
-	settings: TextureSettings = TEXTURE_SETTINGS_DEPTH_SPRITE,
-) -> (
-	texture: Texture,
-	error: Error,
-) {
+depth_texture_16bit_r_from_image_path :: proc(path: string) -> (depth_texture: DepthTexture, error: Error) {
+	settings := TEXTURE_SETTINGS_DEPTH_SPRITE
 	assert(settings.format == DEPTH_SPRITE_IMAGE_FORMAT)
 	img := depth_image_load(path) or_return
 	defer {depth_image_drop(&img)}
 	size := UVec2{u32(img.size.x), u32(img.size.y)}
-	texture = texture_create(size, settings)
+	texture := texture_create(size, settings)
 
 	if size.x % 128 != 0 {
 		panic(
@@ -146,7 +152,7 @@ depth_texture_16bit_r_from_image_path :: proc(
 		&data_layout,
 		&wgpu.Extent3D{width = size.x, height = size.y, depthOrArrayLayers = 1},
 	)
-	return texture, {}
+	return DepthTexture{texture}, {}
 }
 
 texture_as_image_copy :: proc(texture: Texture) -> wgpu.TexelCopyTextureInfo {
@@ -323,6 +329,12 @@ texture_destroy :: proc(texture: ^Texture) {
 	wgpu.TextureViewRelease(texture.view)
 	wgpu.TextureRelease(texture.texture)
 }
+depth_texture_destroy :: proc(depth_texture: ^DepthTexture) {
+	texture_destroy(depth_texture)
+}
+texture_array_destroy :: proc(depth_texture: ^TextureArray) {
+	texture_destroy(depth_texture)
+}
 
 RBGA_BIND_GROUP_LAYOUT: wgpu.BindGroupLayout
 rgba_bind_group_layout_cached :: proc() -> wgpu.BindGroupLayout {
@@ -379,7 +391,7 @@ texture_array_create :: proc(
 	layers: u32,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
-	array: Texture,
+	array: TextureArray,
 ) {
 	assert(wgpu.TextureUsage.TextureBinding in settings.usage)
 	array.info = TextureInfo{size, settings, layers}
@@ -427,14 +439,14 @@ texture_array_create :: proc(
 	}
 	array.bind_group = wgpu.DeviceCreateBindGroup(PLATFORM.device, &bind_group_descriptor)
 
-	return array
+	return TextureArray{array}
 }
 
 texture_array_from_image_paths :: proc(
 	paths: []string,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
-	array: Texture,
+	array: TextureArray,
 	error: Error,
 ) {
 	images := make([dynamic]RgbaImage)
@@ -448,7 +460,7 @@ texture_array_from_image_paths :: proc(
 	width: int
 	height: int
 	for path, i in paths {
-		img := image_load(path) or_return
+		img := image_load_from_path(path) or_return
 		if i == 0 {
 			width = img.size.x
 			height = img.size.y
@@ -466,10 +478,7 @@ texture_array_from_image_paths :: proc(
 		}
 		append(&images, img)
 	}
-	array = texture_array_from_images(images[:], settings)
-
-
-	return
+	return texture_array_from_images(images[:], settings), nil
 }
 
 
@@ -477,7 +486,7 @@ texture_array_from_images :: proc(
 	images: []RgbaImage,
 	settings: TextureSettings = TEXTURE_SETTINGS_RGBA,
 ) -> (
-	array: Texture,
+	array: TextureArray,
 ) {
 	assert(len(images) > 0)
 

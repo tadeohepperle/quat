@@ -34,6 +34,7 @@ Mat2 :: matrix[2, 2]f32
 // a table where the 4 regions (corner, left header, top header, field) can be scrolled to see different parts of the field
 main :: proc() {
 	engine.init()
+
 	defer {engine.deinit()}
 	engine.set_bloom_enabled(false)
 	engine.set_tonemapping_mode(.Disabled)
@@ -42,11 +43,11 @@ main :: proc() {
 
 	ta := engine.texture_allocator_create({max_size = {512, 512}, max_n_atlases = 1, auto_grow_shrink = false})
 
-	panel_bg_img := q.image_load("./assets/nineslice3.png") or_else panic(" not found")
+	panel_bg_img := q.image_load_from_path("./assets/nineslice3.png") or_else panic(" not found")
 	panel_bg := engine.texture_allocator_add_img(&ta, panel_bg_img).tile
 	q.image_drop(&panel_bg_img)
 
-	TESTING_TEXTURE = engine.load_texture("./assets/testing_texture_bw.png")
+	TESTING_TEXTURE = engine.load_texture("testing_texture_bw.png")
 
 	FIELD_SIZE :: Vec2{1200, 1000}
 	CORNER_SIZE :: Vec2{80, 40}

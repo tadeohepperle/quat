@@ -12,7 +12,8 @@ import stbi "vendor:stb/image"
 
 // todo: follow https://learnopengl.com/PBR/IBL/Diffuse-irradiance
 
-load_cube_texture_and_generate_mip_levels :: proc(
+
+cube_texture_load_and_generate_mip_levels :: proc(
 	reader: EquirectReader,
 	mip_generator: CubeTextureMipGenerator,
 	path: string,
@@ -21,17 +22,16 @@ load_cube_texture_and_generate_mip_levels :: proc(
 	cube_texture: CubeTexture,
 	err: Error,
 ) {
-
 	if !is_power_of_two(int(cube_texture_size)) {
 		return {}, tprint("cube texture size has to be power of 2, got ", cube_texture_size)
 	}
 
-	cube_texture = equirect_reader_load_cube_texture(reader, path, cube_texture_size) or_return
+	cube_texture = cube_texture_load(reader, path, cube_texture_size) or_return
 	cube_texture_generate_mip_levels(mip_generator, cube_texture)
 	return cube_texture, nil
 }
 
-equirect_reader_load_cube_texture :: proc(
+cube_texture_load :: proc(
 	reader: EquirectReader,
 	path: string,
 	cube_texture_size: u32,
@@ -487,7 +487,6 @@ sky_box_render :: proc(
 	cube_texture: wgpu.BindGroup,
 ) {
 	wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, frame_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, camera_3d_uniform)
 	wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, cube_texture)
@@ -497,9 +496,9 @@ sky_box_render :: proc(
 sky_box_pipeline_config :: proc() -> RenderPipelineConfig {
 	return RenderPipelineConfig {
 		debug_name = "sky",
-		vs_shader = "sky",
+		vs_shader = "sky.wgsl",
 		vs_entry_point = "vs_main",
-		fs_shader = "sky",
+		fs_shader = "sky.wgsl",
 		fs_entry_point = "fs_main",
 		topology = .TriangleList,
 		vertex = {},
